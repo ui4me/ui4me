@@ -106,7 +106,7 @@ class PublicationControlsTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.folder = self.root / "dist/release"
         self.folder.mkdir(parents=True)
         self.manifest_path = self.folder / "manifest.json"
