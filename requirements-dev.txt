@@ -3,5 +3,5 @@ build==1.2.2.post1
 setuptools==80.9.0
 wheel==0.45.1
 twine==6.1.0
-auditwheel==6.4.2; sys_platform == "linux"
+auditwheel==6.8.2; sys_platform == "linux"
 patchelf==0.17.2.2; sys_platform == "linux"
