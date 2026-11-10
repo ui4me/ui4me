@@ -18,8 +18,8 @@ default = ["native"]
 native = ["dep:winit", "dep:softbuffer"]
 
 [dependencies]
-serde_json = "=1.0.145"
+serde_json = "=1.0.154"
 font8x8 = "=0.3.1"
-png = "=0.17.16"
-winit = { version = "=0.30.12", optional = true, default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
-softbuffer = { version = "=0.4.6", optional = true, default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
+png = "=0.18.1"
+winit = { version = "=0.30.13", optional = true, default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
+softbuffer = { version = "=0.4.8", optional = true, default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }

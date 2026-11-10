@@ -18,6 +18,7 @@ NATIVE = {"F02", "F03", "F04", "F05", "F06", "F07", "F08", "F10"}
 def new_receipt(binding: str, suite: str, manifest: Path | None = None, phase: str = "candidate") -> tuple[Path, dict]:
     folder = run_directory(f"{host()}-{binding}-{suite}")
     value = {"schema": 1, "kind": "test", "id": folder.name, "phase": phase, "started_at": now(), "status": "running", "binding": binding, "suite": suite, "platform": host(), "source_id": source_id(), "git_revision": revision(), "backend": "native" if suite == "native" else "headless", "cases": [], "steps": [], "origin": {"github_run_id": os.environ.get("GITHUB_RUN_ID"), "github_repository": os.environ.get("GITHUB_REPOSITORY"), "github_sha": os.environ.get("GITHUB_SHA")}}
+    value["harness"] = {"python": sys.version.split()[0], "executable": sys.executable}
     if manifest:
         value["manifest_sha256"] = sha256(manifest) if manifest.is_file() else None
         value["manifest_name"] = manifest.name
