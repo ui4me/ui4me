@@ -1,6 +1,6 @@
 # Python 3.11+; package-build tools only, no ui4me runtime dependencies.
 build==1.6.1
-setuptools==84.1.0
+setuptools==84.2.1
 wheel==0.48.0
 twine==7.0.0
 auditwheel==6.8.2; sys_platform == "linux"
