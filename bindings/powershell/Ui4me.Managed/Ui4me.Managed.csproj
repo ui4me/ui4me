@@ -16,6 +16,6 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Management.Automation" Version="7.4.0" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="System.Management.Automation" Version="7.6.9" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>
