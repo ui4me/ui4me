@@ -31,7 +31,7 @@ public sealed class BackgroundWork
         if (!Slots.Wait(0)) throw new InvalidOperationException("At most four background scripts may be active in this process.");
         var worker = new BackgroundWork();
         var text = script.ToString();
-        var finished = completion.GetNewClosure();
+        var finished = ScriptClosure.Capture(completion);
         try
         {
             ThreadPool.QueueUserWorkItem(_ => worker.Run(app, text, arguments, finished));

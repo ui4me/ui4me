@@ -149,6 +149,28 @@ try {
             $null = $app.On('stopped', { if ($state.received -ne 42) { throw 'Callback lost its caller scope' } })
         }
     }
+    Test-Case 'PS14_nested_background_callback_scope' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{received=0}
+            $record = { param($value) $state.received = $value }.GetNewClosure()
+            $window = New-Ui4meWindow '<p>Nested work</p>'
+            $null = Register-Ui4meEvent $window close_requested {
+                $owner = [Environment]::CurrentManagedThreadId
+                $null = $app.Work({ 42 }, @(), {
+                    param($values, $error)
+                    if ($null -ne $error) { throw $error }
+                    if ([Environment]::CurrentManagedThreadId -ne $owner) { throw 'Wrong completion thread' }
+                    & $record $values[0]
+                    $app.Stop()
+                })
+                return $false
+            }
+            $null = $app.On('started', { $window.Close() })
+            $null = $app.Timer(5000, { throw 'Nested callback timed out' }, $false)
+            $null = $app.On('stopped', { if ($state.received -ne 42) { throw 'Nested callback lost caller scope' } })
+        }
+    }
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {

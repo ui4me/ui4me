@@ -18,7 +18,7 @@ jobs:
     env:
       # Hosted images can contain a partial toolchain with conflicting
       # components. Install the pinned toolchain into a clean job-local home.
-      RUSTUP_HOME: ${{ runner.temp }}/ui4me-rustup
+      RUSTUP_HOME: ${{ github.workspace }}/build/ci-rustup
     strategy:
       fail-fast: false
       matrix:

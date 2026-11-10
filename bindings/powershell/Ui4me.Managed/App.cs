@@ -127,7 +127,7 @@ public sealed class App : IDisposable
         Active();
         if (handlers.Count >= 512) throw new InvalidOperationException("At most 512 subscriptions may be active.");
         var id = Interlocked.Increment(ref counter);
-        handlers.Add(id, (eventName, window, element, handler.GetNewClosure()));
+        handlers.Add(id, (eventName, window, element, ScriptClosure.Capture(handler)));
         return new Subscription(this, id);
     }
     internal void RemoveHandler(long id) { OwnerOnly(); handlers.Remove(id); }
@@ -136,7 +136,7 @@ public sealed class App : IDisposable
         Active();
         var token = checked((ulong)Interlocked.Increment(ref counter));
         Command(new { op = "timer", token, milliseconds, repeat });
-        timers.Add(token, (handler.GetNewClosure(), repeat));
+        timers.Add(token, (ScriptClosure.Capture(handler), repeat));
         return new TimerRegistration(this, token);
     }
     internal void CancelTimer(ulong token)
@@ -150,7 +150,7 @@ public sealed class App : IDisposable
     {
         // A ScriptBlock belongs to its creating runspace. Capture it only on the owner.
         OwnerOnly();
-        var closure = action.GetNewClosure();
+        var closure = ScriptClosure.Capture(action);
         return PostManaged(() => closure.InvokeReturnAsIs());
     }
     public PostedWork PostManaged(Func<object?> action)
