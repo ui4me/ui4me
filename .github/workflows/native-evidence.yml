@@ -23,7 +23,7 @@ jobs:
     environment: native-validation
     runs-on: ${{ inputs.platform == 'win-x64' && fromJSON('["self-hosted","Windows","X64","ui4me-native"]') || fromJSON('["self-hosted","Linux","X64","ui4me-native"]') }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           clean: true
