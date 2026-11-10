@@ -187,7 +187,7 @@ def package(binding: str, profile: str) -> Path:
 def assemble(manifests: list[Path], out: Path) -> Path:
     if len(manifests) != 2:
         raise DevError("Assembly requires one Linux and one Windows manifest")
-    loaded = [(p.resolve(), load_manifest(p)) for p in manifests]
+    loaded = sorted(((p.resolve(), load_manifest(p)) for p in manifests), key=lambda item: item[1]["platform"])
     if {m["platform"] for _, m in loaded} != {"linux-x64", "win-x64"}:
         raise DevError("Assembly requires linux-x64 and win-x64")
     for key in ("source_id", "version", "git_revision"):
@@ -216,9 +216,13 @@ def assemble(manifests: list[Path], out: Path) -> Path:
         if index == 0:
             shutil.copytree(incoming, module)
         else:
-            # Shared code must have identical bytes across platform builds.
+            # Source is identical, but managed binaries vary with the SDK and
+            # build host. Use the Linux build as the canonical adapter and
+            # test the assembled package on both platforms.
             for file in incoming.rglob("*"):
                 if file.is_file() and not file.relative_to(incoming).parts[0] in {"runtimes", "notices"}:
+                    if file.relative_to(incoming).as_posix() in {"lib/Ui4me.Managed.dll", "lib/Ui4me.Managed.deps.json"}:
+                        continue
                     other = module / file.relative_to(incoming)
                     if not other.is_file() or sha256(file) != sha256(other):
                         raise DevError(f"PowerShell platform stages disagree: {file.relative_to(incoming)}")
