@@ -48,6 +48,7 @@ def unit(binding: str, profile: str) -> bool:
             if profile == "release":
                 command.append("--release")
             env["UI4ME_SOURCE_ID"] = source_id()
+            env["UI4ME_GIT_REVISION"] = revision()
             step = run(command, cwd=ROOT, env=env, log=folder / "unit.log", check=False)
             receipt["steps"].append(step)
             counts = re.findall(r"test result: ok\. (\d+) passed;", (folder / "unit.log").read_text(encoding="utf-8", errors="replace"))
