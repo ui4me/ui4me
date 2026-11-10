@@ -84,8 +84,23 @@ function Register-Ui4meEvent {
         [Parameter(Mandatory, Position=2)][scriptblock] $Action,
         [string] $Element
     )
-    $elementFilter = if ($PSBoundParameters.ContainsKey('Element')) { $Element } else { $null }
-    $Window.On($Event, $Action, $elementFilter)
+    # The managed bridge captures the current PowerShell scope when On is
+    # called. A module function has its own scope, so bring referenced caller
+    # variables into it first. Otherwise callbacks registered through this
+    # convenience command lose the initializer's local values.
+    $__ui4me = @{ window = $Window; event = $Event; action = $Action
+        element = $(if ($PSBoundParameters.ContainsKey('Element')) { $Element } else { $null }) }
+    $__ui4meCaller = (Get-PSCallStack)[1].GetFrameVariables()
+    $__ui4meNames = $__ui4me.action.Ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.VariableExpressionAst]
+    }, $true) | ForEach-Object { $_.VariablePath } | Where-Object { $_.IsUnqualified } |
+        ForEach-Object { $_.UserPath } | Select-Object -Unique
+    foreach ($__ui4meName in $__ui4meNames) {
+        if ($__ui4meName -notmatch '^__ui4me' -and $__ui4meCaller.ContainsKey($__ui4meName)) {
+            Set-Variable -Name $__ui4meName -Value $__ui4meCaller[$__ui4meName].Value -ErrorAction SilentlyContinue
+        }
+    }
+    $__ui4me.window.On($__ui4me.event, $__ui4me.action, $__ui4me.element)
 }
 
 function Set-Ui4meText {

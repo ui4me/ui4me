@@ -133,6 +133,22 @@ try {
             $null = $app.On('stopped', { if (-not $state.completed) { throw 'No completion callback' } })
         }
     }
+    Test-Case 'PS13_cmdlet_callback_scope' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{received=0}
+            $record = { param($value) $state.received = $value }.GetNewClosure()
+            $window = New-Ui4meWindow '<p>Close interception</p>'
+            $null = Register-Ui4meEvent $window close_requested {
+                & $record 42
+                $app.Stop()
+                return $false
+            }
+            $null = $app.On('started', { $window.Close() })
+            $null = $app.Timer(2000, { throw 'Close callback did not complete' }, $false)
+            $null = $app.On('stopped', { if ($state.received -ne 42) { throw 'Callback lost its caller scope' } })
+        }
+    }
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {
