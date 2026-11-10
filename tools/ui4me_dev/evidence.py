@@ -159,7 +159,7 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
             if data.get("consumed_artifact") != expected_artifact:
                 errors.append(f"Consumed package differs from manifest: {key}")
             errors.extend(evidence_errors(path, data, case))
-            references[str(path.relative_to(ROOT))] = sha256(path)
+            references[path.relative_to(ROOT).as_posix()] = sha256(path)
     # Latest unit attempt for each required host/binding must pass, even if an older run was green.
     for platform in ("linux-x64", "win-x64"):
         for binding in ("core", "python", "powershell", "tools"):
@@ -176,7 +176,7 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
                     proof = (path.parent / item["path"]).resolve()
                     if not proof.is_relative_to(path.parent.resolve()) or not proof.is_file() or sha256(proof) != item["sha256"]:
                         errors.append(f"Changed unit proof: {path} {item['path']}")
-                references[str(path.relative_to(ROOT))] = sha256(path)
+                references[path.relative_to(ROOT).as_posix()] = sha256(path)
         sdk_runs = [(p, d) for p, d in values if (d.get("source_id"), d.get("manifest_sha256"), d.get("platform"), d.get("binding"), d.get("suite")) == (manifest["source_id"], sha256(manifest_path), platform, "core", "installed")]
         if not sdk_runs or sdk_runs[-1][1].get("status") != "passed" or not sdk_runs[-1][1].get("cases"):
             errors.append(f"Installed C SDK consumer not passed: {platform}")
@@ -188,7 +188,7 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
                 proof = (path.parent / item["path"]).resolve()
                 if not proof.is_relative_to(path.parent.resolve()) or not proof.is_file() or sha256(proof) != item["sha256"]:
                     errors.append(f"Changed C SDK proof: {path}")
-            references[str(path.relative_to(ROOT))] = sha256(path)
+            references[path.relative_to(ROOT).as_posix()] = sha256(path)
     if not reviewer or not review_url or not review_url.startswith("https://github.com/"):
         errors.append("Explicit release reviewer and HTTPS GitHub review/run URL required")
     result = {"schema": 1, "status": "qualified" if not errors else "blocked", "source_id": manifest["source_id"], "manifest_sha256": sha256(manifest_path), "reviewer": reviewer, "review_url": review_url, "recorded_at": now(), "trust_boundary": "Maintainer reviews trusted workflow origin and manual observations; JSON hashes do not authenticate human claims.", "evidence": [{"path": path, "sha256": digest} for path, digest in sorted(references.items())], "errors": errors}
