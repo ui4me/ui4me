@@ -15,6 +15,10 @@ concurrency:
 
 jobs:
   build:
+    env:
+      # Hosted images can contain a partial toolchain with conflicting
+      # components. Install the pinned toolchain into a clean job-local home.
+      RUSTUP_HOME: ${{ runner.temp }}/ui4me-rustup
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +39,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Rust toolchain
-        run: rustup toolchain install 1.90.0 --profile minimal
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
       - name: Linux native prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1
