@@ -1,6 +1,6 @@
 # ui4me for Python
 
-This reconstructed v0.1 source has not been compiled or tested. Build a wheel with the repository's `dev.py package` command before installing it. A source checkout does not contain the native engine.
+The Python facade needs a matching native runtime bundled in a platform wheel. A source checkout does not contain that runtime. The current reconstruction is not release-qualified; native desktop support and final packages still need acceptance testing.
 
 ```python
 from ui4me import App

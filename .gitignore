@@ -1,8 +1,8 @@
 /build/
 /dist/
 /target/
-**/bin/
-**/obj/
+/bindings/powershell/Ui4me.Managed/bin/
+/bindings/powershell/Ui4me.Managed/obj/
 **/__pycache__/
 **/*.py[cod]
 **/*.egg-info/

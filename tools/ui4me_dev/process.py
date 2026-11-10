@@ -9,6 +9,12 @@ from pathlib import Path
 from .common import DevError
 
 
+class ProcessError(DevError):
+    def __init__(self, message: str, status: str):
+        super().__init__(message)
+        self.status = status
+
+
 def stop_tree(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
@@ -39,7 +45,7 @@ def run(argv: list[str], *, cwd: Path, log: Path, env: dict | None = None, timeo
             result.update(status="blocked", error=str(error))
             output.write(str(error) + "\n")
             if check:
-                raise DevError(f"Cannot start {argv[0]}: {error}; log: {log}") from error
+                raise ProcessError(f"Cannot start {argv[0]}: {error}; log: {log}", "blocked") from error
             return result
         try:
             process.wait(timeout=timeout)
@@ -52,5 +58,7 @@ def run(argv: list[str], *, cwd: Path, log: Path, env: dict | None = None, timeo
             result.update(status="interrupted", error="Interrupted by operator")
         result["duration_seconds"] = round(time.monotonic() - started, 3)
     if check and result["status"] != "passed":
-        raise DevError(f"Command {result['status']}; inspect {log}")
+        if result["status"] == "interrupted":
+            raise KeyboardInterrupt
+        raise ProcessError(f"Command {result['status']}; inspect {log}", result["status"])
     return result

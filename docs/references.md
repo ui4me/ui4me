@@ -16,7 +16,8 @@ updating dependencies or registry configuration.
 | PyPI publisher configuration | https://docs.pypi.org/trusted-publishers/adding-a-publisher/ |
 | PyPI publishing security model | https://docs.pypi.org/trusted-publishers/security-model/ |
 | Publishing with GitHub Actions | https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/ |
-| PowerShell Gallery account and API keys | https://learn.microsoft.com/en-us/powershell/gallery/how-to/getting-support/bootstrapping-nuget |
+| PowerShell Gallery publishing | https://learn.microsoft.com/en-us/powershell/gallery/how-to/publishing-packages/publishing-a-package |
+| PowerShell Gallery package owners | https://learn.microsoft.com/en-us/powershell/gallery/how-to/publishing-packages/managing-package-owners |
 | Exact nupkg publication | https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.psresourceget/publish-psresource |
 | PowerShell runspace thread policy | https://learn.microsoft.com/en-us/dotnet/api/system.management.automation.runspaces.psthreadoptions |
 | .NET support policy | https://dotnet.microsoft.com/en-us/platform/support/policy |

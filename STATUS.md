@@ -1,28 +1,18 @@
-# Delivery status
+# Foundation status
 
-**Reconstructed source candidate. Not compiled, executed, tested, qualified or published.**
+Release qualification is pending. The current source has been built and exercised
+locally, but unit or headless results do not establish desktop acceptance. Use
+`python dev.py report` for results tied to the current source and, when provided,
+the exact candidate manifest. The report distinguishes missing, blocked, failed,
+interrupted and passed observations.
 
-The user requested reconstruction and downloadable source without running the
-code. This archive therefore contains authored implementation, tests, scripts,
-workflows and specifications. It carries no successful runtime evidence.
+The native renderer supports a deliberately small HTML subset and inline color
+properties; it is not a browser. Full CSS layout, accessibility, IME and text
+shaping remain outside this foundation. Windows and Linux desktop acceptance,
+installed final artifacts, and the complete F01–F12 matrix are required before
+calling a release qualified. CI must run on the repository, and registry setup
+and publication are separate owner actions. No package has been published by
+this development effort.
 
-The earlier implementation was lost with its temporary workspace. Its 67 passing
-checks do not apply to this reconstruction. They are deliberately absent from
-the test overview and qualification data.
-
-| Area | This delivery |
-| --- | --- |
-| Foundation implementation | Source authored; static review only |
-| Rust / Python / PowerShell tests | Authored; not run |
-| Native Windows and Linux execution | Not run |
-| Language package builds and installation | Not run |
-| Cargo dependency lock | Generate and review locally before the first CI build |
-| CI workflows | Authored; not run |
-| Registry ownership and package availability | Not established |
-| Publication | Not performed |
-| Release qualification | Pending all required acceptance |
-
-Start with [development](docs/development.md). The [task list](specs/001-foundation/tasks.md)
-separates authored work from acceptance. Report generation must keep missing,
-blocked and failed results visible. A static review cannot establish that a
-native application starts correctly.
+See [development](docs/development.md), [testing](docs/testing.md), and
+[publishing](docs/publishing.md).

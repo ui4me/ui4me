@@ -10,10 +10,11 @@ import tempfile
 import time
 import uuid
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
-IGNORED = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "target", "build", "dist", "bin", "obj", ".idea", ".vscode"}
+IGNORED = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".idea", ".vscode"}
 TEXT_SUFFIXES = {".py", ".rs", ".toml", ".lock", ".md", ".json", ".yml", ".yaml", ".ps1", ".psm1", ".psd1", ".cs", ".csproj", ".xml", ".h", ".c", ".sh", ".html", ".css", ".txt", ".in", ".cfg"}
 
 
@@ -22,7 +23,7 @@ class DevError(RuntimeError):
 
 
 def now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def version(root: Path = ROOT) -> str:
@@ -47,9 +48,21 @@ def native_name(rid: str | None = None) -> str:
 
 
 def source_files(root: Path = ROOT):
+    def include_directory(path: Path) -> bool:
+        parts = path.relative_to(root).parts
+        if path.name in IGNORED or path.name.endswith(".egg-info"):
+            return False
+        if parts[0] in {"build", "dist", "target"}:
+            return False
+        if parts[:2] == ("bindings", "python") and len(parts) == 3 and parts[-1] in {"build", "dist"}:
+            return False
+        if parts[:3] == ("bindings", "powershell", "Ui4me.Managed") and len(parts) == 4 and parts[-1] in {"bin", "obj"}:
+            return False
+        return True
+
     for current, dirs, names in os.walk(root):
         base = Path(current)
-        dirs[:] = sorted(d for d in dirs if d not in IGNORED and not d.endswith(".egg-info"))
+        dirs[:] = sorted(d for d in dirs if include_directory(base / d))
         for name in dirs + names:
             if (base / name).is_symlink():
                 raise DevError(f"Source symlinks are unsupported: {base / name}")
@@ -118,6 +131,8 @@ def output_path(value: str | Path, default: str | None = None) -> Path:
 def safe_extract(archive: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as bundle:
+        if len(bundle.infolist()) > 10000 or sum(item.file_size for item in bundle.infolist()) > 1024 * 1024 * 1024:
+            raise DevError("Archive exceeds the foundation's extraction limits")
         for item in bundle.infolist():
             name = PurePosixPath(item.filename.replace("\\", "/"))
             if name.is_absolute() or ".." in name.parts or (name.parts and ":" in name.parts[0]):
@@ -133,7 +148,9 @@ def safe_extract(archive: Path, destination: Path) -> None:
 
 def zip_tree(source: Path, target: Path, prefix: str = "") -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+    # Cargo's registry cache can preserve upstream files dated before ZIP's
+    # 1980 epoch. Clamp those timestamps when packaging their license notices.
+    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as bundle:
         for path in sorted(source.rglob("*")):
             if path.is_symlink():
                 raise DevError("Packaging symlinks is unsupported")

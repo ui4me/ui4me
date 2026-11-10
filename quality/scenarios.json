@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "product": "ui4me",
+  "platforms": ["linux-x64", "win-x64"],
+  "bindings": ["python", "powershell"],
+  "delivery_status": "not_run",
+  "note": "Reconstructed source only. No test results from the lost implementation apply to this source.",
+  "scenarios": [
+    {"id":"F01","title":"Clean install","suite":"installed","acceptance":"Install the exact candidate outside the checkout; import without an implicit compiler, alternate checkout or PATH native fallback; verify the expected ABI and version."},
+    {"id":"F02","title":"Native startup","suite":"native","acceptance":"On a real desktop, open a visible window from the installed binding; check title, first paint, responsiveness, shutdown and structured initialization errors."},
+    {"id":"F03","title":"Input and state change","suite":"native","acceptance":"Use real pointer and keyboard input; button/text events update the application state and visible text; no synthetic headless events count as desktop evidence."},
+    {"id":"F04","title":"Window lifetime and resize","suite":"native","acceptance":"Open two windows; resize, minimize and restore; close one while the other stays responsive; confirm logical/physical dimensions and stale-handle errors."},
+    {"id":"F05","title":"Close veto and forced stop","suite":"native","acceptance":"Veto a user close once, then allow it; forced application stop bypasses veto and releases all windows with final close notification."},
+    {"id":"F06","title":"Owner thread dispatch","suite":"native","acceptance":"Post work from a supported worker context; native UI mutation executes on its owner; direct wrong-thread calls fail clearly without hanging."},
+    {"id":"F07","title":"Cancellation and stop races","suite":"native","acceptance":"Queue work and timers while stopping; every accepted task has one terminal outcome; no callback executes against disposed windows or after final cleanup."},
+    {"id":"F08","title":"Same process native reuse","suite":"native","acceptance":"Open/run/close several sessions in one host process; handles remain distinct, the native loop is reused safely, and a previous error has defined recovery behavior."},
+    {"id":"F09","title":"ABI and callback lifetime","suite":"installed","acceptance":"Check ABI, retain callbacks through a run, propagate callback failures after cleanup, reject stale identifiers, and exercise bounded native lifetime."},
+    {"id":"F10","title":"Bounds and idle behavior","suite":"native","acceptance":"Record explicit limit errors and idle behavior; no unbounded queue or busy-spin; resize does not allocate beyond documented bounds. Record measurement conditions."},
+    {"id":"F11","title":"Resources and diagnostics","suite":"installed","acceptance":"Load UTF-8 content from a path with spaces and Unicode outside the checkout; obtain native build/source/platform diagnostics; missing files fail clearly."},
+    {"id":"F12","title":"Release and upgrade identity","suite":"installed","acceptance":"Verify package/native version and exact candidate identity in a fresh consumer. Public publication and previous-version upgrade acceptance are separate release-review steps; initial v0.1 has no previous supported version."}
+  ]
+}

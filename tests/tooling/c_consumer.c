@@ -4,7 +4,7 @@
 #include "ui4me.h"
 #ifdef _WIN32
 #include <windows.h>
-#define LOAD(p) LoadLibraryA(p)
+#define LOAD(p) LoadLibraryW(p)
 #define SYMBOL(h,n) GetProcAddress(h,n)
 #else
 #include <dlfcn.h>
@@ -21,7 +21,11 @@ static int32_t on_event(uint64_t id, const char *json, void *context) {
     if (strstr(json, "started")) return stop_session(id) == 0 ? 0 : -1;
     return 0;
 }
+#ifdef _WIN32
+int wmain(int argc, wchar_t **argv) {
+#else
 int main(int argc, char **argv) {
+#endif
     if (argc != 2) return 2;
     void *handle = (void *)LOAD(argv[1]);
     if (!handle) return 3;

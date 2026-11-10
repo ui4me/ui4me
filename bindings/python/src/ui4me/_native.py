@@ -64,11 +64,19 @@ class Library:
             setattr(self, name, function)
         if self.abi_version() != 1:
             raise Ui4meError("Unsupported ui4me ABI; this binding requires ABI 1")
+        identity = json.loads(self.build_info())
+        if identity.get("product") != "ui4me" or identity.get("version") != "0.1.0":
+            raise Ui4meError("Native product/version does not match this ui4me 0.1.0 binding")
 
     def check(self, status: int) -> None:
         if status:
             message = self.last_error()
-            raise Ui4meError(message.decode("utf-8", "replace") if message else "Native operation failed", status)
+            text = message.decode("utf-8", "replace") if message else "Native operation failed"
+            try:
+                text = json.loads(text).get("message", text)
+            except (ValueError, AttributeError):
+                pass
+            raise Ui4meError(text, status)
 
     def command(self, session: int, command: dict) -> dict:
         payload = json.dumps(command, ensure_ascii=False, allow_nan=False).encode("utf-8")

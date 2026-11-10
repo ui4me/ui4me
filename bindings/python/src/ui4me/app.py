@@ -11,6 +11,9 @@ from typing import Callable
 
 from ._native import CALLBACK, Ui4meError, library
 
+# A C callback pointer cannot root a Python object. Explicit close releases this root.
+_live_apps: dict[int, "App"] = {}
+
 
 class OwnerFuture(Future):
     """A synchronous wait on the owner thread cannot make the event loop progress."""
@@ -51,7 +54,7 @@ class Timer:
     def cancel(self) -> None:
         self._app._owner_only()
         if self.token in self._app._timers:
-            if self._app._state in ("created", "running"):
+            if self._app._state in ("created", "running") and not self._app._stopping:
                 self._app._command({"op": "cancel_timer", "token": self.token})
             self._app._timers.pop(self.token, None)
 
@@ -67,8 +70,10 @@ class App:
         self._backend = backend
         self._handle_sigint = handle_sigint
         self._lock = threading.Lock()
+        self._token_lock = threading.Lock()
         self._native = library()
         self._state = "created"
+        self._stopping = False
         self._session = 0
         self._sequence = itertools.count(1)
         self._handlers: dict[int, tuple] = {}
@@ -81,10 +86,15 @@ class App:
         config = json.dumps({"backend": backend, "app_id": app_id}).encode("utf-8")
         self._native.check(self._native.session_create(config, self._callback_root, None, C.byref(identifier)))
         self._session = int(identifier.value)
+        _live_apps[self._session] = self
 
     def _owner_only(self) -> None:
         if threading.get_ident() != self._owner:
             raise RuntimeError("UI commands belong to the creating thread; use app.post()")
+
+    def _next_token(self) -> int:
+        with self._token_lock:
+            return next(self._sequence)
 
     def _active(self) -> None:
         self._owner_only()
@@ -104,7 +114,7 @@ class App:
             raise TypeError("handler must be callable")
         if len(self._handlers) >= 512:
             raise Ui4meError("At most 512 subscriptions may be active")
-        token = next(self._sequence)
+        token = self._next_token()
         self._handlers[token] = (event, window, element, handler)
         return Subscription(self, token)
 
@@ -121,7 +131,7 @@ class App:
         self._active()
         if not callable(handler):
             raise TypeError("handler must be callable")
-        token = next(self._sequence)
+        token = self._next_token()
         self._command({"op": "timer", "token": token, "milliseconds": milliseconds, "repeat": repeat})
         self._timers[token] = (handler, repeat)
         return Timer(self, token)
@@ -137,7 +147,7 @@ class App:
             if len(self._pending) >= 512:
                 future.set_exception(Ui4meError("Deferred work queue is full"))
                 return future
-            token = next(self._sequence)
+            token = self._next_token()
             self._pending[token] = (future, callback)
         try:
             self._native.check(self._native.session_post(self._session, token))
@@ -153,12 +163,15 @@ class App:
             if self._state in ("stopped", "closed"):
                 return
             identifier = self._session
+            self._stopping = True
         self._native.check(self._native.session_stop(identifier))
 
     def _dispatch(self, _session, raw, _user) -> int:
         try:
             event = json.loads(raw)
             kind = event["type"]
+            if kind == "stopped":
+                self._stopping = True
             if kind == "post":
                 with self._lock:
                     entry = self._pending.pop(event["token"], None)
@@ -191,6 +204,7 @@ class App:
         except BaseException as error:
             if self._callback_error is None:
                 self._callback_error = error
+            self._stopping = True
             # Stop is explicitly safe from a callback and does not replace the original exception.
             self._native.session_stop(self._session)
             return -1
@@ -201,10 +215,17 @@ class App:
             raise RuntimeError("Application is already running")
         previous_handler = None
         bridge = None
-        install_signal = self._handle_sigint and threading.current_thread() is threading.main_thread()
+        install_signal = self._handle_sigint and threading.current_thread() is threading.main_thread() and not self._stopping
         if install_signal:
             # Reserve before changing the signal handler or session state. Failure is retryable.
-            bridge = self.timer(100, lambda _: None, repeat=True)
+            try:
+                bridge = self.timer(100, lambda _: None, repeat=True)
+            except Ui4meError:
+                # A concurrent stop can win between the check and the native command.
+                if not self._stopping:
+                    raise
+                install_signal = False
+        if install_signal:
             previous_handler = signal.getsignal(signal.SIGINT)
 
             def interrupt(signum, frame):
@@ -216,6 +237,7 @@ class App:
                 except BaseException as error:
                     if self._callback_error is None:
                         self._callback_error = error
+                    self._stopping = True
                     self._native.session_stop(self._session)
 
             signal.signal(signal.SIGINT, interrupt)
@@ -241,7 +263,10 @@ class App:
             self._handlers.clear()
 
     def stats(self) -> dict:
-        return self._command({"op": "stats"})
+        self._owner_only()
+        if self._state == "closed":
+            raise RuntimeError("Application has been disposed")
+        return self._native.command(self._session, {"op": "stats"})
 
     def close(self) -> None:
         self._owner_only()
@@ -261,12 +286,18 @@ class App:
         for window in self._windows.values():
             window._closed = True
         self._windows.clear()
+        _live_apps.pop(self._session, None)
 
     def __enter__(self):
         return self
 
-    def __exit__(self, *_):
-        self.close()
+    def __exit__(self, exception_type, exception, traceback):
+        try:
+            self.close()
+        except Exception as cleanup_error:
+            if exception is None:
+                raise
+            exception.add_note(f"Additional ui4me cleanup error: {cleanup_error}")
 
 
 class Window:

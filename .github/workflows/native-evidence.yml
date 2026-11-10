@@ -1,0 +1,57 @@
+name: Collect reviewed native evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful Foundation CI run at this exact commit
+        required: true
+        type: string
+      platform:
+        description: Platform on which the operator completed native acceptance
+        required: true
+        type: choice
+        options: [linux-x64, win-x64]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    if: github.repository == 'ui4me/ui4me' && github.ref_name == github.event.repository.default_branch
+    environment: native-validation
+    runs-on: ${{ inputs.platform == 'win-x64' && fromJSON('["self-hosted","Windows","X64","ui4me-native"]') || fromJSON('["self-hosted","Linux","X64","ui4me-native"]') }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          clean: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify candidate producer
+        id: origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+        shell: bash
+        run: python .github/scripts/trusted-run.py --run-id "$CI_RUN_ID" --workflow ci.yml --artifact ci-bundle
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ steps.origin.outputs.artifact_id }}
+          merge-multiple: true
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: .
+      - name: Collect local exact-candidate observations
+        env:
+          TARGET_PLATFORM: ${{ inputs.platform }}
+        shell: bash
+        run: python .github/scripts/import-evidence.py --platform "$TARGET_PLATFORM"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ inputs.platform }}
+          path: build/native-upload/
+          if-no-files-found: error
+          retention-days: 30
