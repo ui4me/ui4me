@@ -133,6 +133,44 @@ fn invalid_resize_does_not_partially_change_window() {
     );
 }
 
+#[test]
+fn snapshot_round_trips_png_dimensions_and_rgb_pixels() {
+    let h = Harness::new(0);
+    let id = h
+        .session
+        .command(json!({"op":"open","html":"<body style=\"background-color:blue\"></body>","width":160,"height":120}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "ui4me-snapshot-{}-{}.png",
+        std::process::id(),
+        h.session.id
+    ));
+    let result = h
+        .session
+        .command(json!({"op":"snapshot","window":id,"path":path}))
+        .unwrap();
+    assert_eq!(result["native_capture"], false);
+    assert_eq!(
+        (result["width"].as_u64(), result["height"].as_u64()),
+        (Some(160), Some(120))
+    );
+    let file = std::fs::File::open(&path).unwrap();
+    let decoder = png::Decoder::new(std::io::BufReader::new(file));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!((info.width, info.height), (160, 120));
+    assert_eq!(info.color_type, png::ColorType::Rgb);
+    assert_eq!(info.bit_depth, png::BitDepth::Eight);
+    assert!(pixels[..info.buffer_size()]
+        .chunks_exact(3)
+        .all(|pixel| pixel == [0, 0, 255]));
+    drop(reader);
+    std::fs::remove_file(path).unwrap();
+}
+
 #[cfg(feature = "native")]
 #[test]
 fn applied_native_resize_is_reported_once_in_physical_pixels() {
