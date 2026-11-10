@@ -75,7 +75,7 @@ transfers those bytes without rebuilding.
 - The basic renderer makes the lifecycle observable but is not the final rendering product.
 - Manual desktop acceptance is suitable for the first release, provided its procedures, operator and captures are explicit.
 - Checksums provide integrity, not proof that hand-written test results are true. Trusted CI and release review establish origin.
-- The source reconstruction is unexecuted. Dependency locks, compiler compatibility and platform runtime behavior must be established locally.
+- Committed dependency locks constrain builds; compiler compatibility and platform runtime behavior must be established for each candidate.
 
 ## Reference decisions
 

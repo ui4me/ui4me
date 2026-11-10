@@ -1,6 +1,6 @@
 # ui4me for PowerShell
 
-The reconstruction is source-only and untested. Use the repository build and package commands to create an installable module. Source module import fails clearly until managed and native payloads have been staged.
+Use the repository build and package commands to create an installable module. Source module import fails clearly until managed and native payloads have been staged. See the generated evidence report for test results on a specific candidate.
 
 ```powershell
 Import-Module Ui4me
