@@ -58,6 +58,8 @@ jobs:
         run: python dev.py test --binding all --suite unit --profile release
       - name: Platform packages
         run: python dev.py package --binding all --profile release
+      - name: Build and install from the source distribution
+        run: python .github/scripts/check-sdist.py
       - name: Evidence overview
         if: always()
         run: python dev.py report

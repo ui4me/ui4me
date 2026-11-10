@@ -18,6 +18,5 @@ Install Rust 1.90 via rustup, .NET SDK 10 and PowerShell 7.6 from their official
 The supported native build host is Linux x86-64 with Wayland or X11 development libraries.
 Next: source .venv/bin/activate
 Then: python dev.py doctor
-First reconstruction setup only: python dev.py lock
-Review and commit both dependency locks before building or CI.
+Use the committed dependency locks. Regenerate them with python dev.py lock only when updating dependencies.
 TEXT

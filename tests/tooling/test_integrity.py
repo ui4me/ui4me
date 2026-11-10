@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -6,10 +5,9 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.ui4me_dev.common import DevError, load_manifest, safe_extract, source_id, write_json, zip_tree
+from tools.ui4me_dev.common import DevError, safe_extract, sha256, source_id, write_json, zip_tree
 from tools.ui4me_dev.evidence import observation_rows
 from tools.ui4me_dev.publishing import qualified_evidence_files
-from tools.ui4me_dev.common import sha256
 
 
 class SourceIdentityTests(unittest.TestCase):
@@ -146,6 +144,20 @@ class LatestEvidenceTests(unittest.TestCase):
         values[0][1]['cases'] *= 2
         with self.assertRaises(DevError):
             observation_rows(values, 'source')
+
+    @patch('tools.ui4me_dev.evidence.catalog', return_value=[{'id':'F01','suite':'installed','title':'install'}])
+    def test_failed_run_cannot_confer_a_pass(self, _):
+        values = self.records()
+        values[-1][1]['cases'][0]['status'] = 'passed'
+        row = next(x for x in observation_rows(values, 'source') if x['platform'] == 'linux-x64' and x['binding'] == 'python')
+        self.assertEqual(row['status'], 'failed')
+
+    @patch('tools.ui4me_dev.evidence.catalog', return_value=[{'id':'F01','suite':'installed','title':'install'}])
+    def test_unit_suite_cannot_qualify_an_acceptance_scenario(self, _):
+        values = self.records()[:1]
+        values[0][1]['suite'] = 'unit'
+        row = next(x for x in observation_rows(values, 'source') if x['platform'] == 'linux-x64' and x['binding'] == 'python')
+        self.assertEqual(row['status'], 'not_run')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-//! These tests are authored for local/CI execution; the reconstruction was not executed.
+//! Native runtime and lifecycle contract tests.
 use super::*;
 use crate::runtime::{lock, Session};
 use std::sync::{Arc, Mutex, MutexGuard};

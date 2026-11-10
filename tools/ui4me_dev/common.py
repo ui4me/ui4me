@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
-IGNORED = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".idea", ".vscode"}
+IGNORED = {".git", ".venv", "venv", ".tox", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "htmlcov", ".idea", ".vscode"}
 TEXT_SUFFIXES = {".py", ".rs", ".toml", ".lock", ".md", ".json", ".yml", ".yaml", ".ps1", ".psm1", ".psd1", ".cs", ".csproj", ".xml", ".h", ".c", ".sh", ".html", ".css", ".txt", ".in", ".cfg"}
 
 
@@ -68,7 +68,7 @@ def source_files(root: Path = ROOT):
                 raise DevError(f"Source symlinks are unsupported: {base / name}")
         for name in sorted(names):
             path = base / name
-            if name.endswith((".pyc", ".pyo", ".tmp")) or name in {".DS_Store", "CONTRACT-DRAFT.md"}:
+            if name.endswith((".pyc", ".pyo", ".tmp")) or name in {".DS_Store", ".coverage"} or name.startswith(".coverage."):
                 continue
             yield path
 

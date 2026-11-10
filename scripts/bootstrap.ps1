@@ -19,4 +19,4 @@ if ($LASTEXITCODE -ne 0) { throw 'pip setup failed' }
 & .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw 'Development dependency installation failed' }
 Write-Host 'Next: .\.venv\Scripts\Activate.ps1, then python dev.py doctor.'
-Write-Host 'First reconstruction setup: python dev.py lock; review and commit Cargo.lock and packages.lock.json before building or CI.'
+Write-Host 'Use committed dependency locks; regenerate them with python dev.py lock only when updating dependencies.'

@@ -4,7 +4,7 @@
   "platforms": ["linux-x64", "win-x64"],
   "bindings": ["python", "powershell"],
   "delivery_status": "not_run",
-  "note": "Reconstructed source only. No test results from the lost implementation apply to this source.",
+  "note": "Acceptance evidence is specific to a source revision and its packaged artifacts.",
   "scenarios": [
     {"id":"F01","title":"Clean install","suite":"installed","acceptance":"Install the exact candidate outside the checkout; import without an implicit compiler, alternate checkout or PATH native fallback; verify the expected ABI and version."},
     {"id":"F02","title":"Native startup","suite":"native","acceptance":"On a real desktop, open a visible window from the installed binding; check title, first paint, responsiveness, shutdown and structured initialization errors."},

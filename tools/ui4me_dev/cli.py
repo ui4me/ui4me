@@ -11,7 +11,7 @@ from .common import ROOT, DevError, host, version
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(description="ui4me development and release tools. The reconstruction ships with no executed-test claims.")
+    root = argparse.ArgumentParser(description="ui4me development and release tools.")
     subs = root.add_subparsers(dest="command", required=True)
     subs.add_parser("doctor", help="Show prerequisite paths and supported host information")
     subs.add_parser("lock", help="Resolve Cargo and NuGet lock files; review/commit before building")
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "doctor":
             tools = {name: shutil.which(name) for name in ("cargo", "rustc", "dotnet", "pwsh", "cc" if platform.system() != "Windows" else "cl", "gh")}
-            print(json.dumps({"platform": host(), "python": sys.version.split()[0], "version": version(), "tools": tools, "cargo_lock": (ROOT / "Cargo.lock").exists(), "nuget_lock": (ROOT / "bindings/powershell/Ui4me.Managed/packages.lock.json").exists(), "note": "Presence is not a successful build or runtime test. See docs/development.md for prerequisites."}, indent=2))
+            print(json.dumps({"platform": host(), "python": sys.version.split()[0], "version": version(), "tools": tools, "cargo_lock": (ROOT / "Cargo.lock").exists(), "nuget_lock": (ROOT / "bindings/powershell/Ui4me.Managed/packages.lock.json").exists(), "note": "Presence is not a successful build or runtime test. See docs/PROJECT_STATUS.md for prerequisites."}, indent=2))
             return 0 if sys.version_info >= (3, 11) else 1
         if sys.version_info < (3, 11):
             raise DevError("Python 3.11 or newer is required for repository tooling")
