@@ -171,6 +171,30 @@ try {
             $null = $app.On('stopped', { if ($state.received -ne 42) { throw 'Nested callback lost caller scope' } })
         }
     }
+    Test-Case 'PS15_caught_nested_app_error' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{ rejected = $false }
+            $null = $app.On('started', {
+                try { Invoke-Ui4meApp -Backend headless {}; throw 'Nested app was accepted' }
+                catch {
+                    if ($_.Exception.ToString() -notmatch 'Only one Ui4me application') { throw }
+                    $state.rejected = $true
+                }
+                $app.Stop()
+            })
+            $null = $app.On('stopped', { if (-not $state.rejected) { throw 'Nested application was not rejected' } })
+        }
+    }
+    Test-Case 'PS16_unhandled_initializer_error' {
+        $failed = $false
+        try { Invoke-Ui4meApp -Backend headless { throw 'Deliberate initializer failure' } }
+        catch {
+            if ($_.Exception.ToString() -notmatch 'Deliberate initializer failure') { throw }
+            $failed = $true
+        }
+        if (-not $failed) { throw 'Initializer error was swallowed' }
+    }
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {

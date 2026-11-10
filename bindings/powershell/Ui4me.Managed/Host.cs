@@ -144,9 +144,9 @@ public static class Host
                     pipeline.AddScript(Script).AddArgument(app).AddArgument(operation.Script)
                         .AddArgument(operation.Arguments).AddArgument(operation.ModulePath);
                     // A synchronous Invoke on UseCurrentThread preserves native owner affinity.
+                    // Invoke throws for unhandled terminating errors. HadErrors also
+                    // records errors caught by user code, so it cannot decide failure.
                     pipeline.Invoke<PSObject, PSObject>(input, output, new PSInvocationSettings());
-                    if (pipeline.HadErrors && operation.Error is null)
-                        operation.Error = ExceptionDispatchInfo.Capture(new InvalidOperationException("Application pipeline reported errors; see the forwarded error stream."));
                 }
                 finally
                 {
