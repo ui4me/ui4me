@@ -240,7 +240,10 @@ receipt stale. Keep generated output and logs in ignored `build/` or `dist/`.
 Dependabot checks Actions, Cargo, Python build tools and NuGet weekly. Routine
 Actions/Python minor and patch updates are grouped; Cargo/NuGet groups contain
 patch updates only because pre-1.0 Rust minor versions and PowerShell runtime
-changes deserve individual review. Major version proposals remain separate.
+changes deserve individual review. Actions, Cargo and Python major proposals
+remain separate. Routine System.Management.Automation proposals are limited to
+patch versions with `allow.update-types`; security updates remain eligible.
+Every managed-reference patch still needs the oldest supported host checked.
 The configured version-PR limits do not limit security-update PRs; no security
 ignore rules or automatic merges are configured. Python monitoring includes
 both the root requirements and `bindings/python/pyproject.toml`.
@@ -252,11 +255,11 @@ The November maintenance update adopts these previously proposed versions:
 | Actions, PRs #1–#5 | download-artifact 8.0.2, setup-dotnet 6.1.0, setup-python 7.1.0, upload-artifact 7.0.2, checkout 7.0.1 | Full commit SHA pins; Node 24 requires runner 2.327.1 or newer. Keep self-hosted native collectors current. |
 | Python tooling, PRs #6–#10 | patchelf 0.19.3.0, twine 7.0.0, wheel 0.48.0, auditwheel 6.8.2, build 1.6.1 | Build tools only; Linux-specific requirements retain platform markers. |
 | Rust, PRs #11–#14 | winit 0.30.13, serde_json 1.0.154, png 0.18.1, softbuffer 0.4.8 | Targeted Cargo lock update; PNG snapshot roundtrip regression covers dimensions, RGB format and pixels. |
-| Python backend, PR #15 (opened during maintenance) | setuptools 84.1.0 | Includes upstream source-manifest and Windows path-handling security fixes; isolated backend and development pins match. Python 3.10 minimum fits the project's 3.11 floor. |
+| Python backend, PRs #15 and #17 (opened during maintenance) | setuptools 84.2.1 | Includes the 84.1.0 source-manifest and Windows path-handling security fixes, then the independently tested minor follow-up. Isolated backend and development pins match; Python 3.10 minimum fits the project's 3.11 floor. |
 
 Rust stays at 1.90, the managed bridge stays `net8.0` against PowerShell 7.4.0,
 and package version/ABI remain 0.1.0/1. The NuGet lock is unchanged. Isolated
-Python builds now pin setuptools 84.1.0 and wheel 0.48.0 to the same versions as
+Python builds now pin setuptools 84.2.1 and wheel 0.48.0 to the same versions as
 `requirements-dev.txt`. Those direct Python pins are not a fully frozen
 transitive environment; Cargo and NuGet resolution are locked.
 
@@ -265,8 +268,25 @@ Retained Windows reports for #2 and #6–#13 show stale native-build receipts;
 that issue was fixed on `main` in `ae828f8`. PR #14 passed both platform builds
 and packaging, then failed assembly on differing managed dependency metadata;
 `8c089f2` fixed that issue. Some old Linux Cargo failures have no retained build
-log, so their precise cause is unknown. New combined CI must pass before these
-proposals can be treated as integrated and verified.
+log, so their precise cause is unknown. PRs #1–#15 are now closed as superseded
+by the consolidated [#16](https://github.com/ui4me/ui4me/pull/16), merged in
+`d7aec7f`; [its full CI](https://github.com/ui4me/ui4me/actions/runs/42887215250)
+passed. The setuptools follow-up [#17](https://github.com/ui4me/ui4me/pull/17)
+also passed [full CI](https://github.com/ui4me/ui4me/actions/runs/42888573459)
+before merging in `5c9982a`. Each platform passed 20 core, 17 Python, 16
+PowerShell and 40 tooling tests; the aggregate gate required eight unit suites,
+12 installed consumers and two standalone source-distribution checks. These
+are CI results, not new interactive desktop acceptance.
+
+Two managed-reference proposals remain declined. PR #19 (7.6.9) produced
+`NU1202` on both platforms in [its CI](https://github.com/ui4me/ui4me/actions/runs/42888663832):
+the package targets `net10.0`, incompatible with this project's `net8.0`.
+Dependabot closed #18 (7.4.22); it stays closed because its reference assembly
+requests version `7.4.6.500`, above the `7.4.0.500` supplied by the oldest
+supported host. The [PowerShell 7.4.0 loader](https://github.com/PowerShell/PowerShell/blob/v7.4.0/src/System.Management.Automation/CoreCLR/CorePsAssemblyLoadContext.cs)
+rejects that version mismatch. This is package-metadata and loader-source
+analysis, not a new live test on PowerShell 7.4.0. Keep the 7.4.0 compile
+reference until a deliberate host-minimum change is qualified.
 
 For small changes use `python dev.py build --binding python --profile dev`
 followed by `python dev.py test --binding python --suite unit --profile dev`;
@@ -399,12 +419,13 @@ exchange, secret validity, an actual upload, or subsequent public download.
 
 | Setting | Observable state | Required owner action |
 | --- | --- | --- |
-| Main protection | Branch API reports `protected: false`; repository ruleset list is empty. Detailed protection endpoint returns 403 to the integration; the authenticated UI also reports no protection. | A simple `main` rule blocking deletion and force pushes preserves history without imposing a multi-branch development process. Successful Foundation CI remains the integration criterion. |
-| Dependabot alerts/security updates | Dependency graph and security updates were disabled and are now enabled; alerts were already enabled. After refresh, the authenticated UI surfaced three development alerts: wheel GHSA-8rrh-rw8j-w5fx (fixed in 0.46.2), setuptools GHSA-h35f-9h28-mq5c (fixed in 83.0.0), and setuptools GHSA-xmj3-9gf7-h52w (fixed in 84.1.0). The preset auto-dismissal of low-impact development alerts was disabled. | The selected wheel 0.48.0 and setuptools 84.1.0 address all three; verify their resolved state after integration and continue reviewing new alerts. No alerts were manually dismissed. |
+| Main protection | Active ruleset `Preserve main history` (#26974893) targets only `refs/heads/main`, blocks deletion and force pushes, and has no bypass actors. The branch API confirms `protected: true`. | Normal commits remain allowed. Keep development on `main`, use short-lived PR branches when review or CI is useful, and integrate only tested changes. |
+| Dependabot alerts/security updates | Dependency graph and security updates were disabled and are now enabled; alerts were already enabled. After refresh, the authenticated UI surfaced three development alerts: wheel GHSA-8rrh-rw8j-w5fx (fixed in 0.46.2), setuptools GHSA-h35f-9h28-mq5c (fixed in 83.0.0), and setuptools GHSA-xmj3-9gf7-h52w (fixed in 84.1.0). The preset auto-dismissal of low-impact development alerts was disabled. | After integration the authenticated UI shows zero open alerts and all three closed as **Fixed**. Wheel 0.48.0 and setuptools 84.2.1 cover the patched ranges. Continue reviewing new alerts; none were manually dismissed. |
 | Release environments | `release-review`, `native-validation`, `pypi`, `testpypi`, and `psgallery` exist, with no required reviewers and effectively unrestricted deployment branches. `github-release` is absent. The Gallery selector is now “Selected branches and tags” with no rules, which GitHub explicitly says still allows all branches/tags. | Restrict publication environments to branch `main` and prepare `github-release` before using that destination. Automatic approval review blocked saving the Gallery `main` rule because that credential-scope change needs explicit authorization; no restriction was applied. Reviewer policy remains an owner choice for this single-maintainer project. |
 | PyPI/TestPyPI publishers | PyPI's public 0.1.0 attestation identifies `ui4me/ui4me`, `publish.yml`, environment `pypi`. Historical uploads prove past use, not the current editable settings. | In each registry independently, verify project `ui4me` trusts owner/repository `ui4me/ui4me`, workflow `publish.yml`, and its corresponding `pypi` or `testpypi` environment. |
 | Gallery credential | Authenticated UI confirms `PSGALLERY_API_KEY` exists in `psgallery`. Its value was never read; expiry and registry scope cannot be established from secret metadata. | Before authorized publication, confirm the existing key is valid for publishing `Ui4me`; do not put it in PR-accessible configuration. |
-| Branch cleanup | Automatic deletion of merged PR head branches is enabled. Dependabot branches are temporary proposals, not product branches. | Keep `main` as the single canonical product branch; remove closed superseded branches after integrating their changes, preserving any unintegrated work and tags. |
+| Actions defaults | Repository default token permissions are read-only contents/packages. Actions cannot create or approve PRs; first-time fork contributors require workflow approval. Workflows additionally set explicit job permissions and pin third-party actions to full SHAs. | Keep registry credentials confined to the manual publishing jobs; apply the publication-environment branch restrictions noted above. |
+| Branch cleanup | All PRs #1–#19 are resolved; #16 and #17 are merged, #1–#15 superseded, and #18/#19 declined for host compatibility. Their branches are removed; `main` is the sole remaining branch. Automatic deletion of merged PR head branches is enabled. | Dependabot may create temporary proposal branches in future. Keep `main` as the canonical product branch and remove resolved branches; no long-lived integration or release branch is required. |
 
 For a future publication, first assign a **new version** consistently across the
 manifests and version-specific consumer assertions, then build the exact committed candidate, collect current Linux and
