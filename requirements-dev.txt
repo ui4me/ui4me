@@ -1,5 +1,5 @@
 # Python 3.11+; package-build tools only, no ui4me runtime dependencies.
-build==1.2.2.post1
+build==1.6.1
 setuptools==80.9.0
 wheel==0.45.1
 twine==6.1.0
