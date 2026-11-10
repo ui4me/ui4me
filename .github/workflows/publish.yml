@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.ci_run_id }}
         run: python .github/scripts/trusted-run.py --run-id "$RUN_ID" --workflow ci.yml --artifact ci-bundle
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ steps.ci.outputs.artifact_id }}
           merge-multiple: true
@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.linux_evidence_run_id }}
         run: python .github/scripts/trusted-run.py --run-id "$RUN_ID" --workflow native-evidence.yml --artifact native-linux-x64
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ steps.linux.outputs.artifact_id }}
           merge-multiple: true
@@ -75,7 +75,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.windows_evidence_run_id }}
         run: python .github/scripts/trusted-run.py --run-id "$RUN_ID" --workflow native-evidence.yml --artifact native-win-x64
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ steps.windows.outputs.artifact_id }}
           merge-multiple: true
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: qualified-release
           path: .
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: qualified-release
           path: .
@@ -191,7 +191,7 @@ jobs:
       - run: python .github/scripts/setup-powershell.py
       - shell: pwsh
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: qualified-release
           path: .
