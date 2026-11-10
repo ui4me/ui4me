@@ -71,6 +71,15 @@ jobs:
           path: build/reports/
           if-no-files-found: warn
           retention-days: 30
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure()
+        with:
+          name: build-diagnostics-${{ matrix.rid }}
+          path: |
+            build/${{ matrix.rid }}/release/*.log
+            build/${{ matrix.rid }}/release/build.json
+          if-no-files-found: warn
+          retention-days: 30
 
   assemble:
     needs: build
