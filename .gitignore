@@ -1,0 +1,17 @@
+/build/
+/dist/
+/target/
+**/bin/
+**/obj/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+.venv/
+.env
+.env.*
+!.env.example
+*.user
+*.suo
+.DS_Store
+Thumbs.db
