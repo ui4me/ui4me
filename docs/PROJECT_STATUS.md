@@ -32,11 +32,20 @@ artifacts, not to a later checkout.** Run and record new checks after changes.
 
 The first TestPyPI and PyPI publishing attempts uploaded successfully but their
 post-upload verification failed because the publishing job reported a source
-identity mismatch. Verification-only retries skipped already-published identical
-wheels and passed; the initial mismatch's cause remains unresolved. The
-publication workflow now runs Python public-download verification in a fresh
-job to avoid reusing a potentially changed publishing checkout. This mitigation
-has not yet been verified through a real publishing run. The Gallery publication
+identity mismatch. The cause was identified during maintenance: the pinned
+[PyPA action](https://github.com/pypa/gh-action-pypi-publish/blob/7245906fb61fa33a13554f9d5fb856fe61758086/create-docker-action.py)
+creates `.github/.tmp/.generated-actions/run-pypi-publish-in-docker-container/action.yml`
+inside the checkout, correctly changing its source hash. The
+[failed upload-job log](https://github.com/ui4me/ui4me/actions/runs/42873468613/job/130030724940)
+records this generated action, successful uploads, then the identity mismatch.
+Verification-only retries skipped already-published identical wheels and passed.
+Python public-download verification now runs in fresh Linux and Windows jobs.
+Qualification evidence paths use portable separators so Windows can recheck a
+Linux-produced review record without changing its meaning.
+An offline regression reproduces the contaminated checkout's rejection and
+acceptance of the same manifest in a fresh checkout; it does not exempt the
+generated file from source checks. **A real upload followed by the fresh-job
+verification remains unproven.** The Gallery publication
 and public-download verification passed. There is no GitHub Release
 or version tag for 0.1.0. PowerShell static analysis on the published candidate
 reported warning-level findings; PSScriptAnalyzer 1.25.0/1.24.0 also raised a
@@ -226,6 +235,39 @@ read their installation options before executing. Build receipts bind the exact
 source identity, host and native output; changing source or artifacts makes the
 receipt stale. Keep generated output and logs in ignored `build/` or `dist/`.
 
+### Dependency maintenance
+
+Dependabot checks Actions, Cargo, Python build tools and NuGet weekly. Routine
+Actions/Python minor and patch updates are grouped; Cargo/NuGet groups contain
+patch updates only because pre-1.0 Rust minor versions and PowerShell runtime
+changes deserve individual review. Major version proposals remain separate.
+The configured version-PR limits do not limit security-update PRs; no security
+ignore rules or automatic merges are configured. Python monitoring includes
+both the root requirements and `bindings/python/pyproject.toml`.
+
+The November maintenance update adopts these previously proposed versions:
+
+| Scope | Selected versions | Review notes |
+| --- | --- | --- |
+| Actions, PRs #1–#5 | download-artifact 8.0.2, setup-dotnet 6.1.0, setup-python 7.1.0, upload-artifact 7.0.2, checkout 7.0.1 | Full commit SHA pins; Node 24 requires runner 2.327.1 or newer. Keep self-hosted native collectors current. |
+| Python tooling, PRs #6–#10 | patchelf 0.19.3.0, twine 7.0.0, wheel 0.48.0, auditwheel 6.8.2, build 1.6.1 | Build tools only; Linux-specific requirements retain platform markers. |
+| Rust, PRs #11–#14 | winit 0.30.13, serde_json 1.0.154, png 0.18.1, softbuffer 0.4.8 | Targeted Cargo lock update; PNG snapshot roundtrip regression covers dimensions, RGB format and pixels. |
+| Python backend, PR #15 (opened during maintenance) | setuptools 84.1.0 | Includes upstream Windows path-handling security fixes; isolated backend and development pins match. Python 3.10 minimum fits the project's 3.11 floor. |
+
+Rust stays at 1.90, the managed bridge stays `net8.0` against PowerShell 7.4.0,
+and package version/ABI remain 0.1.0/1. The NuGet lock is unchanged. Isolated
+Python builds now pin setuptools 84.1.0 and wheel 0.48.0 to the same versions as
+`requirements-dev.txt`. Those direct Python pins are not a fully frozen
+transitive environment; Cargo and NuGet resolution are locked.
+
+Old failed PR checks are not evidence of incompatibility with the new versions.
+Retained Windows reports for #2 and #6–#13 show stale native-build receipts;
+that issue was fixed on `main` in `ae828f8`. PR #14 passed both platform builds
+and packaging, then failed assembly on differing managed dependency metadata;
+`8c089f2` fixed that issue. Some old Linux Cargo failures have no retained build
+log, so their precise cause is unknown. New combined CI must pass before these
+proposals can be treated as integrated and verified.
+
 For small changes use `python dev.py build --binding python --profile dev`
 followed by `python dev.py test --binding python --suite unit --profile dev`;
 substitute `core`, `powershell`, or `tools` as appropriate. Tooling tests need no
@@ -317,6 +359,19 @@ attestation. The manual `publish.yml` requires the successful CI run and both
 native-evidence run IDs at the same default-branch commit. Its `execute=false`
 mode verifies and prepares; publishing is an explicit separate action.
 
+CI also enforces Rust formatting/clippy, checks that committed Cargo/NuGet locks
+stay unchanged, builds and installs a standalone sdist on both platforms, and
+checks the final assembled wheel with Python 3.11, 3.12, 3.13 and 3.14 on both
+platforms. The C SDK and PowerShell installed consumers run separately. The
+final bundle checks the complete expected evidence set instead of inferring
+success from an artifact upload. See the exact revision's
+[Foundation CI run](https://github.com/ui4me/ui4me/actions/workflows/ci.yml) for
+its results and downloadable candidate, source-check and report artifacts.
+These hosted jobs use headless consumers and do not establish native desktop
+acceptance. This maintenance session had no access to the owner's Windows/RDP
+or KDE/Wayland desktop; previous desktop results do not transfer to these new
+dependency artifacts.
+
 Trusted publishers must match owner `ui4me`, repository `ui4me`, workflow
 `publish.yml`, and environment `pypi` or `testpypi`; the registries are separate.
 The Gallery job reads `PSGALLERY_API_KEY` from the `psgallery` environment, not
@@ -326,6 +381,37 @@ organization or registry ownership is approved. A GitHub Release requires an
 explicitly created version tag at the qualified commit and is a separate action.
 Never overwrite a published version: record partial cross-registry publication
 and retry the same bytes, or use a new version with new evidence.
+
+Only the Python upload job requests OIDC `id-token: write`. Gallery publication
+uses a read-only GitHub token; only the separate GitHub Release job requests
+`contents: write`. Ordinary CI has read-only permissions, no publication
+environment, and no registry secret references. Publication requires the actual
+default **branch** ref; a tag with the same name does not qualify.
+
+Non-publishing release regression tests cover source contamination/fresh
+verification, exact artifact origin, missing qualification, identical and
+conflicting existing registry bytes, interrupted publication and registry
+errors. These use offline fixtures and never create genuine qualification
+evidence. A passing regression or `execute=false` review does not prove OIDC
+exchange, secret validity, an actual upload, or subsequent public download.
+
+### Settings observed and owner checks (10 November 2026)
+
+| Setting | Observable state | Required owner action |
+| --- | --- | --- |
+| Main protection | Branch API reports `protected: false`; repository ruleset list is empty. Detailed protection endpoint returns 403 to the integration; the authenticated UI also reports no protection. | A simple `main` rule blocking deletion and force pushes preserves history without imposing a multi-branch development process. Successful Foundation CI remains the integration criterion. |
+| Dependabot alerts/security updates | Authenticated UI shows zero open and zero closed alerts. Dependency graph and security updates were disabled and are now enabled; alerts were already enabled. The preset auto-dismissal of low-impact development alerts was disabled so build-tool findings remain visible. | Review alerts as scanning refreshes; zero current alerts is not a complete vulnerability audit. |
+| Release environments | `release-review`, `native-validation`, `pypi`, `testpypi`, and `psgallery` exist, with no required reviewers and effectively unrestricted deployment branches. `github-release` is absent. The Gallery selector is now “Selected branches and tags” with no rules, which GitHub explicitly says still allows all branches/tags. | Restrict publication environments to branch `main` and prepare `github-release` before using that destination. Automatic approval review blocked saving the Gallery `main` rule because that credential-scope change needs explicit authorization; no restriction was applied. Reviewer policy remains an owner choice for this single-maintainer project. |
+| PyPI/TestPyPI publishers | PyPI's public 0.1.0 attestation identifies `ui4me/ui4me`, `publish.yml`, environment `pypi`. Historical uploads prove past use, not the current editable settings. | In each registry independently, verify project `ui4me` trusts owner/repository `ui4me/ui4me`, workflow `publish.yml`, and its corresponding `pypi` or `testpypi` environment. |
+| Gallery credential | Authenticated UI confirms `PSGALLERY_API_KEY` exists in `psgallery`. Its value was never read; expiry and registry scope cannot be established from secret metadata. | Before authorized publication, confirm the existing key is valid for publishing `Ui4me`; do not put it in PR-accessible configuration. |
+| Branch cleanup | Automatic deletion of merged PR head branches is enabled. Dependabot branches are temporary proposals, not product branches. | Keep `main` as the single canonical product branch; remove closed superseded branches after integrating their changes, preserving any unintegrated work and tags. |
+
+For a future publication, first assign a **new version** consistently across the
+manifests and version-specific consumer assertions, then build the exact committed candidate, collect current Linux and
+Windows native evidence, and run manual `publish.yml` with `execute=false`.
+Only a separate explicit publication instruction authorizes `execute=true` or
+creation of a version tag/GitHub Release. Existing public 0.1.0 bytes remain
+untouched; maintenance builds with that version are development candidates.
 
 Qualification checks the complete required matrix, current source and candidate
 hashes, unit and SDK receipts, proof files and a reviewer. Hashes do not prove
