@@ -35,7 +35,7 @@ def source_zip(destination: Path) -> Path:
 def publish(manifest_path: Path, registry: str, execute: bool) -> None:
     manifest_path = manifest_path.resolve()
     manifest = load_manifest(manifest_path)
-    require_qualified(manifest_path)
+    qualification = require_qualified(manifest_path)
     folder = ROOT / "build/publish" / registry
     folder.mkdir(parents=True, exist_ok=True)
     if registry in {"pypi", "testpypi"}:
@@ -53,9 +53,8 @@ def publish(manifest_path: Path, registry: str, execute: bool) -> None:
         assets += [str(manifest_path), str(manifest_path.parent / "qualification.json")]
         evidence_zip = folder / f"ui4me-{version()}-evidence.zip"
         with zipfile.ZipFile(evidence_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for item in (ROOT / "build/reports").rglob("*"):
-                if item.is_file() and not item.is_symlink():
-                    archive.write(item, item.relative_to(ROOT).as_posix())
+            for item in qualified_evidence_files(qualification):
+                archive.write(item, item.relative_to(ROOT).as_posix())
         assets.append(str(evidence_zip))
         command = ["gh", "release", "create", "v" + manifest["version"], "--repo", "ui4me/ui4me", "--verify-tag", "--title", "ui4me " + manifest["version"], "--notes-file", str(notes), *assets]
         note = "The version tag must already identify the reviewed commit; existing assets are not overwritten."
@@ -91,6 +90,41 @@ def publish(manifest_path: Path, registry: str, execute: bool) -> None:
                 raise DevError("The GitHub release tag does not resolve to the exact qualified commit; publication refused")
         result = run(command, cwd=ROOT, log=folder / "publish.log", timeout=1800)
         write_json(folder / "publish.json", {"registry": registry, "manifest_sha256": sha256(manifest_path), "time": now(), "result": result})
+
+
+def qualified_evidence_files(qualification: dict, root: Path = ROOT) -> list[Path]:
+    """Include only proof referenced by the reviewed qualification record."""
+    root = root.resolve()
+    reports = (root / "build/reports").resolve()
+    selected: set[Path] = set()
+
+    def add(path: Path) -> Path:
+        if path.is_symlink():
+            raise DevError("Evidence symlinks are not allowed")
+        path = path.resolve()
+        if not path.is_relative_to(reports) or not path.is_file():
+            raise DevError("Qualified evidence path is missing or outside build/reports")
+        selected.add(path)
+        return path
+
+    for reference in qualification.get("evidence", []):
+        receipt = add(root / reference["path"])
+        if sha256(receipt) != reference.get("sha256"):
+            raise DevError("Qualified receipt changed after review")
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        for proof in data.get("proof_files", []):
+            target = add(receipt.parent / proof["path"])
+            if sha256(target) != proof.get("sha256"):
+                raise DevError("Qualified evidence proof changed after review")
+        for case in data.get("cases", []):
+            screenshot = case.get("screenshot")
+            if screenshot:
+                target = add(receipt.parent / screenshot["path"])
+                if sha256(target) != screenshot.get("sha256"):
+                    raise DevError("Qualified screenshot changed after review")
+    if not selected:
+        raise DevError("No reviewed evidence was selected")
+    return sorted(selected)
 
 
 def python_upload_plan(manifest_path: Path, registry: str, existing_directory: Path) -> list[Path]:

@@ -4,9 +4,9 @@ The current candidate is not qualified. Do not publish until both platforms and
 both bindings have complete acceptance evidence for the exact final artifacts.
 Build and test each platform independently, assemble the final manifest and
 packages, test those exact files, and run `python dev.py qualify` against that
-manifest. Retain hashes, logs and visual evidence. The existing assembly and
-native attestation paths still require implementation and verification before
-this procedure can qualify a release.
+manifest. Retain hashes, logs and visual evidence. Assembly and attestation
+tools are implemented; their existence or a passing CI run does not establish
+that the required native observations and release review have been completed.
 
 Publishing requires a separate, explicit owner action; ordinary CI neither has
 registry credentials nor publishes. Before enabling a publishing workflow:

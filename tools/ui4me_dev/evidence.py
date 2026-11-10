@@ -228,18 +228,20 @@ def report(destination: Path, manifest_path: Path | None = None) -> Path:
         latest_link = Path(os.path.relpath(path, destination)).as_posix() if path else ""
         old_link = Path(os.path.relpath(old[0], destination)).as_posix() if old else ""
         shot_link = ""
+        shot_label = ""
         if latest:
             shot = latest[2].get("screenshot") or latest[1].get("renderer_snapshot")
             if shot:
                 shot_link = Path(os.path.relpath(path.parent / shot["path"], destination)).as_posix()
+                shot_label = "desktop capture" if shot.get("native_capture") else "renderer snapshot (not desktop)"
         requirement = row["scenario"]["id"] + " " + row["scenario"]["title"]
-        shot_md = f"[capture]({shot_link})" if shot_link else "—"
+        shot_md = f"[{shot_label}]({shot_link})" if shot_link else "—"
         lines.append(f"| {row['platform']} | {row['binding']} | {requirement} | {row['status']} | " + (f"[run]({latest_link})" if latest_link else "—") + " | " + (f"[run]({old_link})" if old_link else "—") + f" | {shot_md} |")
         h = html.escape
-        preview = f'<a href="{h(shot_link)}"><img src="{h(shot_link)}" alt="{h(requirement)} evidence" loading="lazy"></a>' if shot_link else "No capture"
+        preview = f'<a href="{h(shot_link)}"><img src="{h(shot_link)}" alt="{h(requirement)} {h(shot_label)}" loading="lazy"></a><br>{h(shot_label)}' if shot_link else "No capture"
         html_rows.append(f'<tr data-status="{h(row["status"])}"><td>{h(row["platform"])}</td><td>{h(row["binding"])}</td><td><strong>{h(requirement)}</strong><br>{h(row["scenario"]["acceptance"])}</td><td>{h(row["status"])}</td><td>' + (f'<a href="{h(latest_link)}">Latest receipt</a>' if latest_link else "Not run") + f'</td><td>{preview}</td></tr>')
         if shot_link:
-            image_sections += ["", f"### {row['platform']} · {row['binding']} · {requirement}", "", f"![{requirement} evidence]({shot_link})", ""]
+            image_sections += ["", f"### {row['platform']} · {row['binding']} · {requirement}", "", f"![{requirement} {shot_label}]({shot_link})", ""]
     lines += image_sections
     (destination / "overview.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     document = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ui4me acceptance overview</title><style>body{font:16px/1.5 system-ui;margin:0;background:#f3f5f8;color:#152338}main{max-width:1300px;margin:auto;padding:32px}h1{font-size:32px}table{width:100%;border-collapse:collapse;background:white}td,th{padding:14px;border-bottom:1px solid #dce2e9;text-align:left;vertical-align:top}td:nth-child(3){max-width:420px}img{max-width:180px;max-height:140px}code{overflow-wrap:anywhere}select{padding:8px;margin:16px 0}tr[data-status=passed] td:nth-child(4){color:#07693d}tr[data-status=failed] td:nth-child(4){color:#b12c2c}@media(max-width:700px){main{padding:12px}.scroll{overflow:auto}table{min-width:780px}}@media print{select{display:none}main{padding:0}}</style><main><h1>ui4me acceptance overview</h1><p>Latest attempts, exact source, explicit missing coverage.</p><p>Source <code>''' + html.escape(source_id()) + '''</code></p><p>Results shown are for the current source. A renderer snapshot does not prove desktop behavior.</p><label>Filter <select id="status"><option value="">All observations</option><option>passed</option><option>failed</option><option>blocked</option><option>not_run</option><option>interrupted</option></select></label><div class="scroll"><table><thead><tr><th>Platform</th><th>Binding</th><th>Requirement</th><th>Status</th><th>Evidence</th><th>Capture</th></tr></thead><tbody>''' + "".join(html_rows) + '''</tbody></table></div></main><script>document.getElementById('status').addEventListener('change',function(){for(const row of document.querySelectorAll('tbody tr'))row.hidden=!!this.value&&row.dataset.status!==this.value})</script></html>'''

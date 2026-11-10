@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 from tools.ui4me_dev.common import DevError, load_manifest, safe_extract, source_id, write_json, zip_tree
 from tools.ui4me_dev.evidence import observation_rows
+from tools.ui4me_dev.publishing import qualified_evidence_files
+from tools.ui4me_dev.common import sha256
 
 
 class SourceIdentityTests(unittest.TestCase):
@@ -88,6 +90,24 @@ class ArchiveTests(unittest.TestCase):
                 output.writestr('Ui4me/file.txt', 'ok')
             safe_extract(archive, root / 'output')
             self.assertEqual((root / 'output/Ui4me/file.txt').read_text(), 'ok')
+
+
+class PublishedEvidenceTests(unittest.TestCase):
+    def test_only_reviewed_proof_is_selected_and_tampering_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / 'build/reports/run'
+            run.mkdir(parents=True)
+            proof = run / 'proof.log'
+            proof.write_text('proof')
+            (run / 'unrelated.log').write_text('not selected')
+            receipt = run / 'run.json'
+            write_json(receipt, {'proof_files': [{'path': 'proof.log', 'sha256': sha256(proof)}], 'cases': []})
+            qualification = {'evidence': [{'path': 'build/reports/run/run.json', 'sha256': sha256(receipt)}]}
+            self.assertEqual({path.name for path in qualified_evidence_files(qualification, root)}, {'run.json', 'proof.log'})
+            proof.write_text('tampered')
+            with self.assertRaises(DevError):
+                qualified_evidence_files(qualification, root)
 
 
 class LatestEvidenceTests(unittest.TestCase):

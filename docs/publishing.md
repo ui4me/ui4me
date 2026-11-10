@@ -106,6 +106,36 @@ run folders from both bindings. Do not place this directory inside the runner's
 checkout because checkout cleanup can remove it. Windows runners need Git Bash
 for the workflow's short shell steps.
 
+The following setup is an owner action because registering a runner uses a
+short-lived GitHub registration token. Do not put that token in source,
+shell history, screenshots, or test evidence:
+
+1. On each dedicated machine, open the repository's **Settings → Actions →
+   Runners → New self-hosted runner** page and follow the OS-specific download
+   and configuration commands there. Register one Linux x64 runner and one
+   Windows x64 runner; add the custom label `ui4me-native` to each. Download
+   and register only on hosts the owner trusts to run this repository's code.
+2. Put the complete, reviewed native run folders for that platform in a local
+   directory outside the runner's work directory and checkout. Use the evidence
+   generated for the exact `ci-bundle` manifest: locally rebuilt artifacts
+   with different manifest hashes will be rejected, even at the same commit.
+3. Start the runner process with the directory set in its environment. For an
+   interactive Linux runner, in its installation directory use
+   `UI4ME_EVIDENCE_DIRECTORY=/absolute/path/to/native-evidence ./run.sh`.
+   For an interactive Windows PowerShell runner, set
+   `$env:UI4ME_EVIDENCE_DIRECTORY = 'C:\path\to\native-evidence'` and run
+   `.\run.cmd`. A runner installed as a service must receive the same variable
+   in the service environment and be restarted. These collection runners do
+   not need an interactive desktop; the desktop tests must already have run.
+4. Dispatch **Collect reviewed native evidence** twice on the candidate's
+   default-branch commit, once for each platform, with the same successful
+   Foundation CI run ID. Keep both successful collection run IDs for the
+   guarded publication workflow. The collector does not publish anything.
+
+The owner's release review remains necessary: the evidence importer validates
+source and artifact identity, but cannot authenticate the truth of an operator's
+observations. Do not label an automated observation as a human attestation.
+
 `native-evidence.yml` does not pretend to automate human observations. It checks
 the CI producer, collects matching source/manifest receipts from that directory,
 and uploads `native-linux-x64` or `native-win-x64`. Collect each platform after
