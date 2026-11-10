@@ -44,6 +44,10 @@ extern "C" fn callback(id: u64, text: *const c_char, user: *mut c_void) -> i32 {
                 session.stop().map_err(|_| ())?;
                 return Ok(1);
             }
+            (5, Some("resized")) => {
+                // Reentry must not deadlock on the native size update lock.
+                session.command(json!({"op":"stats"})).map_err(|_| ())?;
+            }
             _ => {}
         }
         Ok::<i32, ()>(0)
@@ -127,6 +131,45 @@ fn invalid_resize_does_not_partially_change_window() {
         (window.width, window.height, window.resize_revision),
         (640, 480, 0)
     );
+}
+
+#[cfg(feature = "native")]
+#[test]
+fn applied_native_resize_is_reported_once_in_physical_pixels() {
+    use winit::dpi::PhysicalSize;
+    let h = Harness::new(5);
+    let id = h
+        .session
+        .command(json!({"op":"open","html":"<p>Hello</p>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let mut last = None;
+    let applied = PhysicalSize::new(1720, 1560);
+    assert!(crate::native::new_size(&mut last, applied));
+    crate::native::report_resize(&h.session, id, applied);
+    // A later duplicate window-system event should not emit another callback.
+    assert!(!crate::native::new_size(&mut last, applied));
+    assert!(crate::native::new_size(
+        &mut last,
+        PhysicalSize::new(1800, 1600)
+    ));
+    let state = lock(&h.session.state);
+    assert_eq!(
+        (
+            state.windows[&id].pixel_width,
+            state.windows[&id].pixel_height
+        ),
+        (1720, 1560)
+    );
+    drop(state);
+    let events = h.events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["type"], "resized");
+    assert_eq!(events[0]["window"], id);
+    assert_eq!(events[0]["width"], 1720);
+    assert_eq!(events[0]["height"], 1560);
+    assert_eq!(events[0]["units"], "physical_pixels");
 }
 
 #[test]

@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, ThreadId};
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -82,6 +82,7 @@ struct NativeWindow {
     window: Rc<Window>,
     title: String,
     resize_revision: u64,
+    last_reported_size: Option<PhysicalSize<u32>>,
     cursor: PhysicalPosition<f64>,
     pressed: Option<usize>,
 }
@@ -91,6 +92,31 @@ struct Desktop {
     windows: BTreeMap<u64, NativeWindow>,
     started: bool,
     resumed: bool,
+}
+
+pub(crate) fn new_size(last: &mut Option<PhysicalSize<u32>>, size: PhysicalSize<u32>) -> bool {
+    if *last == Some(size) {
+        return false;
+    }
+    *last = Some(size);
+    true
+}
+
+pub(crate) fn report_resize(session: &Session, id: u64, size: PhysicalSize<u32>) {
+    let exists = {
+        let mut state = lock(&session.state);
+        if let Some(model) = state.windows.get_mut(&id) {
+            model.pixel_width = size.width;
+            model.pixel_height = size.height;
+            model.dirty = true;
+            true
+        } else {
+            false
+        }
+    };
+    if exists {
+        session.emit(json!({"type":"resized","window":id,"width":size.width,"height":size.height,"units":"physical_pixels"}));
+    }
 }
 
 impl Desktop {
@@ -151,6 +177,7 @@ impl Desktop {
                 window: window.clone(),
                 title: model.title.clone(),
                 resize_revision: model.resize_revision,
+                last_reported_size: None,
                 cursor: PhysicalPosition::new(-1.0, -1.0),
                 pressed: None,
             },
@@ -191,13 +218,14 @@ impl Desktop {
                     break;
                 }
             }
+            let mut applied_size = None;
             if let Some(native) = self.windows.get_mut(&id) {
                 if native.title != model.title {
                     native.window.set_title(&model.title);
                     native.title = model.title;
                 }
                 if native.resize_revision != model.resize_revision {
-                    let _ = native.window.request_inner_size(LogicalSize::new(
+                    applied_size = native.window.request_inner_size(LogicalSize::new(
                         model.width as f64,
                         model.height as f64,
                     ));
@@ -207,7 +235,23 @@ impl Desktop {
                     native.window.request_redraw();
                 }
             }
+            // Some backends apply the request immediately and do not send a
+            // Resized event. Process the actual returned physical size through
+            // the same path as an asynchronous window-system notification.
+            if let Some(size) = applied_size {
+                self.resized(id, size);
+            }
         }
+    }
+
+    fn resized(&mut self, id: u64, size: PhysicalSize<u32>) {
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        if !new_size(&mut native.last_reported_size, size) {
+            return;
+        }
+        report_resize(&self.session, id, size);
     }
 
     fn draw(&mut self, id: u64) -> Result<()> {
@@ -401,12 +445,7 @@ impl ApplicationHandler<()> for Desktop {
                 }
             }
             WindowEvent::Resized(size) => {
-                if let Some(model) = lock(&self.session.state).windows.get_mut(&id) {
-                    model.pixel_width = size.width;
-                    model.pixel_height = size.height;
-                    model.dirty = true;
-                }
-                self.session.emit(json!({"type":"resized","window":id,"width":size.width,"height":size.height,"units":"physical_pixels"}));
+                self.resized(id, size);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(model) = lock(&self.session.state).windows.get_mut(&id) {
