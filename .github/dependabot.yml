@@ -1,18 +1,50 @@
 version: 2
+# Group routine version maintenance; leave major updates and security proposals
+# individually reviewable. These limits do not limit security-update PRs.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      rust-patches:
+        applies-to: version-updates
+        patterns: ["*"]
+        # A minor update to a 0.x Rust crate can be API-breaking.
+        update-types: [patch]
   - package-ecosystem: pip
-    directory: /
+    directories: [/, /bindings/python]
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      python-build-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: nuget
     directory: /bindings/powershell/Ui4me.Managed
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      managed-patches:
+        applies-to: version-updates
+        patterns: ["*"]
+        # Keep changes to the PowerShell API/runtime floor separate.
+        update-types: [patch]
