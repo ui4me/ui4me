@@ -52,6 +52,17 @@ fn title() -> String {
 fn width() -> u32 {
     640
 }
+fn start() -> String {
+    "start".into()
+}
+/// `trim_children` direction: `start` removes the oldest children, `end` the newest.
+pub fn trim_from_start(from: &str) -> Result<bool> {
+    match from {
+        "start" => Ok(true),
+        "end" => Ok(false),
+        _ => Err(Error::arg("from must be start or end")),
+    }
+}
 fn nearest() -> String {
     "nearest".into()
 }
@@ -264,6 +275,18 @@ pub enum Command {
         window: u64,
         text: String,
     },
+    AppendText {
+        window: u64,
+        element: String,
+        text: String,
+    },
+    TrimChildren {
+        window: u64,
+        element: String,
+        keep: usize,
+        #[serde(default = "start")]
+        from: String,
+    },
     Diagnostics {
         window: u64,
     },
@@ -341,6 +364,16 @@ pub enum BatchOp {
         element: String,
         target: String,
         position: String,
+    },
+    AppendText {
+        element: String,
+        text: String,
+    },
+    TrimChildren {
+        element: String,
+        keep: usize,
+        #[serde(default = "start")]
+        from: String,
     },
 }
 

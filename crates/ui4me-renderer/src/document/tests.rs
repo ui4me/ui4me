@@ -531,3 +531,152 @@ fn document_text_selection_drag_copy_and_controls() {
     d.remove_element("b").unwrap();
     assert_eq!(d.selection_text().unwrap(), "");
 }
+
+#[test]
+#[ignore = "measurement"]
+fn measure_long_log_append() {
+    let n: usize = std::env::var("LINES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10_000);
+    let mut d =
+        Document::parse("<!doctype html><div id=log style='height:400px;overflow:auto'></div>")
+            .unwrap();
+    d.set_scroll_follow(Some("log"), true).unwrap();
+    let start = std::time::Instant::now();
+    let (mut ins, mut ren, mut worst_ins, mut worst_ren) = (
+        std::time::Duration::ZERO,
+        std::time::Duration::ZERO,
+        std::time::Duration::ZERO,
+        std::time::Duration::ZERO,
+    );
+    for i in 0..n {
+        let t = std::time::Instant::now();
+        d.insert_html(
+            "log",
+            "beforeend",
+            &format!("<div>line {i} lorem ipsum dolor sit amet</div>"),
+        )
+        .unwrap();
+        let e = t.elapsed();
+        ins += e;
+        worst_ins = worst_ins.max(e);
+        if i % 50 == 0 {
+            let t = std::time::Instant::now();
+            d.render(800, 600, 1.0).unwrap();
+            let e = t.elapsed();
+            ren += e;
+            worst_ren = worst_ren.max(e);
+        }
+        if i % 1000 == 999 {
+            eprintln!(
+                "{}: total {:?} insert {:?} (worst {:?}) render {:?} (worst {:?})",
+                i + 1,
+                start.elapsed(),
+                ins,
+                worst_ins,
+                ren,
+                worst_ren
+            );
+            (ins, ren, worst_ins, worst_ren) = Default::default();
+        }
+    }
+    let t = std::time::Instant::now();
+    d.render(800, 600, 1.0).unwrap();
+    eprintln!("final render {:?}; one more append+render:", t.elapsed());
+    for _ in 0..3 {
+        let t = std::time::Instant::now();
+        d.insert_html("log", "beforeend", "<div>x</div>").unwrap();
+        let a = t.elapsed();
+        d.pipeline.flush().unwrap();
+        let b = t.elapsed();
+        let stages = d.pipeline.last_stage_ms;
+        d.render(800, 600, 1.0).unwrap();
+        eprintln!(
+            "  insert {a:?} flush {:?} render {:?} stats {stages:?}",
+            b - a,
+            t.elapsed() - b
+        );
+    }
+}
+
+/// S5: a 10k-line log streamed through a bounded window and three chat views streaming tokens
+/// keep the DOM, the arena and the selection bounded and consistent.
+#[test]
+fn sustained_log_and_chat_streams_stay_bounded() {
+    let mut log = Document::parse("<!doctype html><style>body{margin:0}</style><div id=log style='height:300px;overflow:auto'></div>").unwrap();
+    log.set_scroll_follow(Some("log"), true).unwrap();
+    let mut chats: Vec<Document> = (0..3)
+        .map(|_| Document::parse("<!doctype html><div id=msgs style='height:300px;overflow:auto'></div><input id=search value=keep>").unwrap())
+        .collect();
+    for c in &mut chats {
+        c.set_scroll_follow(Some("msgs"), true).unwrap();
+        c.focus("search").unwrap();
+    }
+    let mut peak = 0;
+    for i in 0..10_000 {
+        log.apply_batch(&[
+            DomOp::InsertHtml {
+                element: "log".into(),
+                position: "beforeend".into(),
+                html: format!("<div>line {i} ✓ žluťoučký</div>"),
+            },
+            DomOp::TrimChildren {
+                element: "log".into(),
+                keep: 300,
+                from_start: true,
+            },
+        ])
+        .unwrap();
+        for (n, c) in chats.iter_mut().enumerate() {
+            if i % 40 == 0 {
+                c.insert_html("msgs", "beforeend", &format!("<p id=m{n}x{i}></p>"))
+                    .unwrap();
+                c.trim_children("msgs", 50, true).unwrap();
+            }
+            let last = format!("m{n}x{}", i / 40 * 40);
+            c.append_text(&last, "tok ").unwrap();
+        }
+        if i % 500 == 0 {
+            log.render(400, 300, 1.0).unwrap();
+            for c in &mut chats {
+                c.render(400, 300, 1.0).unwrap();
+            }
+            if i == 5000 {
+                log.select_text(Some("log")).unwrap();
+            }
+        }
+        peak = peak.max(log.pipeline.document().arena().live_count());
+    }
+    assert!(peak < 2_000, "arena grows: {peak}");
+    let (ids, count) = log.query_ids("#log > div", 1).unwrap();
+    assert!(ids.is_empty());
+    assert_eq!(count, 300);
+    assert_eq!(log.get_text("log").unwrap().matches("line 9999").count(), 1);
+    assert_eq!(
+        log.scroll_state(Some("log")).unwrap().y,
+        log.scroll_state(Some("log")).unwrap().max_y
+    );
+    for c in &mut chats {
+        assert!(c.pipeline.document().arena().live_count() < 1_000);
+        assert_eq!(c.get_value("search").unwrap(), "keep");
+        assert_eq!(
+            c.query_ids(":focus", 4).unwrap().0,
+            vec!["search".to_owned()]
+        );
+        assert_eq!(
+            c.get_text("m0x9960")
+                .or_else(|_| c.get_text("m1x9960"))
+                .or_else(|_| c.get_text("m2x9960"))
+                .unwrap(),
+            "tok ".repeat(40)
+        );
+    }
+    // A long streamed message is split into bounded text nodes.
+    let mut d = Document::parse("<p id=m></p>").unwrap();
+    for _ in 0..20_000 {
+        d.append_text("m", "0123456789").unwrap();
+    }
+    assert_eq!(d.get_text("m").unwrap().len(), 200_000);
+    assert!(d.append_text("m", &"x".repeat(MAX_TEXT + 1)).is_err());
+}

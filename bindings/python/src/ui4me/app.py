@@ -400,6 +400,14 @@ class Window:
     def insert_html_after(self, element: str, html: str) -> None:
         self.insert_html(element, "afterend", html)
 
+    def append_text(self, element: str, text: str) -> None:
+        """Append a literal text chunk (up to 16 KiB) at the end of ``element``; for streaming."""
+        self._command("append_text", element=element, text=text)
+
+    def trim_children(self, element: str, keep: int, *, from_: str = "start") -> None:
+        """Keep at most ``keep`` element children, removing the oldest (``start``) or newest (``end``)."""
+        self._command("trim_children", element=element, keep=int(keep), **{"from": from_})
+
     def remove_element(self, element: str) -> None:
         """Remove an element and its subtree; its ID becomes free for reuse."""
         self._command("remove_element", element=element)

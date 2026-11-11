@@ -352,6 +352,25 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21f_streaming_append_trim' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<div id="log"></div><p id="msg"></p>')
+            foreach ($i in 0..299) {
+                $window.Batch(@(
+                    @{ op = 'insert_html'; element = 'log'; position = 'beforeend'; html = "<div id=""l$i"">$i</div>" },
+                    @{ op = 'trim_children'; element = 'log'; keep = 100 }
+                ))
+                $window.AppendText('msg', 'ž')
+            }
+            if ($window.Query('#log > div').Count -ne 100) { throw 'Trim did not bound the log' }
+            if (($window.Query('#log > div:first-child') -join ',') -ne 'l200') { throw 'Trim removed the wrong end' }
+            if ($window.GetText('msg') -ne ('ž' * 300)) { throw 'Streamed text is wrong' }
+            $window.TrimChildren('log', 10, 'end')
+            if (($window.Query('#log > div:last-child') -join ',') -ne 'l209') { throw 'Trim from end is wrong' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

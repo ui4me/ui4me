@@ -37,7 +37,7 @@ use ui4me_engine_types::status::Status;
 pub const MAX_TEXT: usize = 16 * 1024;
 pub const MAX_PIXELS: usize = 16_777_216;
 const MAX_HTML: usize = 1024 * 1024;
-const MAX_NODES: usize = 16_384;
+const MAX_NODES: usize = 65_536;
 const MAX_DEPTH: usize = 256;
 const MAX_EVENTS: usize = 1024;
 const BLINK: Duration = Duration::from_millis(500);
@@ -852,6 +852,25 @@ impl Document {
                 ))
             }
         }
+    }
+    pub fn append_text(&mut self, element: &str, text: &str) -> Result<()> {
+        self.run_ops(
+            &[DomOp::AppendText {
+                element: element.into(),
+                text: text.into(),
+            }],
+            false,
+        )
+    }
+    pub fn trim_children(&mut self, element: &str, keep: usize, from_start: bool) -> Result<()> {
+        self.run_ops(
+            &[DomOp::TrimChildren {
+                element: element.into(),
+                keep,
+                from_start,
+            }],
+            false,
+        )
     }
     /// Literal text content of `element` (not a control's value).
     pub fn get_text(&self, element: &str) -> Result<String> {
@@ -1827,11 +1846,22 @@ pub enum DomOp {
         target: String,
         position: String,
     },
+    /// Append literal text (a streamed chunk) at the end of an element.
+    AppendText {
+        element: String,
+        text: String,
+    },
+    /// Remove element children beyond `keep`, oldest first (`from_start`) or newest first.
+    TrimChildren {
+        element: String,
+        keep: usize,
+        from_start: bool,
+    },
 }
 impl DomOp {
     fn payload_len(&self) -> usize {
         match self {
-            Self::SetText { text, .. } => text.len(),
+            Self::SetText { text, .. } | Self::AppendText { text, .. } => text.len(),
             Self::SetAttribute { value, .. } => value.as_ref().map_or(0, String::len),
             Self::InsertHtml { html, .. } | Self::ReplaceChildrenHtml { html, .. } => html.len(),
             _ => 0,
@@ -1844,6 +1874,8 @@ impl DomOp {
                 | Self::InsertHtml { .. }
                 | Self::ReplaceChildrenHtml { .. }
                 | Self::RemoveElement { .. }
+                | Self::AppendText { .. }
+                | Self::TrimChildren { .. }
         )
     }
 }
@@ -1877,6 +1909,7 @@ impl StoredRule {
 const PREVENTABLE: &[&str] = &["keydown", "click", "mousedown", "wheel", "submit", "reset"];
 const MAX_PREVENT_RULES: usize = 256;
 const MAX_BATCH_OPS: usize = 1024;
+const STREAM_NODE_BYTES: usize = 4096;
 fn limit_error(message: impl Into<String>) -> Error {
     Error {
         code: 5,
@@ -1904,6 +1937,53 @@ fn apply_op(d: &mut Model, op: &DomOp) -> Result<()> {
                 ));
             }
             d.set_text_content(n, text)?;
+        }
+        DomOp::AppendText { element, text } => {
+            check_text(text)?;
+            let n = model_node(d, element)?;
+            if matches!(d.local_name(n)?, "input" | "textarea" | "select") {
+                return Err(arg("append_text requires a non-control element"));
+            }
+            if text.is_empty() {
+                return Ok(());
+            }
+            // Extend the last text node while it is small, so a long stream stays O(chunk).
+            let last = d.children(n)?.last().copied();
+            match last.filter(|&l| d.text_data(l).is_ok_and(|t| t.len() < STREAM_NODE_BYTES)) {
+                Some(l) => d.append_data(l, text)?,
+                None => {
+                    let t = d.create_text_node(text)?;
+                    d.append_child(n, t)?;
+                }
+            }
+        }
+        DomOp::TrimChildren {
+            element,
+            keep,
+            from_start,
+        } => {
+            let n = model_node(d, element)?;
+            let kids: Vec<NodeId> = d.children(n)?.to_vec();
+            let elements: Vec<usize> = kids
+                .iter()
+                .enumerate()
+                .filter(|&(_, &k)| {
+                    d.node_kind(k)
+                        .is_ok_and(|k| k == ui4me_document::node::NodeKind::Element)
+                })
+                .map(|(i, _)| i)
+                .collect();
+            if elements.len() > *keep {
+                let excess = elements.len() - keep;
+                let doomed: Vec<NodeId> = if *from_start {
+                    kids[..=elements[excess - 1]].to_vec()
+                } else {
+                    kids[elements[elements.len() - excess]..].to_vec()
+                };
+                for k in doomed {
+                    d.remove(k)?;
+                }
+            }
         }
         DomOp::SetAttribute {
             element,

@@ -825,7 +825,18 @@ impl Session {
                 use ui4me_renderer::DomOp as D;
                 let ops: Vec<D> = ops
                     .into_iter()
-                    .map(|op| match op {
+                    .map(|op| {
+                        Ok(match op {
+                        B::AppendText { element, text } => D::AppendText { element, text },
+                        B::TrimChildren {
+                            element,
+                            keep,
+                            from,
+                        } => D::TrimChildren {
+                            element,
+                            keep,
+                            from_start: protocol::trim_from_start(&from)?,
+                        },
                         B::SetText { element, text } => D::SetText { element, text },
                         B::SetAttribute {
                             element,
@@ -865,8 +876,9 @@ impl Session {
                             target,
                             position,
                         },
+                        })
                     })
-                    .collect();
+                    .collect::<Result<_>>()?;
                 self.mutate(window, |d| d.apply_batch(&ops))?
             }
             Command::SetDefaultAction {
@@ -950,6 +962,20 @@ impl Session {
             Command::SetClipboardText { window, text } => self.query(window, |d| {
                 d.set_clipboard_text(&text).map(|()| json!({}))
             })?,
+            Command::AppendText {
+                window,
+                element,
+                text,
+            } => self.mutate(window, |d| d.append_text(&element, &text))?,
+            Command::TrimChildren {
+                window,
+                element,
+                keep,
+                from,
+            } => {
+                let from_start = protocol::trim_from_start(&from)?;
+                self.mutate(window, |d| d.trim_children(&element, keep, from_start))?
+            }
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {

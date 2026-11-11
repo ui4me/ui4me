@@ -154,6 +154,7 @@ per work item. Keep long operations off UI callbacks.
 | Geometry (0.3) | `get_rect(id)` | `GetRect` |
 | Selection (0.3) | `get_selection`, `select_text(id=None)`, `clear_selection`, `copy_selection` | `GetSelection`, `SelectText`, `ClearSelection`, `CopySelection` |
 | Clipboard (0.3) | `get_clipboard_text`, `set_clipboard_text(text)` | `GetClipboardText`, `SetClipboardText` |
+| Streaming (0.3) | `append_text(id, chunk)`, `trim_children(id, keep, from_="start")` | `AppendText`, `TrimChildren` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -212,6 +213,16 @@ highlight is a translucent overlay clipped to scroll containers. Bidi text is
 selected in logical order. Drag auto-scroll and selection-change events are not
 provided. `get_clipboard_text`/`set_clipboard_text` use the native OS clipboard (plain
 text, 16 MiB), or process memory in headless sessions.
+For streaming, `append_text` appends a literal chunk of up to 16 KiB. It extends a
+small trailing text node or starts a new one, so each append costs only the chunk's
+size; `set_text` replaces all text and is limited to 16 KiB. `trim_children` (also a
+batch op) keeps at most `keep` element children, removing the oldest (`start`) or
+newest (`end`). Removed nodes are collected at the next commit. A document holds up
+to 65,536 nodes. Layout is recomputed for the whole document on each change, so
+frame cost grows with the retained DOM: on the reference Linux host (release
+build), about 10 ms per frame at 300 log lines, 33 ms at 1,000 and 250 ms at 6,000.
+Keep long logs bounded with `batch([insert_html, trim_children])`; a few hundred to
+1,000 lines keep updates smooth.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

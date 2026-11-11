@@ -265,6 +265,22 @@ class BindingTests(unittest.TestCase):
             window.set_clipboard_text("pasted ✓")
             self.assertEqual(window.get_clipboard_text(), "pasted ✓")
 
+    def test_streaming_append_and_trim(self):
+        with self.app() as app:
+            window = app.open('<div id="log"></div><p id="msg"></p>')
+            for i in range(300):
+                window.batch([
+                    {"op": "insert_html", "element": "log", "position": "beforeend", "html": f'<div id="l{i}">{i}</div>'},
+                    {"op": "trim_children", "element": "log", "keep": 100},
+                ])
+                window.append_text("msg", "ž")
+            self.assertEqual(len(window.query("#log > div")), 100)
+            self.assertFalse(window.has_element("l199"))
+            self.assertEqual(window.query("#log > div:first-child"), ["l200"])
+            self.assertEqual(window.get_text("msg"), "ž" * 300)
+            window.trim_children("log", 10, from_="end")
+            self.assertEqual(window.query("#log > div:last-child"), ["l209"])
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

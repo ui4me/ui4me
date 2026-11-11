@@ -396,6 +396,8 @@ public sealed class Window
     public void PrependHtml(string element, string html) => InsertHtml(element, "afterbegin", html);
     public void InsertHtmlBefore(string element, string html) => InsertHtml(element, "beforebegin", html);
     public void InsertHtmlAfter(string element, string html) => InsertHtml(element, "afterend", html);
+    public void AppendText(string element, string text) { Check(); app.Command(new { op = "append_text", window = Id, element, text }); }
+    public void TrimChildren(string element, int keep, string from = "start") { Check(); app.Command(new System.Collections.Generic.Dictionary<string, object?> { ["op"] = "trim_children", ["window"] = Id, ["element"] = element, ["keep"] = keep, ["from"] = from }); }
     public void RemoveElement(string element) { Check(); app.Command(new { op = "remove_element", window = Id, element }); }
     public void MoveElement(string element, string target, string position = "beforeend") { Check(); app.Command(new { op = "move_element", window = Id, element, target, position }); }
     public string GetText(string element) { Check(); return app.Command(new { op = "get_text", window = Id, element }).GetProperty("text").GetString()!; }
