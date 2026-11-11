@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.9.0 is the current candidate** (advanced CSS, SVG and typography;
+**Core 0.9.0 passed its gate on both hosts and is being released** (advanced CSS, SVG and typography;
 [`core-roadmap/versions/0_9.md`](core-roadmap/versions/0_9.md)): CSS transitions and keyframe
 animations on the document clock with `@starting-style`, `content-visibility`,
 `contain-intrinsic-size`, `field-sizing`, `resize`, inline SVG with per-shape hit testing and
