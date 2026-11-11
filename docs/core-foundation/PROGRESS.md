@@ -6,7 +6,7 @@
 
 **0.3 status:** GO (local candidate 0.3.0, not published) — S1–S6 done, gate passed 2026-11-11 on Linux KDE/Wayland (virtual KWin) and Windows Server 2022 interactive console session.
 
-**0.4 status:** RELEASED as 0.4.0 from `cf18be3` (2026-11-11) after the polish pass and a final two-platform re-gate. The earlier local candidate was ce201c7. The gate passed 2026-11-11 on Linux (virtual KWin) and Windows (interactive console session).
+**0.4 status:** RELEASED as 0.4.0 from `8138e78` (2026-11-11; release workflow run 42981361247: PyPI, PowerShell Gallery and GitHub `v0.4.0`; public installs verified) after the polish pass and a final two-platform re-gate. The earlier local candidate was ce201c7. The gate passed 2026-11-11 on Linux (virtual KWin) and Windows (interactive console session).
 
 ## Update convention (keep this short)
 
@@ -33,7 +33,7 @@ Do not paste massive raw logs, long audit reports or all research feature record
 
 - 2026-11-11 | (polish) | **0.4 polish: screen-reader bridge** | `ui4me-renderer/src/a11y/` (donor `ui4me-a11y` ported onto the current model by a Sonnet donor-migrator agent, reviewed and verified), `accesskit_winit =0.34.2` in core (native feature, +48 crates: zbus/AT-SPI stack, windows UIA), per-window adapter whose activation/action handlers only flag, queue and wake while the owner builds trees and executes actions; `get_accessibility_tree` command + bindings; `tests/native/a11y_probe.py` | renderer a11y 10/10, core 29/29, python 35/35 + powershell 32/32 unit, workspace clippy clean; **Linux AT-SPI probe on virtual KWin 8/8** (frame title, heading, button, labelled entry, checkbox checked, link, hidden excluded, AT-SPI default action → app click) | PASS (Linux) / Windows UIA verified at the 0.4 re-gate | AT-SPI `aria-expanded`/`aria-invalid` via a carried patch (P-013-1 on accesskit_atspi_common 0.21.1, verified; probe A09 passes). The test harness now also uses a private `XDG_RUNTIME_DIR`; earlier probes used the user-wide AT-SPI bus path. | re-gate
 
-- 2026-11-11 | 95be38b (gated) → cf18be3 (released; differs only in `.github/scripts/check-sdist.py` and `tests/native/windows/files_journey.ps1`) | **0.4 polish + final re-gate** | Polish:
+- 2026-11-11 | 95be38b (gated) → 8138e78 (released; differs only in `.github/` CI/release files, `tests/native/windows/files_journey.ps1` and this ledger, so the shipped sources are identical) | **0.4 polish + final re-gate** | Polish:
   - CI rustfmt drift fixed;
   - `manylinux_2_35` floor enforced for release wheels (`UI4ME_MANYLINUX_POLICY`; CI's ubuntu-22.04 build passes it);
   - sub-pixel overflow no longer scrolls or draws a scrollbar (modal dialog strip);

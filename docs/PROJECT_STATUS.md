@@ -7,13 +7,12 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.4.0 is Foundation Complete as a locally qualified candidate.** Core 0.3
+**Core 0.4.0 is released (2026-11-11):** [GitHub v0.4.0](https://github.com/ui4me/ui4me/releases/tag/v0.4.0), PyPI `ui4me==0.4.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.4.0`, built by the release workflow from `8138e78`. Clean public installs were verified on Linux (Python and PowerShell) and on Windows (Python). Core 0.3
 (programmable document, scroll and selection) and Core 0.4 (HTML controls, native
 desktop services, screen-reader bridge) are implemented. The installed Python,
 PowerShell and C consumers and automated real-input desktop journeys passed on
 Linux x64 (KDE/KWin Wayland) and Windows x64. Evidence and per-slice results are
 in [`core-foundation/PROGRESS.md`](core-foundation/PROGRESS.md).
-**Publication to PyPI/PowerShell Gallery is a separate, explicit release step.**
 A result belongs to the recorded source/artifact identity, never automatically
 to a later edit.
 
