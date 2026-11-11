@@ -61,6 +61,10 @@ pub(crate) struct DialogState {
 #[derive(Debug, Default)]
 pub(crate) struct DialogDocState {
     pub dialogs: HashMap<NodeId, DialogState>,
+    /// Showing popovers (F0808): invoker and the element to return focus to.
+    pub popovers: HashMap<NodeId, crate::interaction::popover::PopoverState>,
+    /// The topmost popover a primary press landed in (`None` inside: outside every popover).
+    pub popover_down: Option<Option<NodeId>>,
     pub tasks: TaskQueue,
 }
 
@@ -164,7 +168,13 @@ impl crate::interaction::dispatch::InteractionRuntime {
         }
     }
 
-    fn queue_toggle_task(&mut self, doc: DocumentId, node: NodeId, old_open: bool, new_open: bool) {
+    pub(crate) fn queue_toggle_task(
+        &mut self,
+        doc: DocumentId,
+        node: NodeId,
+        old_open: bool,
+        new_open: bool,
+    ) {
         if let Some(s) = self.dialog_state(doc) {
             queue_toggle(&s.tasks, node, old_open, new_open);
         }
@@ -178,6 +188,7 @@ pub(crate) fn on_attribute_changed(
     w: &mut ui4me_document::ui_state::UiStateWriter<'_>,
     c: &ui4me_document::hooks::AttributeChange,
 ) {
+    crate::interaction::popover::on_attribute_changed(w, c);
     if c.local_name != "open" || c.old.is_some() == c.new.is_some() {
         return;
     }
@@ -421,16 +432,6 @@ pub fn request_close(
         }
         close_steps(h, doc, dialog, result)
     })
-}
-
-/// Escape pressed (uncanceled `keydown`): the topmost modal dialog gets a close request. Returns
-/// whether one did.
-pub(crate) fn escape(host: &mut dyn DispatchHost, doc: DocumentId) -> Result<bool, Status> {
-    let Some(m) = eng(host, doc, |_, d| d.topmost_modal())? else {
-        return Ok(false);
-    };
-    request_close(host, doc, m, None)?;
-    Ok(true)
 }
 
 /// The `details` a summary is the summary for (HTML "summary for its parent details"): `summary`'s

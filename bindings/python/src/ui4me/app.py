@@ -799,6 +799,22 @@ class Window:
         """``{"open": bool, "modal": bool, "return_value": str}``."""
         return self._command("get_dialog", element=element)
 
+    def show_popover(self, element: str) -> None:
+        """Show an element with a ``popover`` attribute (top layer; ``beforetoggle`` / ``toggle`` fire)."""
+        self._command("show_popover", element=element)
+
+    def hide_popover(self, element: str) -> None:
+        """Hide a popover; hiding an ``auto`` popover also hides the popovers above it."""
+        self._command("hide_popover", element=element)
+
+    def toggle_popover(self, element: str) -> bool:
+        """Toggle a popover; returns whether it is showing afterwards."""
+        return bool(self._command("toggle_popover", element=element)["open"])
+
+    def get_popover(self, element: str) -> dict:
+        """``{"open": bool, "kind": "auto" | "manual"}``."""
+        return self._command("get_popover", element=element)
+
     def get_options(self, element: str) -> list[dict]:
         """Options of a ``<select>``: ``value``, ``label``, ``selected``, ``disabled``."""
         return self._command("get_options", element=element)["options"]

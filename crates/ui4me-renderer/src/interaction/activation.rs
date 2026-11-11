@@ -395,6 +395,8 @@ pub(crate) fn activation_behaviour(
             .map(|f| (f.saved, f.event.target))
     });
     let (saved, target) = frame.unwrap_or((None, act));
+    // `popovertarget` on a button runs before the button's own behaviour (HTML 4.10.6).
+    crate::interaction::popover::invoker_activation(host, doc, act);
     let Ok(b) = eng(host, doc, |_, d| decide(d, act, saved, target)) else {
         return;
     };

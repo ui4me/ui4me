@@ -411,9 +411,54 @@ pub struct BoxModel {
     pub border_radius: Corners<(LengthPercentage, LengthPercentage)>,
 }
 
+/// The side of an anchor an `anchor()` inset refers to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AnchorSide {
+    Top,
+    Right,
+    Bottom,
+    Left,
+    Center,
+    Start,
+    End,
+    SelfStart,
+    SelfEnd,
+    Inside,
+    Outside,
+    /// Percentage between the start (0) and end (1) sides.
+    Percent(f32),
+}
+
+/// One `anchor([<anchor-name>] <side>)` inset.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnchorInset {
+    /// `None`: the default anchor (`position-anchor`, else the implicit anchor).
+    pub name: Option<String>,
+    pub side: AnchorSide,
+}
+
+/// The anchor-positioning properties of a box.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnchorProps {
+    /// `anchor-name`.
+    pub names: Vec<String>,
+    /// `position-anchor: <dashed-ident>`.
+    pub position_anchor: Option<String>,
+    /// `top`, `right`, `bottom`, `left` when they are `anchor()` functions.
+    pub insets: [Option<AnchorInset>; 4],
+}
+
+impl AnchorProps {
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty() && self.insets.iter().all(Option::is_none)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PositionOffsets {
     pub inset: Edges<Inset>,
+    /// CSS Anchor Positioning subset (F0808): `anchor-name`, `position-anchor` and `anchor()` insets.
+    pub anchor: AnchorProps,
     /// `None` = `auto`.
     pub z_index: Option<i32>,
 }
@@ -1038,10 +1083,68 @@ pub(crate) fn box_model(epoch: u64, cv: &ComputedValues) -> BoxModel {
     }
 }
 
+fn anchor_inset(
+    i: &GenericInset<style::values::computed::Percentage, StyloLp>,
+) -> Option<AnchorInset> {
+    use style::values::generics::position::{AnchorSideKeyword as K, GenericAnchorSide};
+    let GenericInset::AnchorFunction(f) = i else {
+        return None;
+    };
+    let side = match &f.side {
+        GenericAnchorSide::Percentage(p) => AnchorSide::Percent(p.0),
+        GenericAnchorSide::Keyword(k) => match k {
+            K::Inside => AnchorSide::Inside,
+            K::Outside => AnchorSide::Outside,
+            K::Top => AnchorSide::Top,
+            K::Left => AnchorSide::Left,
+            K::Right => AnchorSide::Right,
+            K::Bottom => AnchorSide::Bottom,
+            K::Start => AnchorSide::Start,
+            K::End => AnchorSide::End,
+            K::SelfStart => AnchorSide::SelfStart,
+            K::SelfEnd => AnchorSide::SelfEnd,
+            K::Center => AnchorSide::Center,
+        },
+    };
+    let name = f.target_element.value.0.to_string();
+    Some(AnchorInset {
+        name: (!name.is_empty()).then_some(name),
+        side,
+    })
+}
+
+pub(crate) fn anchor_props(cv: &ComputedValues) -> AnchorProps {
+    use style::values::specified::position::PositionAnchorKeyword;
+    let p = cv.get_position();
+    let names = cv
+        .get_box()
+        .anchor_name
+        .value
+        .0
+        .iter()
+        .map(|i| i.0.to_string())
+        .collect();
+    let position_anchor = match &p.position_anchor.value {
+        PositionAnchorKeyword::Ident(i) => Some(i.0.to_string()),
+        _ => None,
+    };
+    AnchorProps {
+        names,
+        position_anchor,
+        insets: [
+            anchor_inset(&p.top),
+            anchor_inset(&p.right),
+            anchor_inset(&p.bottom),
+            anchor_inset(&p.left),
+        ],
+    }
+}
+
 pub(crate) fn position_offsets(epoch: u64, cv: &ComputedValues) -> PositionOffsets {
     let p = cv.get_position();
     let z = css(&p.z_index);
     PositionOffsets {
+        anchor: anchor_props(cv),
         inset: Edges {
             top: inset(epoch, &p.top),
             right: inset(epoch, &p.right),

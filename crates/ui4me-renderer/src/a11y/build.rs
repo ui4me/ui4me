@@ -1300,7 +1300,9 @@ impl<'a> Builder<'a> {
             {
                 Some("true") => Some(true),
                 Some("false") => Some(false),
-                _ => None,
+                // A `popovertarget` invoker exposes whether its popover is showing (F0808).
+                _ => crate::interaction::popover::invoker_target(self.d, n)
+                    .map(|(t, _)| crate::interaction::popover::is_open(self.d, t)),
             }
         };
         let selected = if local == "option" {

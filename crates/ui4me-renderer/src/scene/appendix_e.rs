@@ -1962,6 +1962,19 @@ impl<S: PaintStyleSource> Adapter<'_, S> {
         let saved_shift = self.shift;
         if bf.extras.position == PositionValue::Fixed {
             self.shift = LayoutPoint::default();
+            if bf.extras.anchor_node.is_some() {
+                // An anchored box follows the scroll of the containers around its anchor.
+                if let Some(f) = self.frame() {
+                    f.volatile = true;
+                }
+                let (dx, dy) = crate::layout::coordinator::sticky::anchor_scroll_shift(
+                    self.tree,
+                    self.scroll,
+                    id,
+                );
+                let q = |v: f64| LayoutUnit::quantize(v).value;
+                self.shift = LayoutPoint { x: q(dx), y: q(dy) };
+            }
         }
         if bf.extras.sticky.is_some()
             && let Some(f) = self.frame()

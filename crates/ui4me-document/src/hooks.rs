@@ -189,9 +189,12 @@ pub fn requester_kind(e: &crate::node::ElementData) -> Option<RequesterKind> {
 
 /// FR-099: does a change of attribute `name` on this element call `on_attribute_changed`?
 /// Elements `input`, `textarea`, `select`, `option`, `form`, `fieldset`, `label`, `details`,
-/// `dialog` (any attribute); `tabindex`, `disabled`, `inert`, `hidden` on any element.
+/// `dialog` (any attribute); `tabindex`, `disabled`, `inert`, `hidden`, `popover` on any element.
 pub fn attribute_hook_applies(e: &crate::node::ElementData, name: &str) -> bool {
-    if matches!(name, "tabindex" | "disabled" | "inert" | "hidden") {
+    if matches!(
+        name,
+        "tabindex" | "disabled" | "inert" | "hidden" | "popover"
+    ) {
         return true;
     }
     e.is_html()

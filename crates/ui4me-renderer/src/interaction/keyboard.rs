@@ -203,7 +203,7 @@ pub(crate) fn keydown_default(
         }
         // A close request for the topmost modal dialog (HTML close watchers; 015 HTML-1).
         "Escape" => {
-            crate::interaction::dialog::escape(host, doc)?;
+            crate::interaction::popover::escape(host, doc)?;
         }
         "Enter" if focused => {
             if eng(host, doc, |_, d| {

@@ -318,6 +318,7 @@ impl Document {
             "reset",
             "invalid",
             "toggle",
+            "beforetoggle",
             "cancel",
             "close",
         ] {
@@ -1031,6 +1032,10 @@ impl Document {
                 }
                 at = tree.get(a).parent;
             }
+            let (ax, ay) =
+                crate::layout::coordinator::sticky::anchor_scroll_shift(tree, offsets, f);
+            dx += ax;
+            dy += ay;
             let (x0, y0) = (r.origin.x.to_f64() + dx, r.origin.y.to_f64() + dy);
             let (x1, y1) = (x0 + r.size.width.to_f64(), y0 + r.size.height.to_f64());
             bounds = Some(match bounds {
@@ -1040,7 +1045,12 @@ impl Document {
         }
         let (x0, y0, x1, y1) = bounds?;
         let (mut sx, mut sy) = (0.0, 0.0);
-        for e in self.pipeline.scroll_chain(n) {
+        // A `fixed` box does not scroll with its containers (an anchored one follows its anchor, above).
+        let fixed = tree.fragments_of(n).first().is_some_and(|&f| {
+            matches!(&tree.get(f).kind, crate::layout::fragment::FragmentKind::Box(b)
+                if b.extras.position == crate::layout::box_tree::PositionValue::Fixed)
+        });
+        for e in self.pipeline.scroll_chain(n).into_iter().filter(|_| !fixed) {
             if e.target != ScrollTarget::Node(n) {
                 sx += e.offset.0;
                 sy += e.offset.1;
@@ -1130,6 +1140,38 @@ impl Document {
             modal,
             self.interaction.dialog_return_value(self.id(), n),
         ))
+    }
+    /// `showPopover()` on an element with a `popover` attribute; no-op when it is already showing.
+    pub fn show_popover(&mut self, element: &str) -> Result<()> {
+        let n = self.node(element)?;
+        let id = self.id();
+        crate::interaction::popover::show(self, id, n, None)?;
+        self.repaint = true;
+        Ok(())
+    }
+    /// `hidePopover()`; nothing when it is not showing. Hiding an auto popover hides those above it.
+    pub fn hide_popover(&mut self, element: &str) -> Result<()> {
+        let n = self.node(element)?;
+        let id = self.id();
+        crate::interaction::popover::hide(self, id, n)?;
+        self.repaint = true;
+        Ok(())
+    }
+    /// `togglePopover()`: whether the popover is showing afterwards.
+    pub fn toggle_popover(&mut self, element: &str) -> Result<bool> {
+        let n = self.node(element)?;
+        let id = self.id();
+        let open = crate::interaction::popover::toggle(self, id, n, None)?;
+        self.repaint = true;
+        Ok(open)
+    }
+    /// `(open, kind)` of a popover; `kind` is `"auto"` or `"manual"`.
+    pub fn popover_state(&self, element: &str) -> Result<(bool, &'static str)> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        let kind = crate::interaction::popover::popover_kind(d, n)
+            .ok_or_else(|| arg("popover_state requires an element with a popover attribute"))?;
+        Ok((crate::interaction::popover::is_open(d, n), kind.name()))
     }
     /// Options of a `select` in order: (value, label, selected, disabled).
     pub fn select_options(&self, element: &str) -> Result<Vec<(String, String, bool, bool)>> {
@@ -2333,6 +2375,7 @@ const PREVENTABLE: &[&str] = &[
     "submit",
     "reset",
     "cancel",
+    "beforetoggle",
 ];
 const MAX_PREVENT_RULES: usize = 256;
 const MAX_BATCH_OPS: usize = 1024;
@@ -2557,6 +2600,8 @@ mod drag;
 pub mod file_input;
 #[cfg(test)]
 mod focus_pointer_tests;
+#[cfg(test)]
+mod popover_tests;
 pub mod public_dom;
 pub mod rich_clipboard;
 mod selection;

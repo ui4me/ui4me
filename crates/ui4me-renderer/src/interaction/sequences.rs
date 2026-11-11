@@ -194,6 +194,9 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
                 origin,
                 ts,
             )?;
+            if p.button == 0 {
+                crate::interaction::popover::pointer_down(host, doc, target);
+            }
             eng(host, doc, |ix, _| {
                 if let Ok(s) = ix.doc_state(doc) {
                     s.pointer = PointerState {
@@ -258,6 +261,9 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
                 origin,
                 ts,
             )?;
+            if p.button == 0 {
+                crate::interaction::popover::pointer_up(host, doc, target);
+            }
             let (press, connected) = eng(host, doc, |ix, d| {
                 if p.button == 0 {
                     ix.set_active(d, None);

@@ -404,6 +404,22 @@ try {
         }
         if (($closes -join ',') -ne 'done') { throw "Dialog close event return value: $($closes -join ',')" }
     }
+    Test-Case 'PS21g2_popover' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<button id="b" popovertarget="p">Open</button><div id="p" popover>x</div><div id="m" popover="manual">m</div>')
+            if (-not (($window.GetPopoverJson('p') | ConvertFrom-Json).kind -eq 'auto')) { throw 'Popover kind is wrong' }
+            if (($window.GetPopoverJson('m') | ConvertFrom-Json).kind -ne 'manual') { throw 'Manual popover kind is wrong' }
+            $window.ShowPopover('p')
+            if (-not ($window.GetPopoverJson('p') | ConvertFrom-Json).open) { throw 'Popover did not open' }
+            if (($window.Query(':popover-open') -join ',') -ne 'p') { throw 'popover-open does not match' }
+            if ($window.TogglePopover('p')) { throw 'Toggle did not close' }
+            $null = $window.TogglePopover('p')
+            $window.HidePopover('p')
+            if (($window.GetPopoverJson('p') | ConvertFrom-Json).open) { throw 'Popover did not hide' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS21h_window_actions' {
         Invoke-Ui4meApp -Backend headless {
             param($app)

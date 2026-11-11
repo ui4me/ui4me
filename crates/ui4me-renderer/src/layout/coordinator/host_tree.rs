@@ -3452,6 +3452,7 @@ pub(crate) fn layout_boxes(
         }
     }
     resolve_inline_containing_blocks(boxes, &mut tree, root_idx, viewport, reports);
+    resolve_anchor_positions(boxes, &mut tree, root_idx, viewport);
     trace.push(super::EpochState::FragmentBuild);
     let tp_pre = tp0.elapsed();
     // Seeded subtrees that were not laid out again take the previous fragments (015 PERF-1).
@@ -3612,6 +3613,110 @@ fn resolve_inline_containing_blocks(
             direction,
             claims,
         );
+    }
+}
+
+/// CSS Anchor Positioning subset (F0808): an out-of-flow box whose `top`/`right`/`bottom`/`left` is an
+/// `anchor()` function is moved so that the edge the inset names meets the named side of its anchor's border box.
+/// The anchor is the element with the `anchor-name` the function (or `position-anchor`) names, else the
+/// popover's implicit anchor (its invoker). The box is laid out normally first (the anchor insets are `auto`),
+/// then, with the fragments of that pass, shifted: the shift is recomputed from the current fragments on every
+/// layout, so a resize or any change of the anchor's or the box's geometry repositions it. A box whose axis has
+/// two anchored insets follows the start edge (`left`, `top`) and is not stretched; an unknown anchor or a side
+/// that does not belong to the inset's axis leaves the box where the normal layout put it.
+fn resolve_anchor_positions(
+    boxes: &BoxTree,
+    tree: &mut HostTree,
+    root_idx: usize,
+    viewport: Viewport,
+) {
+    use crate::style::view::groups::AnchorSide;
+    let anchored: Vec<(usize, BoxId)> = tree
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let b = boxes.get(n.box_id);
+            let a = b.style.anchor.as_ref()?;
+            (b.is_out_of_flow()
+                && matches!(b.owner, BoxOwner::Element(_))
+                && a.props.insets.iter().any(Option::is_some))
+            .then_some((i, n.box_id))
+        })
+        .collect();
+    if anchored.is_empty() {
+        return;
+    }
+    let (prelim, _) = build_fragments(boxes, tree, root_idx, viewport, None);
+    let rect_of = |node: ui4me_engine_types::ids::NodeId| {
+        let f = prelim.fragments_of(node).first().copied()?;
+        let r = prelim.document_rect(f).rect;
+        Some((
+            r.origin.x.to_f64(),
+            r.origin.y.to_f64(),
+            r.size.width.to_f64(),
+            r.size.height.to_f64(),
+        ))
+    };
+    for (idx, id) in anchored {
+        let b = boxes.get(id);
+        let BoxOwner::Element(node) = b.owner else {
+            continue;
+        };
+        let Some(a) = b.style.anchor.as_ref() else {
+            continue;
+        };
+        let Some((ox, oy, ow, oh)) = rect_of(node) else {
+            continue;
+        };
+        let (mut dx, mut dy): (Option<f64>, Option<f64>) = (None, None);
+        // Start edges first: `left` before `right`, `top` before `bottom`.
+        for i in [3usize, 1, 0, 2] {
+            let Some(ins) = &a.props.insets[i] else {
+                continue;
+            };
+            let horizontal = i == 1 || i == 3;
+            if (horizontal && dx.is_some()) || (!horizontal && dy.is_some()) {
+                continue;
+            }
+            let anchor_node = super::oof::anchor_of_inset(boxes, id, ins);
+            let Some((ax, ay, aw, ah)) = anchor_node.and_then(rect_of) else {
+                continue;
+            };
+            // Where along the property's axis (0 = start, 1 = end) the named side lies; `None` when the
+            // keyword belongs to the other axis.
+            let own_end = i == 1 || i == 2;
+            let frac = match ins.side {
+                AnchorSide::Top if !horizontal => 0.0,
+                AnchorSide::Bottom if !horizontal => 1.0,
+                AnchorSide::Left if horizontal => 0.0,
+                AnchorSide::Right if horizontal => 1.0,
+                AnchorSide::Top | AnchorSide::Bottom | AnchorSide::Left | AnchorSide::Right => {
+                    continue;
+                }
+                AnchorSide::Center => 0.5,
+                AnchorSide::Start | AnchorSide::SelfStart => 0.0,
+                AnchorSide::End | AnchorSide::SelfEnd => 1.0,
+                AnchorSide::Inside => f64::from(u8::from(own_end)),
+                AnchorSide::Outside => f64::from(u8::from(!own_end)),
+                AnchorSide::Percent(p) => f64::from(p),
+            };
+            let (a_start, a_len, o_start, o_len) = if horizontal {
+                (ax, aw, ox, ow)
+            } else {
+                (ay, ah, oy, oh)
+            };
+            let target = a_start + frac * a_len;
+            let own_edge = if own_end { o_start + o_len } else { o_start };
+            if horizontal {
+                dx = Some(target - own_edge);
+            } else {
+                dy = Some(target - own_edge);
+            }
+        }
+        let loc = &mut tree.nodes[idx].layout.location;
+        loc.x += dx.unwrap_or(0.0) as f32;
+        loc.y += dy.unwrap_or(0.0) as f32;
     }
 }
 
