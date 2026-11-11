@@ -259,6 +259,9 @@ Native file dialogs (0.4) never block the UI.
 - **Lifetime:** stopping the app does not dismiss an open OS dialog; its result is discarded.
 - **Linux runtime:** dialogs need a running xdg-desktop-portal with a file-chooser backend (KDE or GTK); libdbus is loaded at run time, not linked.
 - **File drops:** dropped files arrive as `file_drop` events (`paths`), and hover as `file_hover`/`file_hover_cancelled`, where winit supports them (Windows and X11). On Wayland, winit 0.30 delivers no drops.
+Accessibility (0.4, measured scope):
+- **Keyboard:** ordinary interactions are keyboard-operable. Tab/Shift+Tab follow document and `tabindex` order, skip disabled and inert content, and wrap; keyboard focus matches `:focus-visible`. Enter/Space activate buttons and links, Space toggles checkboxes, arrows move through radio groups and selects, Escape closes modal dialogs, and a modal dialog traps focus.
+- **Screen readers:** Core 0.4 has **no platform accessibility bridge**. AT-SPI (Linux) and UI Automation (Windows) see only the native top-level window and its title, not the document's elements, so Orca/Narrator cannot read or operate page content. Do not claim screen-reader support or WCAG conformance for Core 0.4 applications. The planned path is to port the existing AccessKit-based semantic tree and platform adapters (0.5 candidate).
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

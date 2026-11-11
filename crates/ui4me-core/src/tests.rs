@@ -1246,3 +1246,40 @@ fn responsive_layout_flex_media_grid_overflow() {
     cmd(json!({"op":"scroll_to","window":id,"element":"scroller","y":150})).unwrap();
     assert_eq!(r("sticky").1, top);
 }
+
+#[test]
+fn keyboard_only_operation_of_ordinary_controls() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":600,"height":400,"html":"<a id='link' href='#x'>Link</a><input id='name'><button id='go'>Go</button>\
+        <button id='off' disabled>Off</button><input id='agree' type='checkbox'><input id='r1' type='radio' name='g' checked><input id='r2' type='radio' name='g'>\
+        <select id='pick'><option>A</option><option>B</option></select><textarea id='notes'></textarea><div id='inert' inert><button id='hidden'>Hidden</button></div><button id='last' tabindex='0'>Last</button>"})).unwrap()["window"].as_u64().unwrap();
+    let key = |k: &str, shift: bool| {
+        for pressed in [true, false] {
+            h.session.input(id, crate::document::Input::Key { key: k.into(), code: k.into(), pressed, repeat: false, shift, ctrl: false, alt: false, meta: false }).unwrap();
+        }
+    };
+    let focus = || cmd(json!({"op":"query","window":id,"selector":":focus"})).unwrap()["elements"][0].as_str().unwrap_or("").to_owned();
+    let mut order = Vec::new();
+    for _ in 0..9 {
+        key("Tab", false);
+        order.push(focus());
+    }
+    assert_eq!(order, ["link", "name", "go", "agree", "r1", "pick", "notes", "last", "link"], "Tab order skips disabled and inert controls and wraps");
+    assert_eq!(cmd(json!({"op":"query","window":id,"selector":":focus-visible"})).unwrap()["elements"], json!(["link"]), "keyboard focus is focus-visible");
+    key("Tab", true);
+    assert_eq!(focus(), "last", "Shift+Tab goes back");
+    // Activation from the keyboard.
+    while focus() != "go" { key("Tab", false); }
+    key("Enter", false);
+    key(" ", false);
+    let clicks = h.events().into_iter().filter(|e| e["type"] == "click" && e["element"] == "go").count();
+    assert_eq!(clicks, 2, "Enter and Space activate a button");
+    key("Tab", false);
+    key(" ", false);
+    assert_eq!(cmd(json!({"op":"get_checked","window":id,"element":"agree"})).unwrap()["checked"], true, "Space toggles a checkbox");
+    key("Tab", false);
+    key("ArrowDown", false);
+    assert_eq!(cmd(json!({"op":"get_checked","window":id,"element":"r2"})).unwrap()["checked"], true, "arrows move through a radio group");
+    assert_eq!(focus(), "r2");
+}
