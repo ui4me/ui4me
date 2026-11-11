@@ -73,7 +73,7 @@ def main() -> int:
 
     with App(app_id="org.ui4me.servicesprobe") as app:
         w = app.open("<h1>Services probe</h1><p>Windows</p>", title="ui4me services probe", width=480, height=300)
-        for kind in ("notification", "tray", "menu_command", "hotkey", "menu_status"):
+        for kind in ("notification", "tray", "menu_command", "hotkey", "menu_status", "pointer_grab"):
             app.on(kind, events.append)
 
         def owner(fn):
@@ -146,6 +146,11 @@ def main() -> int:
                 if held:
                     user32.UnregisterHotKey(None, 0x7EEF)
                 check("W10_hotkey_conflict", bool(held) and cf.get("status") == "conflict", {"held": bool(held), "result": cf})
+                foreground()
+                owner(lambda: w.set_pointer_grab("confined"))
+                g = wait(lambda e: e.get("type") == "pointer_grab" and e.get("mode") == "confined")
+                owner(lambda: w.set_pointer_grab("none"))
+                check("W12_pointer_confined", g is not None and g.get("applied") is True, g)
                 env = owner(lambda: w.environment())
                 check("W11_os_preferences", isinstance(env, dict) and env.get("high_contrast") in (True, False) and env.get("color_scheme_source") in ("system", "default"), env)
             finally:
@@ -154,7 +159,7 @@ def main() -> int:
         app.on("started", lambda _: threading.Thread(target=driver, daemon=True).start())
         app.timer(150_000, lambda _: app.stop())
         app.run()
-    result = {"status": "passed" if len(cases) == 11 and all(c["status"] == "passed" for c in cases) else "failed", "cases": cases}
+    result = {"status": "passed" if len(cases) == 12 and all(c["status"] == "passed" for c in cases) else "failed", "cases": cases}
     args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     for c in cases:
         print(c["status"], c["id"], json.dumps(c["details"], ensure_ascii=False, default=str)[:300])

@@ -73,7 +73,7 @@ def main() -> int:
     try:
         with App(app_id="org.ui4me.servicesprobe") as app:
             w = app.open("<h1>Services probe</h1>", title="ui4me services probe", width=420, height=240)
-            for kind in ("notification", "tray", "menu_command", "hotkey", "environment_changed"):
+            for kind in ("notification", "tray", "menu_command", "hotkey", "environment_changed", "pointer_grab"):
                 app.on(kind, events.append)
             results: dict = {}
 
@@ -129,6 +129,10 @@ def main() -> int:
                     check("S10_os_preferences_read", isinstance(env_now, dict) and env_now.get("color_scheme_source") in ("system", "default"), env_now)
                     m = owner(lambda: w.set_menu([{"label": "File", "items": [{"id": "save", "label": "Save", "accelerator": "Ctrl+S"}]}]))
                     c = owner(lambda: w.show_context_menu(10, 10, [{"id": "copy", "label": "Copy"}]))
+                    owner(lambda: w.set_pointer_grab("confined"))
+                    g = wait(lambda e: e.get("type") == "pointer_grab")
+                    # The virtual KWin window is not focused: an honest refusal (or a grant) is reported.
+                    check("S12_pointer_grab_reported", g is not None and (g.get("applied") is True or g.get("reason")), g)
                     check("S11_menus_report_unsupported_with_accelerators", m.get("status") == "unsupported" and m.get("accelerators") is True and c.get("status") == "unsupported", {"menu": m, "context": c})
                 finally:
                     app.post(app.stop)
@@ -144,7 +148,7 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 p.kill()
         subprocess.run(["rm", "-rf", str(private)], check=False)
-    result = {"status": "passed" if len(cases) == 11 and all(c["status"] == "passed" for c in cases) else "failed", "cases": cases}
+    result = {"status": "passed" if len(cases) == 12 and all(c["status"] == "passed" for c in cases) else "failed", "cases": cases}
     args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     for c in cases:
         print(c["status"], c["id"], json.dumps(c["details"], ensure_ascii=False, default=str)[:300])
