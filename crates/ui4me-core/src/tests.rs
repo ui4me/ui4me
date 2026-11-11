@@ -3,7 +3,7 @@ use super::*;
 use crate::runtime::{lock, Session};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-static SERIAL: Mutex<()> = Mutex::new(());
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 struct Capture {
     mode: u8,
     events: Mutex<Vec<Value>>,
@@ -2944,7 +2944,10 @@ fn support_profile() -> Value {
             if t.starts_with(' ') || t.starts_with('/') || t.starts_with('#') {
                 return None;
             }
-            let name: String = t.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+            let name: String = t
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
             (!name.is_empty() && name.chars().next()?.is_ascii_uppercase()).then(|| snake(&name))
         })
         .collect();
@@ -2971,10 +2974,17 @@ fn support_profile() -> Value {
         .map(str::to_owned)
         .collect();
     let mut files = Vec::new();
-    for dir in ["crates/ui4me-core/src", "crates/ui4me-core/src/services", "crates/ui4me-core/src/print", "crates/ui4me-renderer/src/document"] {
+    for dir in [
+        "crates/ui4me-core/src",
+        "crates/ui4me-core/src/services",
+        "crates/ui4me-core/src/print",
+        "crates/ui4me-renderer/src/document",
+    ] {
         for e in std::fs::read_dir(root.join(dir)).unwrap().flatten() {
             let p = e.path();
-            if p.extension().is_some_and(|x| x == "rs") && !p.file_name().unwrap().to_string_lossy().contains("test") {
+            if p.extension().is_some_and(|x| x == "rs")
+                && !p.file_name().unwrap().to_string_lossy().contains("test")
+            {
                 files.push(p);
             }
         }
@@ -2985,7 +2995,10 @@ fn support_profile() -> Value {
         let s = std::fs::read_to_string(&f).unwrap();
         for pat in ["\"type\":\"", "\"type\": \"", "[\"type\"] = json!(\""] {
             for part in s.split(pat).skip(1) {
-                let name: String = part.chars().take_while(|c| c.is_ascii_lowercase() || *c == '_').collect();
+                let name: String = part
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '_')
+                    .collect();
                 if !name.is_empty() {
                     events.push(name);
                 }
@@ -2997,8 +3010,10 @@ fn support_profile() -> Value {
     events.sort();
     events.dedup();
     let (css_version, rows) = ui4me_renderer::css_profile();
-    let platform: Value =
-        serde_json::from_str(&read("docs/core-roadmap/data/PLATFORM_CAPABILITIES_V1.json")).unwrap();
+    let platform: Value = serde_json::from_str(&read(
+        "docs/core-roadmap/data/PLATFORM_CAPABILITIES_V1.json",
+    ))
+    .unwrap();
     json!({
         "schema": 1,
         "core_version": env!("CARGO_PKG_VERSION"),
@@ -3021,13 +3036,19 @@ fn support_profile() -> Value {
 fn support_profile_is_current_and_bindings_cover_every_op() {
     // 1.0 F1102/F1103. Regenerate with UI4ME_UPDATE_PROFILE=1.
     let profile = support_profile();
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/SUPPORT_PROFILE_V1.json");
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/SUPPORT_PROFILE_V1.json");
     let text = serde_json::to_string_pretty(&profile).unwrap() + "\n";
     if std::env::var_os("UI4ME_UPDATE_PROFILE").is_some() {
         std::fs::write(&path, &text).unwrap();
     }
-    let committed = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
-    assert!(committed == text, "docs/SUPPORT_PROFILE_V1.json is stale: run the test with UI4ME_UPDATE_PROFILE=1");
+    let committed = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
+    assert!(
+        committed == text,
+        "docs/SUPPORT_PROFILE_V1.json is stale: run the test with UI4ME_UPDATE_PROFILE=1"
+    );
     let missing: Vec<String> = profile["commands"]
         .as_array()
         .unwrap()
@@ -3035,10 +3056,16 @@ fn support_profile_is_current_and_bindings_cover_every_op() {
         .flat_map(|c| {
             ["python", "powershell"].into_iter().filter_map(move |b| {
                 let op = c["op"].as_str().unwrap();
-                (c[b] == false && !BINDING_EXCEPTIONS.iter().any(|(o, bb, _)| *o == op && *bb == b))
-                    .then(|| format!("{op} ({b})"))
+                (c[b] == false
+                    && !BINDING_EXCEPTIONS
+                        .iter()
+                        .any(|(o, bb, _)| *o == op && *bb == b))
+                .then(|| format!("{op} ({b})"))
             })
         })
         .collect();
-    assert!(missing.is_empty(), "wire ops a binding does not expose: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "wire ops a binding does not expose: {missing:?}"
+    );
 }
