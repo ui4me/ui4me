@@ -75,6 +75,28 @@ extern "C" fn callback(id: u64, text: *const c_char, user: *mut c_void) -> i32 {
                 lock(&capture.events)
                     .push(json!({"type":"destroy_attempt","code":result.err().map(|e|e.code)}));
             }
+            // 0.5 F0505: lifecycle faults injected from inside input callbacks.
+            (20, Some("keydown")) => {
+                session.stop().map_err(|_| ())?;
+            }
+            (21, Some("keydown")) => {
+                let window = event["window"].as_u64().ok_or(())?;
+                session
+                    .command(json!({"op":"close","window":window}))
+                    .map_err(|_| ())?;
+            }
+            (22, Some("keydown")) if event["element"] == "editor" => {
+                let window = event["window"].as_u64().ok_or(())?;
+                session
+                    .command(json!({"op":"remove_element","window":window,"element":"editor"}))
+                    .map_err(|_| ())?;
+            }
+            (22, Some("cancel")) => {
+                let window = event["window"].as_u64().ok_or(())?;
+                session
+                    .command(json!({"op":"remove_element","window":window,"element":"dlg"}))
+                    .map_err(|_| ())?;
+            }
             (10, Some("input")) => {
                 let window = event["window"].as_u64().ok_or(())?;
                 session.command(json!({"op":"replace_children_html","window":window,"element":"content","html":"<input id='editor' value='replacement'>"})).map_err(|_|())?;
@@ -1414,4 +1436,169 @@ fn environment_and_scale_changes_restyle_without_losing_input_state() {
         cmd(json!({"op":"query","window":id,"selector":":focus"})).unwrap()["elements"],
         json!(["name"])
     );
+}
+
+fn key(name: &str) -> crate::document::Input {
+    crate::document::Input::Key {
+        key: name.into(),
+        code: name.into(),
+        pressed: true,
+        repeat: false,
+        shift: false,
+        ctrl: false,
+        alt: false,
+        meta: false,
+    }
+}
+
+#[test]
+fn stop_inside_an_input_callback_ends_delivery_and_the_session_cleanly() {
+    let h = Harness::new(20);
+    let window = h
+        .session
+        .command(json!({"op":"open","html":"<input id='editor'>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    h.session
+        .command(json!({"op":"focus","window":window,"element":"editor"}))
+        .unwrap();
+    h.session.input(window, key("a")).unwrap();
+    // The stop requested inside keydown ends delivery: the same key's text and later input are refused.
+    assert!(h
+        .session
+        .input(window, crate::document::Input::Text("a".into()))
+        .is_err());
+    let delivered = h.events().iter().filter(|e| e["type"] == "keydown").count();
+    assert_eq!(delivered, 1);
+    assert!(h.events().iter().all(|e| e["type"] != "input"));
+    h.session.run().unwrap();
+    assert_eq!(h.events().last().unwrap()["type"], "stopped");
+}
+
+#[test]
+fn closing_a_window_from_its_own_callback_ends_its_delivery_at_once() {
+    let h = Harness::new(21);
+    let window = h
+        .session
+        .command(json!({"op":"open","html":"<input id='editor'>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    h.session
+        .command(json!({"op":"focus","window":window,"element":"editor"}))
+        .unwrap();
+    let other = h
+        .session
+        .command(json!({"op":"open","html":"<input id='editor' value='other'>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    h.session.input(window, key("a")).unwrap();
+    // The close requested inside keydown ends delivery at once: the rest of that key's events and
+    // later input for the window are not delivered.
+    assert_eq!(
+        h.events().iter().filter(|e| e["type"] == "keydown").count(),
+        1
+    );
+    assert!(h
+        .session
+        .input(window, crate::document::Input::Text("x".into()))
+        .is_err());
+    assert!(h.events().iter().all(|e| e["type"] != "input"));
+    // The other window is unaffected.
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_value","window":other,"element":"editor"}))
+            .unwrap()["value"],
+        "other"
+    );
+    h.session
+        .command(json!({"op":"close","window":other}))
+        .unwrap();
+    h.session.run().unwrap();
+    let events = h.events();
+    let closed: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "closed")
+        .map(|e| e["window"].as_u64().unwrap())
+        .collect();
+    assert_eq!(closed, vec![window, other], "each window closes once");
+    assert_eq!(events.last().unwrap()["type"], "stopped");
+}
+
+#[test]
+fn removing_the_focused_node_or_an_open_modal_in_a_callback_leaves_no_stale_targets() {
+    let h = Harness::new(22);
+    let window = h.session.command(json!({"op":"open","html":"<input id='editor'><button id='after'>After</button><dialog id='dlg'><button id='inside'>In</button></dialog>"})).unwrap()["window"].as_u64().unwrap();
+    h.session
+        .command(json!({"op":"focus","window":window,"element":"editor"}))
+        .unwrap();
+    let before = h.session.accessibility_tree(window).unwrap();
+    let editor_key = before
+        .nodes
+        .values()
+        .find(|n| n.html_id.as_deref() == Some("editor"))
+        .unwrap()
+        .id;
+    h.session.input(window, key("a")).unwrap();
+    h.session
+        .input(window, crate::document::Input::Text("a".into()))
+        .unwrap();
+    assert!(!h
+        .session
+        .command(json!({"op":"has_element","window":window,"element":"editor"}))
+        .unwrap()["exists"]
+        .as_bool()
+        .unwrap());
+    // No input reached the removed node; focus left it; the accessibility tree forgot it.
+    assert!(h
+        .events()
+        .iter()
+        .all(|e| !(e["type"] == "input" && e["element"] == "editor")));
+    assert_eq!(
+        h.session
+            .command(json!({"op":"query","window":window,"selector":":focus"}))
+            .unwrap()["elements"],
+        json!([])
+    );
+    let tree = h.session.accessibility_tree(window).unwrap();
+    assert!(tree.get(editor_key).is_none() && tree.focus != editor_key);
+    // An assistive action aimed at the removed node is a stale-handle error, not a panic or a
+    // different node.
+    let stale = ui4me_renderer::a11y::A11yRequest {
+        target: ui4me_renderer::a11y::node_of_key(editor_key),
+        kind: ui4me_renderer::a11y::A11yRequestKind::Click,
+    };
+    let errors_before = h.events().iter().filter(|e| e["type"] == "error").count();
+    h.session.accessibility_request(window, &stale);
+    assert!(h.events().iter().filter(|e| e["type"] == "error").count() > errors_before);
+    // A modal removed from its own cancel handler: the document is interactive again.
+    h.session
+        .command(json!({"op":"show_dialog","window":window,"element":"dlg","modal":true}))
+        .unwrap();
+    h.session.input(window, key("Escape")).unwrap();
+    assert!(h.events().iter().any(|e| e["type"] == "cancel"));
+    assert!(!h
+        .session
+        .command(json!({"op":"has_element","window":window,"element":"dlg"}))
+        .unwrap()["exists"]
+        .as_bool()
+        .unwrap());
+    h.session
+        .command(json!({"op":"focus","window":window,"element":"after"}))
+        .unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"query","window":window,"selector":":focus"}))
+            .unwrap()["elements"],
+        json!(["after"])
+    );
+    assert!(h
+        .session
+        .accessibility_tree(window)
+        .unwrap()
+        .nodes
+        .values()
+        .any(|n| n.html_id.as_deref() == Some("after")));
 }

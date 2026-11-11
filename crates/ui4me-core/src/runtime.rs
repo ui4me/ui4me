@@ -536,7 +536,8 @@ impl Session {
     }
     fn emit_document_events(&self, window: u64, events: Vec<Value>) {
         for mut event in events {
-            if self.should_stop() || self.window_info(window).is_none() {
+            // A stop, or a close requested by an earlier callback, ends delivery for the window.
+            if self.should_stop() || self.window_info(window).is_none_or(|i| i.closing) {
                 break;
             }
             if !self
@@ -672,6 +673,9 @@ impl Session {
     pub fn input(&self, id: u64, input: Input) -> Result<()> {
         self.require_active()?;
         let events = self.with_window(id, |w| {
+            if w.info.closing {
+                return Err(Error::stale("the window is closing"));
+            }
             let events = w.document.handle_input(input)?;
             w.info.dirty |= w.document.needs_repaint();
             Ok(events)

@@ -120,8 +120,14 @@ def main() -> int:
         check("A08_button_default_action_clicks", acted, json.loads(clicks.read_text()) if acted else None)
 
         # Text (0.5 F0504): read, navigate and edit fields like a screen reader.
-        def node_named(role_names, name):
-            return next((n["node"] for n in walk(target[0]) if n["role"] in role_names and n["name"] == name), None)
+        def find_app():
+            desktop = Atspi.get_desktop(0)
+            apps = [desktop.get_child_at_index(i) for i in range(desktop.get_child_count())]
+            return next((a for a in apps if a is not None and titled(a)), None)
+
+        def node_named(role_names, name, app_node=None):
+            root = app_node or target[0]
+            return next((n["node"] for n in walk(root) if n["role"] in role_names and n["name"] == name), None)
         def poll(fn, want, seconds=5.0):
             got = None
             deadline = time.monotonic() + seconds
@@ -163,6 +169,35 @@ def main() -> int:
             return json.loads(clicks.read_text()).get("values", {}).get("name") if clicks.exists() else None
         check("A15_editable_set_text_contents", bool(replaced) and poll(value, "Grace") == "Grace",
               {"returned": replaced, "app_value": value(), "at_text": poll(lambda: Atspi.Text.get_text(text, 0, -1), "Grace")})
+
+        # Reconnect (0.5 F0505): the screen reader goes away and comes back; the app rebuilds the
+        # tree from scratch (no stale ids) and actions work again.
+        def set_enabled(on):
+            subprocess.run(["gdbus", "call", "--session", "--dest", "org.a11y.Bus", "--object-path", "/org/a11y/bus",
+                            "--method", "org.freedesktop.DBus.Properties.Set", "org.a11y.Status", "IsEnabled",
+                            "<true>" if on else "<false>"], check=False, capture_output=True)
+        set_enabled(False)
+        time.sleep(1.0)
+        set_enabled(True)
+        clicks_before = json.loads(clicks.read_text())["clicks"] if clicks.exists() else 0
+        again = None
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and again is None:
+            try:
+                fresh_app = find_app()
+                again = node_named(("button", "push button"), "Press me", fresh_app) if fresh_app else None
+            except Exception:
+                again = None
+            time.sleep(0.3)
+        reread = node_named(("entry", "text"), "Your name", fresh_app) if again else None
+        if again is not None:
+            act = again.get_action_iface()
+            if act is not None and act.get_n_actions() > 0:
+                act.do_action(0)
+        clicks_after = poll(lambda: json.loads(clicks.read_text())["clicks"], clicks_before + 1)
+        check("A16_reconnect_rebuilds_tree", again is not None and reread is not None
+              and Atspi.Text.get_text(reread.get_text_iface(), 0, -1) == "Grace" and clicks_after == clicks_before + 1,
+              {"button": again is not None, "clicks": [clicks_before, clicks_after]})
     finally:
         app.terminate()
         try:

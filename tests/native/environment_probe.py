@@ -121,6 +121,10 @@ def main() -> int:
         app.run()
     if sys.platform == "win32" and state["restore"] is not None:
         windows_theme(state["restore"])
+    if sys.platform != "win32":
+        # KWin stores output settings in the user's kwinoutputconfig.json (also for the virtual
+        # output): put the scale back so later runs start from 1.
+        subprocess.run(["kscreen-doctor", "output.Virtual-0.scale.1"], check=False, capture_output=True, timeout=20)
     after = state.get("after", {})
     for c in cases:
         if c["id"] == "E02_input_state_kept":
