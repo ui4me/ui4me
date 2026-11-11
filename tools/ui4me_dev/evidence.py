@@ -4,6 +4,7 @@ import html
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .common import ROOT, DevError, find_artifact, load_manifest, now, output_path, read_json, revision, sha256, source_id, write_json
@@ -122,7 +123,7 @@ def evidence_errors(path: Path, data: dict, case: dict) -> list[str]:
     return errors
 
 
-def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | None = None, *, save: bool = True) -> dict:
+def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | None = None, *, save: bool = True, ci_only: bool = False) -> dict:
     manifest_path = manifest_path.resolve()
     manifest = load_manifest(manifest_path)
     errors = []
@@ -146,6 +147,28 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
     except (OSError, subprocess.TimeoutExpired) as error:
         errors.append(f"Cannot verify Git provenance: {error}")
     values = [(p, d) for p, d in receipts() if d.get("phase", "candidate") == "candidate"]
+    if ci_only:
+        if manifest_path != (ROOT / "dist/release/manifest.json").resolve():
+            errors.append("CI qualification requires dist/release/manifest.json")
+        else:
+            try:
+                check = subprocess.run([sys.executable, str(ROOT / ".github/scripts/check-ci-evidence.py")], cwd=ROOT, capture_output=True, text=True, timeout=120)
+                if check.returncode:
+                    errors.append("CI evidence check failed: " + (check.stderr or check.stdout).strip())
+            except (OSError, subprocess.TimeoutExpired) as error:
+                errors.append(f"Cannot verify CI evidence: {error}")
+        if not reviewer or not review_url or not review_url.startswith("https://github.com/"):
+            errors.append("Release actor and HTTPS GitHub run URL required")
+        references = [{"path": p.relative_to(ROOT).as_posix(), "sha256": sha256(p)} for p, d in values
+                      if d.get("source_id") == manifest["source_id"] and d.get("git_revision") == manifest["git_revision"]
+                      and d.get("suite") in {"unit", "installed", "upgrade"}]
+        result = {"schema": 1, "status": "qualified" if not errors else "blocked", "policy": "ci",
+                  "source_id": manifest["source_id"], "manifest_sha256": sha256(manifest_path),
+                  "reviewer": reviewer, "review_url": review_url, "recorded_at": now(),
+                  "native_desktop_acceptance": "not_run", "evidence": sorted(references, key=lambda item: item["path"]), "errors": errors}
+        if save:
+            write_json(manifest_path.parent / "qualification.json", result)
+        return result
     rows = observation_rows(values, manifest["source_id"], sha256(manifest_path))
     references = {}
     upgrade_failures, upgrade_paths = upgrade_errors(values, manifest, sha256(manifest_path))
@@ -199,7 +222,7 @@ def require_qualified(manifest_path: Path) -> dict:
     if not saved_path.is_file():
         raise DevError("No qualification record. Run qualify after collecting the complete matrix.")
     saved = read_json(saved_path)
-    current = qualify(manifest_path, saved.get("reviewer"), saved.get("review_url"), save=False)
+    current = qualify(manifest_path, saved.get("reviewer"), saved.get("review_url"), save=False, ci_only=saved.get("policy") == "ci")
     if saved.get("status") != "qualified" or current["status"] != "qualified" or saved.get("manifest_sha256") != current["manifest_sha256"]:
         raise DevError("Release qualification absent, stale or incomplete: " + "; ".join(current["errors"][:8]))
     if saved.get("evidence") != current["evidence"]:

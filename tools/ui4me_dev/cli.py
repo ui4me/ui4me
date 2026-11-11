@@ -45,6 +45,7 @@ def parser() -> argparse.ArgumentParser:
     qualify.add_argument("--manifest", type=Path, required=True)
     qualify.add_argument("--reviewer", required=True)
     qualify.add_argument("--review-url", required=True)
+    qualify.add_argument("--ci-only", action="store_true", help="Qualify the automated CI matrix; native desktop acceptance remains not_run")
     for name in ("publish", "verify"):
         item = subs.add_parser(name)
         item.add_argument("--manifest", type=Path, required=True)
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "attest":
             evidence.attest(args.run, args.scenario, args.status, args.notes, args.operator, args.screenshot, args.capture_kind)
         elif args.command == "qualify":
-            result = evidence.qualify(args.manifest, args.reviewer, args.review_url)
+            result = evidence.qualify(args.manifest, args.reviewer, args.review_url, ci_only=args.ci_only)
             print(json.dumps(result, indent=2))
             return 0 if result["status"] == "qualified" else 1
         elif args.command == "publish":

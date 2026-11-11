@@ -372,12 +372,15 @@ PowerShell/Python versions and ordinary desktop user. A framebuffer PNG is not
 a desktop capture. Basic IME plumbing is implemented, but do not claim full IME
 support from synthetic composition events.
 
-Automated results, native observations and human review are distinct. `attest`
-records an observed scenario; `qualify` validates the complete matrix against
-the exact artifact manifest and review. Missing/zero-test suites, failed latest
-attempts, stale source/artifacts and absent upgrades cannot qualify. CI and the
-release validator use shared proof validation. PowerShell 7.4 floor checks are
-part of CI; rerun them for this candidate.
+Automated results and native observations are distinct. `attest` records an
+observed scenario; the default `qualify` policy requires all native scenarios.
+For an explicitly requested release, the publication workflow uses `qualify
+--ci-only`: it checks the complete automated CI matrix for the exact commit and
+artifacts, and records full native desktop acceptance as `not_run`. It does not
+claim that missing desktop observations passed. Missing/zero-test suites, failed
+latest attempts, stale source/artifacts and absent upgrades still block release.
+The workflow obtains its candidate from a successful CI run on the default
+branch. PowerShell 7.4 floor checks remain part of that matrix.
 
 Publication remains explicit in the existing manual workflows. Source changes
 after a candidate build invalidate its receipts. Rebuild/repackage the affected

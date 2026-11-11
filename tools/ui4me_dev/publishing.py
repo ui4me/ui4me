@@ -48,7 +48,8 @@ def publish(manifest_path: Path, registry: str, execute: bool) -> None:
         note = "PSGALLERY_API_KEY is read from the environment by the publisher, never passed in command arguments."
     elif registry == "github":
         notes = folder / "release-notes.md"
-        notes.write_text(f"# ui4me {manifest['version']}\n\nSource `{manifest['source_id']}`.\n\nSee the supplied manifest and qualification record for exact artifact identity and acceptance.\n", encoding="utf-8")
+        native_note = "Full native desktop acceptance was not run under the CI-only release policy.\n\n" if qualification.get("policy") == "ci" else ""
+        notes.write_text(f"# ui4me {manifest['version']}\n\nSource `{manifest['source_id']}`.\n\n{native_note}See the supplied manifest and qualification record for exact artifact identity and acceptance.\n", encoding="utf-8")
         assets = [str(manifest_path.parent / a["path"]) for a in manifest["artifacts"]]
         assets += [str(manifest_path), str(manifest_path.parent / "qualification.json")]
         evidence_zip = folder / f"ui4me-{version()}-evidence.zip"

@@ -62,6 +62,36 @@ class SourceIsolationTests(unittest.TestCase):
 
 
 class QualificationPortabilityTests(unittest.TestCase):
+    def test_ci_only_keeps_native_acceptance_distinct(self):
+        manifest = {"source_id": "fixture-source", "git_revision": "fixture-revision",
+                    "platform": "combined", "profile": "release", "artifacts": []}
+        with patch.object(evidence, "load_manifest", return_value=manifest), \
+             patch.object(evidence, "require_locks"), \
+             patch.object(evidence, "revision", return_value="fixture-revision"), \
+             patch.object(evidence, "receipts", return_value=[]), \
+             patch.object(evidence, "sha256", return_value="fixture-hash"), \
+             patch.object(evidence.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")):
+            result = evidence.qualify(common.ROOT / "dist/release/manifest.json", "ci",
+                                      "https://github.com/ui4me/ui4me/actions/runs/1", save=False, ci_only=True)
+        self.assertEqual(result["status"], "qualified")
+        self.assertEqual(result["native_desktop_acceptance"], "not_run")
+
+    def test_ci_only_blocks_failed_matrix(self):
+        manifest = {"source_id": "fixture-source", "git_revision": "fixture-revision",
+                    "platform": "combined", "profile": "release", "artifacts": []}
+        def command(args, **kwargs):
+            return SimpleNamespace(returncode=1 if str(args[-1]).endswith("check-ci-evidence.py") else 0,
+                                   stdout="", stderr="matrix failed")
+        with patch.object(evidence, "load_manifest", return_value=manifest), \
+             patch.object(evidence, "require_locks"), \
+             patch.object(evidence, "revision", return_value="fixture-revision"), \
+             patch.object(evidence, "receipts", return_value=[]), \
+             patch.object(evidence, "sha256", return_value="fixture-hash"), \
+             patch.object(evidence.subprocess, "run", side_effect=command):
+            result = evidence.qualify(common.ROOT / "dist/release/manifest.json", "ci",
+                                      "https://github.com/ui4me/ui4me/actions/runs/1", save=False, ci_only=True)
+        self.assertEqual(result["status"], "blocked")
+
     def test_saved_references_are_identical_on_linux_and_windows(self):
         # Exercise all three qualification reference paths: acceptance, unit
         # and installed C SDK. Incomplete fixtures stay blocked and are not
