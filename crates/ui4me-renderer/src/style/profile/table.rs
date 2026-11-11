@@ -117,7 +117,7 @@ bool_prefs! {
     "layout.css.zoom.enabled" = false,
     "layout.css.grid-template-subgrid-value.enabled" = true, // 1.11.0: On (CSS Grid 2 subgrid; 015 GRID-1, lane L-GRID; Taffy P-008-4)
     "layout.css.flexbox-balance.enabled" = false,
-    "layout.css.light-dark.images.enabled" = false,
+    "layout.css.light-dark.images.enabled" = true, // 1.26.0: On (F0909: light-dark(<image>, <image>) computes to the image of the used colour scheme)
     "layout.css.cross-fade.enabled" = false,
     "layout.css.random.enabled" = false,
     "layout.css.tree-counting-functions.enabled" = false,
@@ -232,7 +232,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.function.cross-fade", Off),
     ("css.function.fit-content", On),
     ("css.function.light-dark", On),
-    ("css.function.light-dark-image", Off),
+    ("css.function.light-dark-image", On), // 1.26.0: F0909
     ("css.function.oklch", On),
     ("css.function.progress", On),
     ("css.function.random", Off),
@@ -245,7 +245,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.animation", On),   // 1.24.0: F0901 (animation-timeline stays Off)
     ("css.property.animation-timeline", Off),
     ("css.property.appearance", On),
-    ("css.property.backdrop-filter", Filtered),
+    ("css.property.backdrop-filter", On), // 1.26.0: F0909 (painted; only the url() forms stay reported as css.value.filter-url)
     ("css.property.baseline-source", Filtered),
     ("css.property.break-after", On), // 1.9.0: multicolumn and column breaks end to end (015 MC-1, FRAG-2c, lane L-MC)
     ("css.property.break-before", On), // 1.9.0: multicolumn and column breaks end to end (015 MC-1, FRAG-2c, lane L-MC)
@@ -367,8 +367,6 @@ pub fn value_feature(name: &str, value: &str) -> Option<FeatureId> {
         }
     } else if v.contains("cross-fade(") {
         "css.function.cross-fade"
-    } else if v.contains("light-dark-image(") {
-        "css.function.light-dark-image"
     } else if v
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
         .any(|w| w == "random")
@@ -649,7 +647,10 @@ const MECHANISMS: &[(&str, &str)] = &[
     ),
     // engine-default rows (section 4: the engine parses them; the pref list names no switch)
     ("css.function.cross-fade", "default"),
-    ("css.function.light-dark-image", "default"),
+    (
+        "css.function.light-dark-image",
+        "pref layout.css.light-dark.images.enabled (On since 1.26.0: F0909)",
+    ),
     ("css.function.random", "default"),
     ("css.value.background-clip-border-area", "default"),
     (
@@ -672,7 +673,7 @@ const MECHANISMS: &[(&str, &str)] = &[
     // filter rows (section 6; profile/filter.rs, T045)
     (
         "css.property.backdrop-filter",
-        "filter (URL filter functions are excluded and reported as css.value.filter-url)",
+        "pref layout.css.backdrop-filter.enabled (On since 1.26.0: F0909; URL filter functions are excluded and reported as css.value.filter-url)",
     ),
     ("css.property.baseline-source", "filter"),
     ("css.value.clip-path-url", "filter"),

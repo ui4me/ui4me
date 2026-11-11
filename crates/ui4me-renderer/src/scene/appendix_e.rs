@@ -516,6 +516,31 @@ impl Builder {
         Some(r)
     }
 
+    /// The hit region of a box's own area: its border box, cut by the border radius (1.26.0: the
+    /// corners outside the curve pass the pointer through, as the painted background does).
+    fn box_region(&self, b: &PaintBox, hit: HitRegion) -> Option<HitRegion> {
+        let mut r = self.clip_region(hit)?;
+        if b.extras.hit_rect.is_none()
+            && b.extras.fragment_clip.is_none()
+            && b.extras.radii.iter().any(|&(x, y)| x > 0.0 && y > 0.0)
+        {
+            let rect = rect_of(&b.border_box);
+            let rr = RoundedRect {
+                rect,
+                radii: fit_radii(&rect, b.extras.radii),
+            };
+            if !rr.is_square() {
+                let mut clips = (*r.clips).clone();
+                clips.push(crate::scene::hit_index::HitClip {
+                    shape: ClipShape::RoundedRect(rr).into(),
+                    inverse: inverse_hit_transform(self.hit_transform),
+                });
+                r.clips = std::sync::Arc::new(clips);
+            }
+        }
+        Some(r)
+    }
+
     /// Overflow clips descendants in the coordinate space of the clipping box.
     fn narrow_hit_clip(
         &mut self,
@@ -622,7 +647,7 @@ impl Builder {
         self.paint_box_decor(b, &mut bg, PaintPhase::Background, scope);
         ctx.bg = bg;
         if !b.extras.hit_transparent
-            && let Some(r) = self.clip_region(region(&hit_rect(b), b.node, HitPart::Content, 0))
+            && let Some(r) = self.box_region(b, region(&hit_rect(b), b.node, HitPart::Content, 0))
         {
             ctx.regions.bg.push((r, false));
         }
@@ -815,7 +840,8 @@ impl Builder {
         } else {
             self.paint_box_decor(c, &mut ctx.block, PaintPhase::BlockBackground, scope);
             if !c.extras.hit_transparent
-                && let Some(r) = self.clip_region(region(&hit_rect(c), c.node, HitPart::Content, 0))
+                && let Some(r) =
+                    self.box_region(c, region(&hit_rect(c), c.node, HitPart::Content, 0))
             {
                 ctx.regions.block.push((r, false));
             }
