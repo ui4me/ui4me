@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.5.0 is a local candidate, not published** (input, international text and
+**Core 0.5.0 is a local candidate that passed its gate on both hosts, not published** (candidate `0b79117`; input, international text and
 accessibility hardening; roadmap [`core-roadmap/versions/0_5.md`](core-roadmap/versions/0_5.md),
 ledger [`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)). It qualifies real
 keyboard layouts, dead keys, AltGr and IME composition on KDE/KWin Wayland and
@@ -16,7 +16,7 @@ capability report and live media-environment changes, and fixes the defects thes
 journeys found (IME double commit on a focus move, a stale preedit after a host write,
 canceled compositions, RTL click mapping, wrapped-line Home, presses surviving window
 focus loss, stale hover after removal, events after a requested close).
-Publication needs a separate authorization.
+Gate (installed packages, automated input): Linux KDE/KWin Wayland and Windows Server 2022 — installed C/Python/PowerShell consumers, chat, file utility, dialogs, window, input/IME, accessibility (AT-SPI/UIA) and environment journeys all passed; see the ledger. Publication needs a separate authorization.
 
 **Core 0.4.0 is released (2026-11-11):** [GitHub v0.4.0](https://github.com/ui4me/ui4me/releases/tag/v0.4.0), PyPI `ui4me==0.4.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.4.0`, built by the release workflow from `8138e78`. Clean public installs were verified on Linux (Python and PowerShell) and on Windows (Python). Core 0.3
 (programmable document, scroll and selection) and Core 0.4 (HTML controls, native

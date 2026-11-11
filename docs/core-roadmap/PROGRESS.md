@@ -2,14 +2,14 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**Current milestone:** 0.5 (`versions/0_5.md`). **Status:** all eight items implemented; 0.5.0 candidate gate in progress (see below). Not published.
+**Current milestone:** 0.5 — **GO (development gate), candidate 0.5.0 @ `0b79117`, not published.** Next: 0.6 (`versions/0_6.md`).
 
 ## Version ledger
 
 | Version | Status | Source SHA | Linux GUI | Windows GUI | C/Python/PowerShell | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.4 | OWNER-REPORTED RELEASED | `8138e78` release tag | repository-reported PASS | repository-reported PASS | repository-reported release jobs | Do not requalify unless relevant change/new defect |
-| 0.5 | CANDIDATE (gate in progress) | see gate entry | dev-build journeys PASS | dev-build journeys PASS | unit PASS; installed NOT_RUN yet | 8/8 items implemented |
+| 0.5 | GO (candidate 0.5.0, not published) | `0b79117`, source sha256:ce114407… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 7/7, PowerShell 7/7 both hosts) | 8/8 items; see gate entry |
 | 0.6 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.7 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.8 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
@@ -34,6 +34,7 @@ When a new session starts, choose the earliest release not marked GO, then first
 2026-11-11 | 0.5 | F0506 live environment | cdeceda | `ui4me-renderer/src/document.rs`, `ui4me-core/src/{native,protocol,runtime,tests}.rs`, bindings, `tests/native/environment_probe.py` | core test; Python 35/35 + PowerShell 32/32 unit; Linux probe 3/3 (OS output scale 1→2 via kscreen-doctor under a focused edit) | PASS (Linux) / Windows theme flip in gate | OS theme changes only on Windows (winit 0.30); contrast/locale not evaluated; system font changes not live (reported) | F0507
 2026-11-11 | 0.5 | F0507 focus/pointer matrix | 1e81621 (Sonnet worker) | `ui4me-renderer/src/{interaction/pointer.rs,interaction/sequences.rs,document.rs,document/focus_pointer_tests.rs}` | renderer 12 new tests (261 total) | PASS | **Fixed:** a press survived window focus loss and clicked on the next release; hover/active/press state kept pointing at removed nodes | F0508
 2026-11-11 | 0.5 | F0508 capability report | bbeb3a9 | `ui4me-core/src/{protocol,runtime,native,tests}.rs`, bindings + tests, `tests/native/window_probe.py` | core; unit Python/PowerShell; KWin window probe 10/10 (report agrees with Wayland rules) | PASS (Linux) / Windows in gate | `denied` is defined but no current operation produces it | gate
+2026-11-11 | 0.5 | **0.5.0 candidate gate** | `0b79117` (source sha256:ce114407b76f…; the later ledger commit changes docs only) | release builds on each host; Linux wheel 2cb5e6a1…, module stage 32936818…; Windows wheel 668e69a9…, module stage ad9d0de3… | **Linux x64** (Debian 13, private `kwin_wayland --virtual`, KWin fake_input, installed wheel/module): installed C 1/1, Python 7/7 (F01 F09 F11–F15), PowerShell 7/7; chat 10/10 + 10/10, file utility 10/10 + 10/10, portal dialogs 5/5, window probe 10/10, AT-SPI 16/16, input (layouts + scripted IME) 17/17 + 17/17, environment 3/3. **Windows Server 2022 x64** (interactive `ui4me_test` console session, SendInput, installed wheel/module): installed C 1/1, Python 7/7, PowerShell 7/7; chat 10/10 + 10/10, file utility 10/10 + 10/10, window probe 10/10, UIA 17/17 + native COM 2/2, input (cz/us-intl/de, Microsoft Japanese/Korean IMEs) 14/14 + 14/14, environment (OS light/dark flip under a focused edit) 3/3 | PASS | All input automated (fake_input / SendInput / scripted IM / AT clients), not a person. Linux local wheels tag manylinux_2_39 (release CI enforces 2_35). The first Linux a11y gate run failed to start because the isolated venv lacked the system `gi` module (harness); rerun with a system-site venv and the same wheel passed 16/16. Test-user input languages restored to en-US. Evidence: `build/evidence-0.5/` (gitignored). Publication not performed; needs separate authorization | 0.6
 
 ## Outstanding defects / intentional exclusions
 
