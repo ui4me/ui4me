@@ -40,6 +40,7 @@ run file-input python3 "$K/file_input_journey.py" --out "$OUT/file-input" -- "$P
 plain services "$G/venv-sys/bin/python" "$N/services_probe.py" --out "$OUT/services/services.json"
 plain animation "$PY" "$N/animation_probe.py" --out "$OUT/animation/animation.json"
 plain print "$PY" "$N/print_probe.py" --out "$OUT/print/print.json"
+plain orca "$PY" "$N/orca_journey.py" --out "$OUT/orca/orca.json"
 plain capabilities "$PY" "$N/capabilities_probe.py" --kde-services --out "$OUT/capabilities/caps.json"
 if [ -f "$N/data_journey.py" ]; then plain data-app "$PY" "$N/data_journey.py" --out "$OUT/data-app/data.json"; fi
 if [ -f "$N/lua_probe.lua" ] && [ -x "$R/build/luajit/src/luajit" ]; then

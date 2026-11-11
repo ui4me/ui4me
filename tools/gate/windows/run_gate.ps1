@@ -11,7 +11,7 @@ Remove-Item Env:PYTHONPATH, Env:UI4ME_NATIVE_LIB -ErrorAction SilentlyContinue
 $env:UI4ME_INSTALLED = '1'
 "user=$env:USERNAME session=$((Get-Process -Id $PID).SessionId) $(Get-Date -Format o)" | Set-Content "$out\context.txt"
 & $py -c "import ui4me, sys; print(ui4me.__file__, ui4me.__version__)" *> "$out\python-identity.txt"
-$only = if (Test-Path "$root\only.txt") { (Get-Content "$root\only.txt").Trim() } else { 'chat,files,window,input,uia,env,fileinput,services,animation,print,capabilities,data,lua' }
+$only = if (Test-Path "$root\only.txt") { (Get-Content "$root\only.txt").Trim() } else { 'chat,files,window,input,uia,env,fileinput,services,animation,print,capabilities,data,lua,nvda' }
 function Ps([string] $script) { "param([string]`$A, [string]`$B, [string]`$C, [string]`$D) Import-Module '$root\mod\Ui4me\Ui4me.psd1' -ErrorAction Stop; & '$script' @args" }
 if ($only -match 'chat') {
   & $pwsh -NoLogo -NoProfile -Command "& '$root\chat_journey.ps1' -Out '$out\chat-python' -Exe '$py' -Arguments @('-I', '$root\examples\python\chat_log.py', '--state', '{state}')" *> "$out\chat-python.log"
@@ -67,5 +67,10 @@ if (($only -match 'lua') -and (Test-Path "$root\lua_probe.lua") -and (Test-Path 
   $env:LUA_PATH = "$root\lua\?.lua;;"
   & "$root\luajit\luajit.exe" "$root\lua_probe.lua" --out "$out\lua\lua.json" *> "$out\lua\command.log"
   Remove-Item Env:UI4ME_NATIVE_LIB, Env:LUA_PATH -ErrorAction SilentlyContinue
+}
+$nvda = 'C:\Users\Public\ui4me-gui\nvda\portable\nvda.exe'  # a portable NVDA 2024.4.2 (nvaccess.org)
+if (($only -match 'nvda') -and (Test-Path $nvda)) {
+  New-Item -ItemType Directory -Force "$out\nvda" | Out-Null
+  & $py -I "$root\nvda_journey.py" --nvda $nvda --out "$out\nvda\nvda.json" *> "$out\nvda\command.log"
 }
 'done' | Set-Content "$out\all-done.txt"

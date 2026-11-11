@@ -643,7 +643,10 @@ impl<'a> Builder<'a> {
         let description = self.description(e, &name);
         let bounds = self.info.bounds(n);
         let mut selection = None;
-        if is_text_field(role)
+        // A number input is typed into like a text field: it carries the same text runs (Orca reads
+        // a spin button's text, not only its numeric value; 1.0 F1108).
+        let typed_spin = role == Role::SpinButton && e.local_name() == "input";
+        if (is_text_field(role) || typed_spin)
             && let Some(v) = &value
         {
             // The text-run children AT-SPI Text/EditableText and UIA TextPattern read the text from:
