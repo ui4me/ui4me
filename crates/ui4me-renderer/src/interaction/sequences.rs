@@ -405,6 +405,14 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
         // The window lost the focus: a composition in progress ends with what was composed (the
         // platform has already committed or cleared its preedit, 011 Clarification Q3).
         InputKind::WindowFocus { focused: false } => {
+            // A press or drag in progress ends: the matching release will not arrive here.
+            eng(host, doc, |ix, d| {
+                ix.set_active(d, None);
+                if let Ok(s) = ix.doc_state(doc) {
+                    s.pointer = PointerState::default();
+                }
+            })?;
+            crate::interaction::editing::on_pointer_up(host, doc);
             crate::interaction::editing::ime::finish(host, doc, false, item.modifiers, origin, ts)?
         }
         // Window focus gained and modifier sync have no default action.

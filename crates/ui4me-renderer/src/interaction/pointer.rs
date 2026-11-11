@@ -117,6 +117,61 @@ impl crate::interaction::dispatch::InteractionRuntime {
         }
     }
 
+    /// A removed or disconnected hover/active/press target must not stay referenced (no stale
+    /// `:hover` on its former ancestors, no press that can later click): clear those states. The
+    /// next pointer move re-hits.
+    pub(crate) fn drop_dead_pointer_targets(&mut self, d: &mut Document) {
+        let doc = d.id();
+        let Some(s) = self.docs.get(&doc) else { return };
+        let dead = |n: Option<NodeId>| n.is_some_and(|n| !d.arena().is_connected(n));
+        let (hover, active, press) = (
+            dead(s.hover.hover),
+            dead(s.hover.active),
+            dead(s.pointer.press_target),
+        );
+        if !(hover || active || press) {
+            return;
+        }
+        let live: Vec<NodeId> = d
+            .arena()
+            .iter()
+            .map(|n| n.id())
+            .filter(|&n| d.arena().is_connected(n) && is_element(d, n))
+            .collect();
+        let mask = if hover {
+            UiFlags::HOVER
+        } else {
+            UiFlags::empty()
+        } | if active {
+            UiFlags::ACTIVE
+        } else {
+            UiFlags::empty()
+        };
+        if let Some(s) = self.docs.get(&doc)
+            && let Ok(mut w) = d.ui_state_writer(&s.ui_key)
+        {
+            for n in live {
+                if let Ok(f) = w.flags(n)
+                    && f.intersects(mask)
+                {
+                    let _ = w.set_flags(n, f & !mask);
+                }
+            }
+        }
+        if let Some(s) = self.docs.get_mut(&doc) {
+            if hover {
+                s.hover.hover = None;
+            }
+            if active {
+                s.hover.active = None;
+            }
+            if press {
+                s.pointer = Default::default();
+            }
+        }
+        self.note_doc(doc);
+    }
+
     pub(crate) fn note_modality(&mut self, doc: DocumentId, keyboard: bool) {
         if let Some(s) = self.docs.get_mut(&doc) {
             s.hover.keyboard_modality = keyboard;

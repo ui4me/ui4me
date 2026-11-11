@@ -1146,6 +1146,13 @@ impl Document {
         let id = self.id();
         self.interaction.note_doc(id);
         dispatch::operation(self, |_| {});
+        {
+            let interaction = &mut self.interaction;
+            let _ = self.pipeline.mutate(|document| {
+                interaction.drop_dead_pointer_targets(document);
+                Ok(())
+            });
+        }
         if subtree {
             let d = self.pipeline.document();
             let live = d
@@ -2370,6 +2377,8 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 mod a11y_text_tests;
 #[cfg(test)]
 mod bidi_tests;
+#[cfg(test)]
+mod focus_pointer_tests;
 mod selection;
 #[cfg(test)]
 mod tests;
