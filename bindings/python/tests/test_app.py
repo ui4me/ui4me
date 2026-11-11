@@ -238,6 +238,19 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 window.set_default_action("f", "input")
 
+    def test_scroll_geometry_and_follow(self):
+        with self.app() as app:
+            window = app.open('<style>body{margin:0}.r{height:30px}</style><div id="log" style="height:100px;overflow:auto">'
+                              + '<div id="r0" class="r"></div>' + '<div class="r"></div>' * 4 + '</div>', width=400, height=300)
+            self.assertEqual(window.get_scroll("log")["max_y"], 50.0)
+            self.assertEqual(window.scroll_to("log", y=1000)["y"], 50.0)
+            self.assertEqual(window.scroll_by("log", dy=-20)["y"], 30.0)
+            window.scroll_into_view("r0", block="start")
+            self.assertEqual(window.get_rect("r0"), {"x": 0.0, "y": 0.0, "width": 400.0, "height": 30.0})
+            window.set_scroll_follow("log")
+            window.append_html("log", '<div class="r"></div>')
+            self.assertEqual(window.get_scroll("log")["y"], 80.0)
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

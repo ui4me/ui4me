@@ -819,3 +819,88 @@ fn default_action_rule_cancels_enter_but_not_shift_enter() {
     cmd(json!({"op":"set_default_action","window":id,"element":"f","event":"keydown"})).unwrap();
     cmd(json!({"op":"replace_children_html","window":id,"element":"f","html":"<textarea id='msg'></textarea>"})).unwrap();
 }
+
+#[test]
+fn scroll_geometry_into_view_and_follow_end() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>body{margin:0}.r{height:30px}</style><div id='log' style='height:100px;overflow:auto'><div id='r0' class='r'></div><div class='r'></div><div class='r'></div><div class='r'></div><div id='r4' class='r'></div></div><div id='full' style='height:20px'></div>"})).unwrap()["window"].as_u64().unwrap();
+    let scroll = || cmd(json!({"op":"get_scroll","window":id,"element":"log"})).unwrap();
+    let s = scroll();
+    assert_eq!(s["scrollable"], true);
+    assert_eq!(s["max_y"], 50.0);
+    assert_eq!(s["height"], 100.0);
+    assert_eq!(
+        cmd(json!({"op":"get_scroll","window":id,"element":"full"})).unwrap()["scrollable"],
+        false
+    );
+    let rect =
+        |e: &str| cmd(json!({"op":"get_rect","window":id,"element":e})).unwrap()["rect"].clone();
+    assert_eq!(
+        rect("r4"),
+        json!({"x":0.0,"y":120.0,"width":400.0,"height":30.0})
+    );
+    // scroll_to clamps, keeps an omitted axis and moves element rects.
+    let s = cmd(json!({"op":"scroll_to","window":id,"element":"log","y":1000})).unwrap();
+    assert_eq!((s["y"].as_f64(), s["x"].as_f64()), (Some(50.0), Some(0.0)));
+    assert_eq!(rect("r4")["y"], 70.0);
+    cmd(json!({"op":"scroll_by","window":id,"element":"log","dy":-20})).unwrap();
+    assert_eq!(scroll()["y"], 30.0);
+    cmd(json!({"op":"scroll_into_view","window":id,"element":"r0","block":"start"})).unwrap();
+    assert_eq!(scroll()["y"], 0.0);
+    cmd(json!({"op":"scroll_into_view","window":id,"element":"r4"})).unwrap();
+    assert_eq!(scroll()["y"], 50.0, "nearest aligns the bottom edge");
+    assert!(cmd(json!({"op":"scroll_to","window":id,"element":"log","y":"down"})).is_err());
+    assert!(
+        cmd(json!({"op":"scroll_into_view","window":id,"element":"r0","block":"top"})).is_err()
+    );
+    // Follow end: growth keeps the bottom visible until the user scrolls away.
+    cmd(json!({"op":"set_scroll_follow","window":id,"element":"log"})).unwrap();
+    cmd(json!({"op":"insert_html","window":id,"element":"log","position":"beforeend","html":"<div class='r'></div>"})).unwrap();
+    assert_eq!(scroll()["y"], 80.0);
+    cmd(json!({"op":"scroll_to","window":id,"element":"log","y":10})).unwrap();
+    cmd(json!({"op":"insert_html","window":id,"element":"log","position":"beforeend","html":"<div class='r'></div>"})).unwrap();
+    assert_eq!(
+        scroll()["y"],
+        10.0,
+        "a scrolled-away reader is not yanked to the end"
+    );
+    cmd(json!({"op":"scroll_to","window":id,"element":"log","y":1e9})).unwrap();
+    cmd(json!({"op":"insert_html","window":id,"element":"log","position":"beforeend","html":"<div class='r'></div>"})).unwrap();
+    assert_eq!(scroll()["y"], 140.0);
+    // A user wheel scroll away also stops following.
+    for dy in [-60.0, 60.0] {
+        h.session
+            .input(
+                id,
+                crate::document::Input::PointerMoved { x: 10.0, y: 10.0 },
+            )
+            .unwrap();
+        h.session
+            .input(
+                id,
+                crate::document::Input::Wheel {
+                    dx: 0.0,
+                    dy,
+                    x: 10.0,
+                    y: 10.0,
+                },
+            )
+            .unwrap();
+        if scroll()["y"].as_f64().unwrap() < 140.0 {
+            break;
+        }
+    }
+    let away = scroll()["y"].as_f64().unwrap();
+    assert!(away < 140.0, "wheel input scrolled the log");
+    cmd(json!({"op":"insert_html","window":id,"element":"log","position":"beforeend","html":"<div class='r'></div>"})).unwrap();
+    assert_eq!(scroll()["y"].as_f64().unwrap(), away);
+    // Resize is visible to geometry queries before the next frame.
+    cmd(json!({"op":"resize","window":id,"width":300,"height":300})).unwrap();
+    assert_eq!(rect("full")["width"], 300.0);
+    h.session.update_geometry(id, 800, 600, 2.0).unwrap();
+    assert_eq!(rect("full")["width"], 400.0, "geometry is in CSS px at any device scale");
+    assert!(cmd(json!({"op":"get_rect","window":id,"element":"missing"})).is_err());
+    cmd(json!({"op":"set_attribute","window":id,"element":"full","name":"style","value":"display:none"})).unwrap();
+    assert_eq!(rect("full"), Value::Null);
+}

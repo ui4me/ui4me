@@ -181,6 +181,7 @@ pub struct Document {
     window_focused: bool,
     repaint: bool,
     prevent: Vec<StoredRule>,
+    follow: Vec<Follow>,
 }
 impl std::fmt::Debug for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -309,6 +310,7 @@ impl Document {
             window_focused: true,
             repaint: true,
             prevent: Vec::new(),
+            follow: Vec::new(),
         })
     }
     fn id(&self) -> DocumentId {
@@ -614,6 +616,241 @@ impl Document {
             let _ = self.interaction.prevent_default(ev);
         }
     }
+    /// Apply a new device size/scale now, so geometry queries before the next frame are current.
+    pub fn set_viewport(&mut self, width: u32, height: u32, scale: f64) -> Result<()> {
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+        self.pipeline.set_device_viewport(width, height, scale)?;
+        self.repaint = true;
+        Ok(())
+    }
+    fn scroll_node(&self, element: Option<&str>) -> Result<Option<NodeId>> {
+        element.map(|e| self.node(e)).transpose()
+    }
+    /// Offset, reachable range and scrollport (CSS px) of an element's scroll container, or of the
+    /// viewport when `element` is `None`. A non-scroll-container reports `scrollable: false`.
+    pub fn scroll_state(&mut self, element: Option<&str>) -> Result<ScrollState> {
+        let target = self.scroll_node(element)?;
+        self.apply_follow()?;
+        self.pipeline.flush()?;
+        Ok(self.state_of(target))
+    }
+    fn state_of(&self, target: Option<NodeId>) -> ScrollState {
+        match self.pipeline.scroll_entry(scroll_target(target)) {
+            Some(e) => ScrollState {
+                x: e.offset.0,
+                y: e.offset.1,
+                min_x: e.range.min.0,
+                min_y: e.range.min.1,
+                max_x: e.range.max.0,
+                max_y: e.range.max.1,
+                width: e.scrollport.0,
+                height: e.scrollport.1,
+                scrollable: true,
+            },
+            None => ScrollState::default(),
+        }
+    }
+    /// Instant, clamped `scrollTo`; an omitted axis keeps its offset. Emits `scroll` when the
+    /// offset changes. Updates the follow-end state of the target.
+    pub fn scroll_to(
+        &mut self,
+        element: Option<&str>,
+        x: Option<f64>,
+        y: Option<f64>,
+    ) -> Result<ScrollState> {
+        if x.is_some_and(|v| !v.is_finite()) || y.is_some_and(|v| !v.is_finite()) {
+            return Err(arg("Scroll offsets must be finite"));
+        }
+        let current = self.scroll_state(element)?;
+        let target = self.scroll_node(element)?;
+        let id = self.id();
+        crate::interaction::scroll::scroll_to(
+            self,
+            id,
+            target,
+            x.unwrap_or(current.x),
+            y.unwrap_or(current.y),
+        )?;
+        self.update_follow();
+        self.pipeline.flush()?;
+        Ok(self.state_of(target))
+    }
+    pub fn scroll_by(&mut self, element: Option<&str>, dx: f64, dy: f64) -> Result<ScrollState> {
+        if !dx.is_finite() || !dy.is_finite() {
+            return Err(arg("Scroll deltas must be finite"));
+        }
+        let current = self.scroll_state(element)?;
+        self.scroll_to(element, Some(current.x + dx), Some(current.y + dy))
+    }
+    /// Scroll every scroll container of `element`, innermost first, so the element is visible.
+    /// `block`/`inline` are `start`, `center`, `end` or `nearest` (CSSOM View).
+    pub fn scroll_into_view(&mut self, element: &str, block: &str, inline: &str) -> Result<()> {
+        let n = self.node(element)?;
+        let modes = ["start", "center", "end", "nearest"];
+        if !modes.contains(&block) || !modes.contains(&inline) {
+            return Err(arg(
+                "block and inline must be start, center, end or nearest",
+            ));
+        }
+        self.apply_follow()?;
+        self.pipeline.flush()?;
+        let chain: Vec<ScrollTarget> = self
+            .pipeline
+            .scroll_chain(n)
+            .into_iter()
+            .map(|e| e.target)
+            .filter(|&t| t != ScrollTarget::Node(n))
+            .collect();
+        let id = self.id();
+        for target in chain {
+            self.pipeline.flush()?;
+            let Some(r) = self.viewport_rect(n) else {
+                return Ok(());
+            };
+            let Some(port) = self.scrollport_rect(target) else {
+                continue;
+            };
+            let Some(e) = self.pipeline.scroll_entry(target) else {
+                continue;
+            };
+            let dx = align(inline, r.0, r.2, port.0, port.2);
+            let dy = align(block, r.1, r.3, port.1, port.3);
+            if dx != 0.0 || dy != 0.0 {
+                let t = match target {
+                    ScrollTarget::Viewport => None,
+                    ScrollTarget::Node(c) => Some(c),
+                };
+                crate::interaction::scroll::scroll_to(
+                    self,
+                    id,
+                    t,
+                    e.offset.0 + dx,
+                    e.offset.1 + dy,
+                )?;
+            }
+        }
+        self.update_follow();
+        Ok(())
+    }
+    /// Border-box bounds of `element` in viewport CSS px (`getBoundingClientRect`), or `None`
+    /// when it generates no box (for example `display: none`).
+    pub fn element_rect(&mut self, element: &str) -> Result<Option<Rect>> {
+        let n = self.node(element)?;
+        self.apply_follow()?;
+        self.pipeline.flush()?;
+        Ok(self.viewport_rect(n).map(|(x, y, width, height)| Rect {
+            x,
+            y,
+            width,
+            height,
+        }))
+    }
+    /// Keep a scroll container (or the viewport) at its end while content grows, as long as it
+    /// was at the end. A user or programmatic scroll away stops following until it is back at
+    /// the end. Follow adjustments do not emit `scroll` events.
+    pub fn set_scroll_follow(&mut self, element: Option<&str>, follow: bool) -> Result<()> {
+        let target = self.scroll_node(element)?;
+        self.follow.retain(|f| f.target != target);
+        if follow {
+            if self.follow.len() >= 64 {
+                return Err(limit_error("At most 64 follow targets per window"));
+            }
+            self.follow.push(Follow {
+                target,
+                pinned: true,
+            });
+            self.apply_follow()?;
+        }
+        Ok(())
+    }
+    fn apply_follow(&mut self) -> Result<()> {
+        if self.follow.is_empty() {
+            return Ok(());
+        }
+        let d = self.pipeline.document();
+        self.follow.retain(|f| {
+            f.target
+                .is_none_or(|n| d.arena().contains(n) && d.is_connected(n).unwrap_or(false))
+        });
+        if !self.follow.iter().any(|f| f.pinned) {
+            return Ok(());
+        }
+        self.pipeline.flush()?;
+        let targets: Vec<Option<NodeId>> = self
+            .follow
+            .iter()
+            .filter(|f| f.pinned)
+            .map(|f| f.target)
+            .collect();
+        for t in targets {
+            if let Some(e) = self.pipeline.scroll_entry(scroll_target(t))
+                && e.offset.1 < e.range.max.1
+                && let Ok(a) = self
+                    .pipeline
+                    .scroll_to(scroll_target(t), e.offset.0, e.range.max.1)
+            {
+                self.repaint |= a.changed;
+            }
+        }
+        Ok(())
+    }
+    fn update_follow(&mut self) {
+        if self.follow.is_empty() || self.pipeline.flush().is_err() {
+            return;
+        }
+        for i in 0..self.follow.len() {
+            let t = self.follow[i].target;
+            self.follow[i].pinned = self
+                .pipeline
+                .scroll_entry(scroll_target(t))
+                .is_none_or(|e| e.offset.1 >= e.range.max.1 - 1.0);
+        }
+    }
+    fn viewport_rect(&self, n: NodeId) -> Option<(f64, f64, f64, f64)> {
+        let c = self.pipeline.committed.as_deref()?;
+        let tree = &c.layout.fragments;
+        let mut bounds: Option<(f64, f64, f64, f64)> = None;
+        for &f in tree.fragments_of(n) {
+            let r = tree.document_rect(f).rect;
+            let (x0, y0) = (r.origin.x.to_f64(), r.origin.y.to_f64());
+            let (x1, y1) = (x0 + r.size.width.to_f64(), y0 + r.size.height.to_f64());
+            bounds = Some(match bounds {
+                None => (x0, y0, x1, y1),
+                Some(b) => (b.0.min(x0), b.1.min(y0), b.2.max(x1), b.3.max(y1)),
+            });
+        }
+        let (x0, y0, x1, y1) = bounds?;
+        let (mut sx, mut sy) = (0.0, 0.0);
+        for e in self.pipeline.scroll_chain(n) {
+            if e.target != ScrollTarget::Node(n) {
+                sx += e.offset.0;
+                sy += e.offset.1;
+            }
+        }
+        Some((x0 - sx, y0 - sy, x1 - x0, y1 - y0))
+    }
+    fn scrollport_rect(&self, target: ScrollTarget) -> Option<(f64, f64, f64, f64)> {
+        let c = self.pipeline.committed.as_deref()?;
+        let g = crate::layout::coordinator::overflow::scroll_geometry(&c.layout.fragments, target)?;
+        let size = (
+            g.scrollport.size.width.to_f64(),
+            g.scrollport.size.height.to_f64(),
+        );
+        match target {
+            ScrollTarget::Viewport => Some((0.0, 0.0, size.0, size.1)),
+            ScrollTarget::Node(n) => {
+                let (bx, by, _, _) = self.viewport_rect(n)?;
+                Some((
+                    bx + g.scrollport.origin.x.to_f64(),
+                    by + g.scrollport.origin.y.to_f64(),
+                    size.0,
+                    size.1,
+                ))
+            }
+        }
+    }
     /// Literal text content of `element` (not a control's value).
     pub fn get_text(&self, element: &str) -> Result<String> {
         let n = self.node(element)?;
@@ -707,6 +944,7 @@ impl Document {
         }
         self.poll_resources()?;
         self.pipeline.set_device_viewport(width, height, scale)?;
+        self.apply_follow()?;
         let frame = self.pipeline.render_headless()?;
         if frame.pixels.width != width || frame.pixels.height != height {
             return Err(Error {
@@ -807,6 +1045,15 @@ impl Document {
         values
     }
     pub fn handle_input(&mut self, input: Input) -> Result<Vec<Value>> {
+        if !self.follow.is_empty() && !matches!(input, Input::Modifiers { .. }) {
+            self.apply_follow()?;
+            let result = self.handle_input_inner(input);
+            self.update_follow();
+            return result;
+        }
+        self.handle_input_inner(input)
+    }
+    fn handle_input_inner(&mut self, input: Input) -> Result<Vec<Value>> {
         if let Input::Modifiers {
             shift,
             ctrl,
@@ -1482,6 +1729,55 @@ fn validate_document(
         break;
     }
     Ok(())
+}
+/// Scroll state reported by [`Document::scroll_state`] (CSS px).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScrollState {
+    pub x: f64,
+    pub y: f64,
+    pub min_x: f64,
+    pub min_y: f64,
+    pub max_x: f64,
+    pub max_y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub scrollable: bool,
+}
+/// A rectangle in viewport CSS px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+struct Follow {
+    target: Option<NodeId>,
+    pinned: bool,
+}
+/// CSSOM View scroll-into-view alignment: the scroll delta that aligns `[start, start+size)`
+/// within the port `[port, port+port_size)`.
+fn align(mode: &str, start: f64, size: f64, port: f64, port_size: f64) -> f64 {
+    let end = start + size;
+    let port_end = port + port_size;
+    match mode {
+        "start" => start - port,
+        "end" => end - port_end,
+        "center" => (start + size / 2.0) - (port + port_size / 2.0),
+        _ => {
+            if start < port {
+                start - port
+            } else if end > port_end {
+                if size > port_size {
+                    start - port
+                } else {
+                    end - port_end
+                }
+            } else {
+                0.0
+            }
+        }
+    }
 }
 /// Operations accepted by [`Document::apply_batch`].
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -402,6 +402,7 @@ impl Session {
             w.info.pixel_height = height;
             w.info.scale = scale;
             w.info.dirty = true;
+            w.document.set_viewport(width, height, scale)?;
             Ok(())
         })
     }
@@ -892,6 +893,44 @@ impl Session {
                     prevent,
                 )
             })?,
+            Command::GetScroll { window, element } => {
+                self.query(window, |d| d.scroll_state(element.as_deref()).map(scroll_json))?
+            }
+            Command::ScrollTo {
+                window,
+                element,
+                x,
+                y,
+            } => self.query(window, |d| {
+                d.scroll_to(element.as_deref(), x, y).map(scroll_json)
+            })?,
+            Command::ScrollBy {
+                window,
+                element,
+                dx,
+                dy,
+            } => self.query(window, |d| {
+                d.scroll_by(element.as_deref(), dx, dy).map(scroll_json)
+            })?,
+            Command::ScrollIntoView {
+                window,
+                element,
+                block,
+                inline,
+            } => self.query(window, |d| {
+                d.scroll_into_view(&element, &block, &inline)
+                    .map(|()| json!({}))
+            })?,
+            Command::GetRect { window, element } => self.query(window, |d| {
+                d.element_rect(&element).map(|r| {
+                    json!({"rect": r.map(|r| json!({"x":r.x,"y":r.y,"width":r.width,"height":r.height}))})
+                })
+            })?,
+            Command::SetScrollFollow {
+                window,
+                element,
+                follow,
+            } => self.mutate(window, |d| d.set_scroll_follow(element.as_deref(), follow))?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {
@@ -929,6 +968,7 @@ impl Session {
                     if !self.native {
                         w.info.pixel_width = width;
                         w.info.pixel_height = height;
+                        w.document.set_viewport(width, height, w.info.scale)?;
                     }
                     Ok(json!({}))
                 })?
@@ -1055,6 +1095,21 @@ impl Session {
         })?;
         Ok(json!({"window":id}))
     }
+    /// A document operation that returns a value and may queue events (scroll queries flush
+    /// layout; scroll writes dispatch `scroll`).
+    fn query(
+        &self,
+        id: u64,
+        action: impl FnOnce(&mut Document) -> std::result::Result<Value, ui4me_renderer::Error>,
+    ) -> Result<Value> {
+        let (value, events) = self.with_window(id, |w| {
+            let value = action(&mut w.document)?;
+            w.info.dirty |= w.document.needs_repaint();
+            Ok((value, w.document.drain_events()))
+        })?;
+        self.emit_document_events(id, events);
+        Ok(value)
+    }
     fn mutate(
         &self,
         id: u64,
@@ -1159,4 +1214,8 @@ pub fn poison_active() {
             lock(&session.control).phase = Phase::Stopped;
         }
     }
+}
+fn scroll_json(s: ui4me_renderer::ScrollState) -> Value {
+    json!({"x":s.x,"y":s.y,"min_x":s.min_x,"min_y":s.min_y,"max_x":s.max_x,"max_y":s.max_y,
+        "width":s.width,"height":s.height,"scrollable":s.scrollable})
 }

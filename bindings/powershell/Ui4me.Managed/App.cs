@@ -447,9 +447,48 @@ public sealed class Window
         if (meta is not null) command["meta"] = meta;
         app.Command(command);
     }
+    private System.Collections.Generic.Dictionary<string, object?> Request(string op, string? element)
+    {
+        var request = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = op, ["window"] = Id };
+        if (element is not null) request["element"] = element;
+        return request;
+    }
+    private static ScrollState Scroll(JsonElement e) => new(
+        e.GetProperty("x").GetDouble(), e.GetProperty("y").GetDouble(),
+        e.GetProperty("min_x").GetDouble(), e.GetProperty("min_y").GetDouble(),
+        e.GetProperty("max_x").GetDouble(), e.GetProperty("max_y").GetDouble(),
+        e.GetProperty("width").GetDouble(), e.GetProperty("height").GetDouble(),
+        e.GetProperty("scrollable").GetBoolean());
+    public ScrollState GetScroll(string? element = null) { Check(); return Scroll(app.Command(Request("get_scroll", element))); }
+    public ScrollState ScrollTo(string? element, double? x, double? y)
+    {
+        Check();
+        var request = Request("scroll_to", element);
+        if (x is not null) request["x"] = x;
+        if (y is not null) request["y"] = y;
+        return Scroll(app.Command(request));
+    }
+    public ScrollState ScrollBy(string? element, double dx, double dy)
+    {
+        Check();
+        var request = Request("scroll_by", element);
+        request["dx"] = dx; request["dy"] = dy;
+        return Scroll(app.Command(request));
+    }
+    public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest") { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline }); }
+    public ElementRect? GetRect(string element)
+    {
+        Check();
+        var r = app.Command(new { op = "get_rect", window = Id, element }).GetProperty("rect");
+        return r.ValueKind == JsonValueKind.Null ? null : new ElementRect(r.GetProperty("x").GetDouble(), r.GetProperty("y").GetDouble(), r.GetProperty("width").GetDouble(), r.GetProperty("height").GetDouble());
+    }
+    public void SetScrollFollow(string? element, bool follow = true) { Check(); var request = Request("set_scroll_follow", element); request["follow"] = follow; app.Command(request); }
     public bool IsClosed => Closed;
     public void SetTitle(string title) { Check(); app.Command(new { op = "set_title", window = Id, title }); }
     public void Resize(int width, int height) { Check(); app.Command(new { op = "resize", window = Id, width, height }); }
     public string Snapshot(string path) { Check(); return app.Command(new { op = "snapshot", window = Id, path = Path.GetFullPath(path) }).GetRawText(); }
     public void Close() { Check(); app.Command(new { op = "close", window = Id }); }
 }
+
+public sealed record ScrollState(double X, double Y, double MinX, double MinY, double MaxX, double MaxY, double Width, double Height, bool Scrollable);
+public sealed record ElementRect(double X, double Y, double Width, double Height);

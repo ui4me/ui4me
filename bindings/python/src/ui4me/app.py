@@ -450,6 +450,35 @@ class Window:
                    if value is not None}
         self._command("set_default_action", element=element, event=event, prevent=bool(prevent), **filters)
 
+    def get_scroll(self, element: str | None = None) -> dict:
+        """Scroll offset/range/scrollport in CSS px of ``element`` (``None`` = viewport)."""
+        args = {} if element is None else {"element": element}
+        return self._command("get_scroll", **args)
+
+    def scroll_to(self, element: str | None = None, *, x: float | None = None, y: float | None = None) -> dict:
+        args = {key: value for key, value in (("element", element), ("x", x), ("y", y)) if value is not None}
+        return self._command("scroll_to", **args)
+
+    def scroll_by(self, element: str | None = None, *, dx: float = 0.0, dy: float = 0.0) -> dict:
+        args = {"dx": float(dx), "dy": float(dy)}
+        if element is not None:
+            args["element"] = element
+        return self._command("scroll_by", **args)
+
+    def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest") -> None:
+        self._command("scroll_into_view", element=element, block=block, inline=inline)
+
+    def get_rect(self, element: str) -> dict | None:
+        """Border box in viewport CSS px (``x``, ``y``, ``width``, ``height``) or ``None``."""
+        return self._command("get_rect", element=element)["rect"]
+
+    def set_scroll_follow(self, element: str | None = None, follow: bool = True) -> None:
+        """Keep a container at its end while content grows, unless the user scrolled away."""
+        args = {"follow": bool(follow)}
+        if element is not None:
+            args["element"] = element
+        self._command("set_scroll_follow", **args)
+
     @property
     def closed(self) -> bool:
         return self._closed

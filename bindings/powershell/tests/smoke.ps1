@@ -319,6 +319,23 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21d_scroll_geometry_follow' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $rows = '<div class="r"></div>' * 4
+            $window = $app.Open("<style>body{margin:0}.r{height:30px}</style><div id=""log"" style=""height:100px;overflow:auto""><div id=""r0"" class=""r""></div>$rows</div>", 'scroll', 400, 300)
+            if ($window.GetScroll('log').MaxY -ne 50) { throw 'Scroll range is wrong' }
+            if ($window.ScrollTo('log', $null, 1000).Y -ne 50) { throw 'scroll_to did not clamp' }
+            if ($window.ScrollBy('log', 0, -20).Y -ne 30) { throw 'scroll_by is wrong' }
+            $window.ScrollIntoView('r0', 'start', 'nearest')
+            $rect = $window.GetRect('r0')
+            if ($rect.Y -ne 0 -or $rect.Width -ne 400) { throw 'Rect is wrong' }
+            $window.SetScrollFollow('log', $true)
+            $window.AppendHtml('log', '<div class="r"></div>')
+            if ($window.GetScroll('log').Y -ne 80) { throw 'Follow did not keep the end visible' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

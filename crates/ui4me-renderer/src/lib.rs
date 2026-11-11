@@ -20,7 +20,7 @@ pub(crate) mod style;
 pub(crate) mod text;
 pub use document::{
     Clipboard, DefaultActionRule, Document, DomOp, Error, ImeState, Input, MAX_PIXELS, MAX_TEXT,
-    Result,
+    Rect, Result, ScrollState,
 };
 
 #[cfg(test)]

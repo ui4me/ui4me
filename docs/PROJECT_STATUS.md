@@ -150,6 +150,8 @@ per work item. Keep long operations off UI callbacks.
 | Remove / move (0.3) | `remove_element(id)`, `move_element(id, target, position="beforeend")` | `RemoveElement`, `MoveElement` |
 | Atomic batch (0.3) | `batch([{"op": ..., ...}, ...])` | `Batch(@(@{op=...}, ...))` |
 | Default-action rule (0.3) | `set_default_action(id, event, prevent=True, key=, shift=, ctrl=, alt=, meta=)` | `SetDefaultAction(id, event, prevent, key, shift, ctrl, alt, meta)` |
+| Scroll (0.3) | `get_scroll(id=None)`, `scroll_to(id, x=, y=)`, `scroll_by(id, dx=, dy=)`, `scroll_into_view(id, block=, inline=)`, `set_scroll_follow(id=None, follow=True)` | `GetScroll`, `ScrollTo`, `ScrollBy`, `ScrollIntoView`, `SetScrollFollow` |
+| Geometry (0.3) | `get_rect(id)` | `GetRect` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -184,6 +186,18 @@ element, optionally filtered by exact `key` and modifier states; `prevent=false`
 removes the identical rule, and rules are retired with their element. Cancelable
 delivered events carry `default_prevented`. Example: prevent `keydown` `Enter`
 with `shift=false` on a chat form, and send on the delivered `keydown` event.
+Scroll and geometry values are CSS px at any device scale. Omitting `element`
+addresses the viewport. `get_scroll` returns `x`, `y`, `min_x/min_y/max_x/max_y`, the
+scrollport `width`/`height` and `scrollable` (false and zeros for a non-scroll
+container). `scroll_to`/`scroll_by` are instant and clamped, keep an omitted axis,
+emit `scroll` when the offset changes and return the new state.
+`scroll_into_view` aligns the element in each enclosing scroll container, innermost
+first (`start`, `center`, `end`, `nearest`; default `nearest`). `get_rect` is the
+border box relative to the viewport (`getBoundingClientRect`), or null without a box.
+Resize and scale changes apply to these queries immediately.
+`set_scroll_follow` keeps a log/chat container at its end while content grows, as
+long as it is at the end. A user or programmatic scroll away stops following until
+the reader returns to the end. Follow adjustments do not emit `scroll`.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

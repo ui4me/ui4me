@@ -52,6 +52,9 @@ fn title() -> String {
 fn width() -> u32 {
     640
 }
+fn nearest() -> String {
+    "nearest".into()
+}
 fn yes() -> bool {
     true
 }
@@ -197,6 +200,48 @@ pub enum Command {
         meta: Option<bool>,
         #[serde(default = "yes")]
         prevent: bool,
+    },
+    GetScroll {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+    },
+    ScrollTo {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default)]
+        x: Option<f64>,
+        #[serde(default)]
+        y: Option<f64>,
+    },
+    ScrollBy {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default)]
+        dx: f64,
+        #[serde(default)]
+        dy: f64,
+    },
+    ScrollIntoView {
+        window: u64,
+        element: String,
+        #[serde(default = "nearest")]
+        block: String,
+        #[serde(default = "nearest")]
+        inline: String,
+    },
+    GetRect {
+        window: u64,
+        element: String,
+    },
+    SetScrollFollow {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default = "yes")]
+        follow: bool,
     },
     Diagnostics {
         window: u64,
