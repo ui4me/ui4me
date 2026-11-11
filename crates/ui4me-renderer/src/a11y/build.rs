@@ -1376,7 +1376,11 @@ impl<'a> Builder<'a> {
         }
         match role {
             Role::ComboBox if local == "select" => Some(self.d.select_display_label(n)),
-            Role::Slider | Role::SpinButton if local == "input" => self.d.control_value(n),
+            Role::Slider | Role::SpinButton if local == "input" => self
+                .d
+                .range_value(n)
+                .map(ui4me_document::control_values::format_float)
+                .or_else(|| self.d.control_value(n)),
             Role::Slider | Role::SpinButton | Role::ProgressIndicator | Role::Meter => {
                 e.attr("aria-valuetext").map(collapse)
             }
@@ -1398,7 +1402,10 @@ impl<'a> Builder<'a> {
             }
             ("progress", _) => {
                 let max = parse_f64(e.attr("max")).filter(|m| *m > 0.0).unwrap_or(1.0);
-                let now = parse_f64(e.attr("value")).map(|v| v.clamp(0.0, max));
+                // A negative or unparsable `value` is invalid: indeterminate (no `now`).
+                let now = parse_f64(e.attr("value"))
+                    .filter(|v| *v >= 0.0)
+                    .map(|v| v.min(max));
                 Some(Numeric {
                     now,
                     min: Some(0.0),
