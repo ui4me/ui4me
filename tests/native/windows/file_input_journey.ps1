@@ -61,6 +61,8 @@ function Wait-Window([string] $title, [double] $seconds = 20) {
 }
 function Press([ushort] $vk) { [Fi]::Key($vk, $true); [Fi]::Key($vk, $false) }
 function Click-Element([string] $element) {
+    # After a picker closes another window (the app's console) can be in front: bring the probe up.
+    $null = [Fi]::SetForegroundWindow($script:hwnd); Start-Sleep -Milliseconds 400
     $r = (Read-State).rects[$element]
     $p = [Fi+POINT]::new(); $null = [Fi]::ClientToScreen($script:hwnd, [ref] $p)
     [Fi]::Move([int]($p.X + $r.x + $r.width / 2), [int]($p.Y + $r.y + $r.height / 2)); Start-Sleep -Milliseconds 50
@@ -110,6 +112,7 @@ try {
         Press 0x1B
         $null = Wait-State { param($s) @($s.events | Where-Object { $_.type -eq 'cancel' -and $_.element -eq 'many' }).Count -eq ($n + 1) }
         Start-Sleep -Milliseconds 500
+        $null = [Fi]::SetForegroundWindow($script:hwnd); Start-Sleep -Milliseconds 400
         Press 0x20
         $null = Wait-Window 'Open'
         Start-Sleep -Milliseconds 1200

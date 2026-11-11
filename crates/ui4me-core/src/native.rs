@@ -853,9 +853,9 @@ impl ApplicationHandler<()> for Desktop {
                 }
             }
             WindowEvent::CursorLeft { .. } => {
-                if let Some(native) = self.windows.get_mut(&id) {
-                    native.cursor = PhysicalPosition::new(-1.0, -1.0);
-                }
+                // The last position is kept: when a modal OS window (a file picker) covered the
+                // window and closes, a click at the same spot comes without a new move, and it
+                // must land where the pointer is (0.6 F0606 journey), not at a sentinel.
                 self.send_input(id, Input::PointerLeft);
             }
             WindowEvent::MouseInput { state, button, .. } => {
