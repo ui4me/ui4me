@@ -233,6 +233,13 @@ impl Document {
     }
     /// Editing behaviour of an input that reached a focused editing host (after its dispatch).
     pub(super) fn editable_input(&mut self, input: &Input, events: &[Value]) -> Result<bool> {
+        let handled = self.editable_input_inner(input, events)?;
+        if handled && let Some(host) = self.focused_host() {
+            self.reveal_caret(host)?;
+        }
+        Ok(handled)
+    }
+    fn editable_input_inner(&mut self, input: &Input, events: &[Value]) -> Result<bool> {
         let Some(host) = self.focused_host() else {
             self.editable.comp = None;
             return Ok(false);
@@ -488,6 +495,58 @@ impl Document {
         }
         Ok(())
     }
+    /// The caret at byte `f` of `host`: viewport x, top and height.
+    fn caret_rect(&mut self, host: NodeId, f: usize) -> Result<Option<(f64, f64, f64)>> {
+        let lines = self.host_lines(host)?;
+        let caret = lines.iter().rev().find(|l| l.0.start <= f).and_then(|l| {
+            l.3.iter()
+                .find(|s| s.0 == f)
+                .or_else(|| l.3.last())
+                .map(|s| (s.1, l.1, l.2))
+        });
+        Ok(caret.or_else(|| {
+            self.viewport_rect(host)
+                .map(|(x, y, _, h)| (x + 2.0, y + 2.0, (h - 4.0).clamp(10.0, 24.0)))
+        }))
+    }
+    /// Scroll the host and its scroll containers, innermost first, so the caret (the selection
+    /// focus) is visible (nearest alignment, instantly).
+    fn reveal_caret(&mut self, host: NodeId) -> Result<()> {
+        let f = self.host_range(host).1;
+        self.pipeline.flush()?;
+        let chain: Vec<ScrollTarget> = self
+            .pipeline
+            .scroll_chain(host)
+            .into_iter()
+            .map(|e| e.target)
+            .collect();
+        for target in chain {
+            self.pipeline.flush()?;
+            let Some((x, y, h)) = self.caret_rect(host, f)? else {
+                return Ok(());
+            };
+            let (Some(port), Some(e)) = (
+                self.scrollport_rect(target),
+                self.pipeline.scroll_entry(target),
+            ) else {
+                continue;
+            };
+            let dx = align("nearest", x, 2.0, port.0, port.2);
+            let dy = align("nearest", y, h, port.1, port.3);
+            if dx != 0.0 || dy != 0.0 {
+                let t = match target {
+                    ScrollTarget::Viewport => None,
+                    ScrollTarget::Node(c) => Some(c),
+                };
+                let to = (
+                    (e.offset.0 + dx).clamp(e.range.min.0, e.range.max.0.max(e.range.min.0)),
+                    (e.offset.1 + dy).clamp(e.range.min.1, e.range.max.1.max(e.range.min.1)),
+                );
+                self.begin_scroll(t, to, false)?;
+            }
+        }
+        Ok(())
+    }
     /// Draw the caret of a focused editing host with a collapsed selection.
     pub(super) fn paint_editing_caret(
         &mut self,
@@ -503,19 +562,8 @@ impl Document {
         if a != f {
             return Ok(());
         }
-        let lines = self.host_lines(host)?;
-        let caret = lines.iter().rev().find(|l| l.0.start <= f).and_then(|l| {
-            l.3.iter()
-                .find(|s| s.0 == f)
-                .or_else(|| l.3.last())
-                .map(|s| (s.1, l.1, l.2))
-        });
-        let (x, y, h) = match caret {
-            Some(c) => c,
-            None => match self.viewport_rect(host) {
-                Some((x, y, _, h)) => (x + 2.0, y + 2.0, (h - 4.0).clamp(10.0, 24.0)),
-                None => return Ok(()),
-            },
+        let Some((x, y, h)) = self.caret_rect(host, f)? else {
+            return Ok(());
         };
         let x0 = ((x * scale).round().max(0.0) as u32).min(width);
         let x1 = (x0 + (1.5 * scale).ceil().max(1.0) as u32).min(width);

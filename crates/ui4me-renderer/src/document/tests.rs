@@ -1596,3 +1596,51 @@ fn pointer_events_fields_cancel_and_capture() {
     })
     .unwrap();
 }
+
+#[test]
+fn editing_host_interop_scroll_a11y_mutation_bidi_and_removed_selection() {
+    // 0.8 F0806.
+    let mut d = Document::parse("<!doctype html><style>body{margin:0;font:16px sans-serif}#sc{height:60px;width:200px;overflow:auto}</style><div id=sc><div id=ed contenteditable>x</div></div><p id=p>Select me please</p><div id=bi contenteditable dir=rtl>abc אבג</div>").unwrap();
+    d.render(300, 300, 1.0).unwrap();
+    d.handle_input(Input::Focus(true)).unwrap();
+    let _ = click(&mut d, "ed");
+    d.handle_input(key("End", true, false)).unwrap();
+    for i in 0..12 {
+        press(&mut d, "Enter");
+        d.handle_input(Input::Text(format!("line {i}"))).unwrap();
+        d.render(300, 300, 1.0).unwrap();
+    }
+    assert_eq!(d.get_text("ed").unwrap().lines().count(), 13, "multi-line");
+    assert!(
+        d.scroll_state(Some("sc")).unwrap().y > 0.0,
+        "the caret is kept visible in the scroller"
+    );
+    // Accessibility follows the edit.
+    let t = d.accessibility_tree().unwrap();
+    let n = t
+        .nodes
+        .values()
+        .find(|n| n.html_id.as_deref() == Some("ed"))
+        .unwrap();
+    assert!(n.value.as_deref().unwrap().ends_with("line 11"));
+    // The app rewrites the host while the caret is inside: the caret is clamped, typing continues.
+    d.set_text("ed", "ab").unwrap();
+    d.render(300, 300, 1.0).unwrap();
+    d.handle_input(Input::Text("c".into())).unwrap();
+    assert_eq!(d.get_text("ed").unwrap(), "abc");
+    // The app write is not an undo step: undo reverts the typing after it.
+    d.handle_input(key("z", true, false)).unwrap();
+    assert_eq!(d.get_text("ed").unwrap(), "ab");
+    // Bidi: a right-to-left host edits in logical order.
+    let _ = click(&mut d, "bi");
+    d.handle_input(key("End", true, false)).unwrap();
+    press(&mut d, "Backspace");
+    assert_eq!(d.get_text("bi").unwrap(), "abc אב");
+    // A selection inside a removed subtree is dropped.
+    d.select_text(Some("p")).unwrap();
+    assert_eq!(d.selection_text().unwrap(), "Select me please");
+    d.remove_element("p").unwrap();
+    d.render(300, 300, 1.0).unwrap();
+    assert_eq!(d.selection_text().unwrap(), "");
+    d.render(300, 300, 1.0).unwrap();
+}

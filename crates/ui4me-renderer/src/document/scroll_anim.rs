@@ -250,7 +250,12 @@ impl Document {
 
     /// Move `target` to `to` (already clamped): at once or as a smooth scroll that replaces any
     /// running one of the container.
-    fn begin_scroll(&mut self, target: Option<NodeId>, to: (f64, f64), smooth: bool) -> Result<()> {
+    pub(super) fn begin_scroll(
+        &mut self,
+        target: Option<NodeId>,
+        to: (f64, f64),
+        smooth: bool,
+    ) -> Result<()> {
         let id = self.id();
         let cur = self
             .pipeline
