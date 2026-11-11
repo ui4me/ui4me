@@ -170,7 +170,8 @@ tests is automated.
   `filter` `url()`, `cross-fade()`, `shape()`, `corner-shape`, `shape-outside`; ruby layout;
   `content-visibility: auto` never skips work.
 - **SVG:** a static profile only ([`reference/SVG_PROFILE.md`](reference/SVG_PROFILE.md)); SVG
-  `<text>` is not drawn.
+  `<text>` is not drawn, and an inline `<svg>` sized with percentage `width`/`height`
+  attributes draws nothing and reports nothing (size it with CSS instead).
 - **Input and platform (winit 0.30):** no IME surrounding text, no stylus API, no Wayland
   drag and drop, OS theme changes only on Windows. A Windows Chinese IME has not been exercised.
   Windows touch has not been tested.
