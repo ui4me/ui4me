@@ -292,6 +292,50 @@ class App:
         scale, position (None on Wayland), refresh rate and primary flag."""
         return self._command({"op": "list_monitors"})["monitors"]
 
+    def notify(self, title: str, body: str = "", *, icon=None, urgency: str | None = None,
+               actions: list[tuple[str, str]] | tuple = (), on_event: Callable[[dict], object] | None = None) -> dict:
+        """Show a native system notification. Returns ``{"status": "sent" | "unsupported" |
+        "unavailable" | "denied", "token", "reason"?}``; ``on_event`` receives its
+        ``notification`` events (``clicked``, ``action`` with ``action``, ``dismissed``,
+        ``expired``). ``actions`` are ``(id, label)`` buttons where the platform offers them."""
+        token = self._next_token()
+        args: dict = {"op": "notify", "token": token, "title": title, "body": body,
+                      "actions": [{"id": i, "label": l} for i, l in actions]}
+        if icon is not None:
+            args["icon"] = str(Path(icon).absolute())
+        if urgency is not None:
+            args["urgency"] = urgency
+        if on_event is not None:
+            def handler(event: dict) -> None:
+                if event.get("token") == token:
+                    on_event(event)
+            self.on("notification", handler)
+        return self._command(args)
+
+    def close_notification(self, token: int) -> None:
+        self._command({"op": "close_notification", "token": token})
+
+    def set_tray(self, *, icon=None, tooltip: str = "", menu: list[dict] | None = None) -> dict:
+        """Create or update the application's tray/status icon (PNG ``icon``, ``menu`` items as
+        for :meth:`Window.set_menu`). Activations arrive as ``tray`` events, menu choices as
+        ``menu_command`` with ``source == "tray"``. Returns ``{"status", "reason"?}``."""
+        args: dict = {"op": "set_tray", "tooltip": tooltip, "menu": menu or []}
+        if icon is not None:
+            args["icon"] = str(Path(icon).absolute())
+        return self._command(args)
+
+    def remove_tray(self) -> dict:
+        return self._command({"op": "remove_tray"})
+
+    def register_hotkey(self, id: str, accelerator: str) -> dict:
+        """Register a global shortcut such as ``"Ctrl+Alt+K"``; presses arrive as ``hotkey``
+        events with ``id``. Returns ``{"status": "registered" | "conflict" | "denied" |
+        "unsupported" | "unavailable", "reason"?}``; shortcuts end with the session."""
+        return self._command({"op": "register_hotkey", "id": id, "accelerator": accelerator})
+
+    def unregister_hotkey(self, id: str) -> None:
+        self._command({"op": "unregister_hotkey", "id": id})
+
     def set_link_policy(self, schemes: list[str] | tuple[str, ...] = (), *, hosts: list[str] | None = None,
                         open: bool = False) -> None:
         """Allow activated links (``link_activated`` events) by scheme (``https``, ``http``,
@@ -508,6 +552,18 @@ class Window:
 
     def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest") -> None:
         self._command("scroll_into_view", element=element, block=block, inline=inline)
+
+    def set_menu(self, menu: list[dict] | None) -> dict:
+        """Set (or clear with ``None``) the window's menu: items ``{"id", "label", "enabled",
+        "checked", "accelerator"}``, ``{"separator": True}`` or ``{"label", "items": [...]}``.
+        Accelerators (``"Ctrl+S"``) work on every platform; the native menu bar where the
+        platform has one (``status``). Choices arrive as ``menu_command`` events."""
+        return self._command("set_menu", menu=menu)
+
+    def show_context_menu(self, x: float, y: float, menu: list[dict]) -> dict:
+        """Show a native context menu at viewport CSS px; the choice arrives as
+        ``menu_command`` with ``source == "context"``."""
+        return self._command("show_context_menu", x=x, y=y, menu=menu)
 
     def get_html(self, element: str | None = None, *, node: str | None = None, outer: bool = False) -> str:
         """Serialize an element (by ``id``), a node reference, or the whole document; ``outer``

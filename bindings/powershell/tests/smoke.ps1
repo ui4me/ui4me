@@ -430,6 +430,10 @@ try {
             $app.SetLinkPolicy(@('https'), @('*.example.com'), $false)
             $refused = $false; try { $app.SetLinkPolicy(@('file'), $null, $false) } catch { $refused = $true }
             if (-not $refused) { throw 'file: scheme accepted' }
+            if (($app.Notify('Hi', 'there', $null, $null, $null) | ConvertFrom-Json).status -ne 'unavailable') { throw 'notify in headless' }
+            $menu = $doc.SetMenu(@(@{ label = 'File'; items = @(@{ id = 'save'; label = 'Save'; accelerator = 'Ctrl+S' }) })) | ConvertFrom-Json
+            if (-not $menu.accelerators) { throw "set_menu: $($menu | ConvertTo-Json -Compress)" }
+            if (($app.RegisterHotkey('k', 'Ctrl+Alt+K') | ConvertFrom-Json).status -ne 'unavailable') { throw 'hotkey in headless' }
             $picker = $app.Open('<input id=pick type=file>')
             if ($picker.GetFiles('pick').Count -ne 0) { throw 'file input starts empty' }
             $geo = $doc.TextRectsJson('box', $null, -1, -1) | ConvertFrom-Json

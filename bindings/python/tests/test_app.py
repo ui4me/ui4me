@@ -357,6 +357,17 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 w.get_node(ref)
 
+    def test_desktop_services_headless(self):
+        with self.app() as app:
+            w = app.open("<p>x</p>")
+            self.assertEqual(app.notify("Hi", "there")["status"], "unavailable")
+            self.assertEqual(app.set_tray(tooltip="t", menu=[{"id": "q", "label": "Quit"}])["status"], "unavailable")
+            r = w.set_menu([{"label": "File", "items": [{"id": "save", "label": "Save", "accelerator": "Ctrl+S"}]}])
+            self.assertTrue(r["accelerators"])
+            with self.assertRaises(Ui4meError):
+                w.set_menu([{"id": "a", "label": "A", "accelerator": "Ctrl+S"}, {"id": "b", "label": "B", "accelerator": "Ctrl+S"}])
+            self.assertEqual(app.register_hotkey("k", "Ctrl+Alt+K")["status"], "unavailable")
+
     def test_window_actions_and_state(self):
         with self.app() as app:
             window = app.open("<p>w</p>")

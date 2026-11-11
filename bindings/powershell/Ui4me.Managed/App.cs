@@ -241,6 +241,20 @@ public sealed class App : IDisposable
     /// <summary>The platform capability report as JSON: platform, backend and per-feature status
     /// (supported, unsupported, denied, unavailable, unknown) with the reason.</summary>
     public string CapabilitiesJson() => Command(new { op = "capabilities" }).GetRawText();
+    /// <summary>Show a native notification; returns JSON {status, token, reason?}. Its events
+    /// arrive as "notification" with the token.</summary>
+    public string Notify(string title, string body = "", string? icon = null, string? urgency = null, object? actions = null)
+    {
+        var token = checked((ulong)Interlocked.Increment(ref counter));
+        return Command(new { op = "notify", token, title, body, icon = string.IsNullOrEmpty(icon) ? null : Path.GetFullPath(icon), urgency = string.IsNullOrEmpty(urgency) ? null : urgency, actions = actions ?? Array.Empty<object>() }).GetRawText();
+    }
+    public void CloseNotification(ulong token) => Command(new { op = "close_notification", token });
+    /// <summary>Create or update the tray icon; menu is an array of item hashtables.</summary>
+    public string SetTray(string? icon = null, string tooltip = "", object? menu = null) => Command(new { op = "set_tray", icon = string.IsNullOrEmpty(icon) ? null : Path.GetFullPath(icon), tooltip, menu = menu ?? Array.Empty<object>() }).GetRawText();
+    public string RemoveTray() => Command(new { op = "remove_tray" }).GetRawText();
+    /// <summary>Register a global shortcut ("Ctrl+Alt+K"); returns JSON {status, reason?}.</summary>
+    public string RegisterHotkey(string id, string accelerator) => Command(new { op = "register_hotkey", id, accelerator }).GetRawText();
+    public void UnregisterHotkey(string id) => Command(new { op = "unregister_hotkey", id });
     /// <summary>Allow activated links by scheme (https, http, mailto) and optional host list; with
     /// open, Core opens allowed links with the OS handler. Core never navigates the document.</summary>
     public void SetLinkPolicy(string[] schemes, string[]? hosts = null, bool open = false) => Command(new { op = "set_link_policy", schemes, hosts = hosts is { Length: > 0 } ? hosts : null, open });
@@ -531,6 +545,9 @@ public sealed class Window
     }
     public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest") { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline }); }
     static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
+    /// <summary>Set (menu array of item hashtables) or clear ($null) the window menu; JSON status.</summary>
+    public string SetMenu(object? menu) { Check(); return app.Command(new { op = "set_menu", window = Id, menu }).GetRawText(); }
+    public string ShowContextMenu(double x, double y, object menu) { Check(); return app.Command(new { op = "show_context_menu", window = Id, x, y, menu }).GetRawText(); }
     /// <summary>Serialize an element (by id), a node reference, or the whole document (both empty).</summary>
     public string GetHtml(string? element = null, string? node = null, bool outer = false) { Check(); return app.Command(new { op = "get_html", window = Id, element = NullIfEmpty(element), node = NullIfEmpty(node), outer }).GetProperty("html").GetString()!; }
     /// <summary>Rendered text and range rectangles of an element (start/end are UTF-16 offsets
