@@ -34,7 +34,8 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
-      - run: rustup toolchain install 1.99.1 --profile minimal
+      # Components from rust-toolchain.toml up front; an on-demand install conflicts with the image's cargo-fmt.
+      - run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1

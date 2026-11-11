@@ -6,7 +6,7 @@
 
 **0.3 status:** GO (local candidate 0.3.0, not published) — S1–S6 done, gate passed 2026-11-11 on Linux KDE/Wayland (virtual KWin) and Windows Server 2022 interactive console session.
 
-**0.4 status:** GO / Foundation Complete (local candidate 0.4.0 @ ce201c7, not published). The gate passed 2026-11-11 on Linux (virtual KWin) and Windows (interactive console session).
+**0.4 status:** RELEASED as 0.4.0 from `cf18be3` (2026-11-11) after the polish pass and a final two-platform re-gate. The earlier local candidate was ce201c7. The gate passed 2026-11-11 on Linux (virtual KWin) and Windows (interactive console session).
 
 ## Update convention (keep this short)
 
@@ -33,11 +33,30 @@ Do not paste massive raw logs, long audit reports or all research feature record
 
 - 2026-11-11 | (polish) | **0.4 polish: screen-reader bridge** | `ui4me-renderer/src/a11y/` (donor `ui4me-a11y` ported onto the current model by a Sonnet donor-migrator agent, reviewed and verified), `accesskit_winit =0.34.2` in core (native feature, +48 crates: zbus/AT-SPI stack, windows UIA), per-window adapter whose activation/action handlers only flag, queue and wake while the owner builds trees and executes actions; `get_accessibility_tree` command + bindings; `tests/native/a11y_probe.py` | renderer a11y 10/10, core 29/29, python 35/35 + powershell 32/32 unit, workspace clippy clean; **Linux AT-SPI probe on virtual KWin 8/8** (frame title, heading, button, labelled entry, checkbox checked, link, hidden excluded, AT-SPI default action → app click) | PASS (Linux) / Windows UIA verified at the 0.4 re-gate | AT-SPI `aria-expanded`/`aria-invalid` via a carried patch (P-013-1 on accesskit_atspi_common 0.21.1, verified; probe A09 passes). The test harness now also uses a private `XDG_RUNTIME_DIR`; earlier probes used the user-wide AT-SPI bus path. | re-gate
 
+- 2026-11-11 | 95be38b (gated) → cf18be3 (released; differs only in `.github/scripts/check-sdist.py` and `tests/native/windows/files_journey.ps1`) | **0.4 polish + final re-gate** | Polish:
+  - CI rustfmt drift fixed;
+  - `manylinux_2_35` floor enforced for release wheels (`UI4ME_MANYLINUX_POLICY`; CI's ubuntu-22.04 build passes it);
+  - sub-pixel overflow no longer scrolls or draws a scrollbar (modal dialog strip);
+  - selection drag auto-scroll, `selectionchange`, and drags kept inside the element under the pointer (a two-column jump bug found by the Windows journey);
+  - AccessKit screen-reader bridge (AT-SPI/UIA) plus the carried AT-SPI expanded/invalid patch;
+  - READMEs and status header describe 0.4;
+  - test harness: private `XDG_RUNTIME_DIR`, robust waits and file sharing;
+  - `ui4me_test` password reset and stored at `~/.config/ui4me/omegaui-ui4me_test.password` (600), with the procedure in the skill.
+
+  **Final gate @95be38b (source sha256:9de6388c…):**
+  - **Linux:** installed C/Python 6/6/PowerShell 6/6. Journeys: chat 20/20, file utility 20/20, dialogs 5/5, window probe 9/9, AT-SPI bridge 9/9.
+  - **Windows:** installed C/Python 6/6/PowerShell 6/6. Journeys: chat 20/20, file utility 20/20*, window probe pass, UIA bridge 10/10.
+  - **GitHub CI @cf18be3:** green, including the installed matrix (Python 3.11–3.14, PowerShell 7.4/7.6 on ubuntu-22.04 and windows-2022).
+
+  | PASS | *The first Windows PowerShell file-utility run failed G09: the window had cascaded with its right border off the 1024-px screen, so the driver's border drag could not resize it. The driver now drags an on-screen border and passed 10/10 against the same packages. | — |
+
 ## Deferred non-blocking items
 
-- **Release packaging (separate publication task):** since S9 (`rfd` zenity fallback → Rust std `pidfd_spawnp`/`pidfd_getpid`, weak symbols), the Linux wheel is tagged `manylinux_2_39`, up from 2_35, which blocks pip installs on Debian 12 and Ubuntu 22.04. Fix by building in a manylinux_2_28/2_35 container or by patching out the zenity fallback. Loading on older glibc was not verified.
+- Local Linux builds on newer glibc hosts (Debian 13) tag the wheel `manylinux_2_39`, because `rfd`'s zenity fallback pulls in weak `pidfd_*` symbols. Release wheels are built on ubuntu-22.04 with an enforced `manylinux_2_35` floor.
 - Incremental layout for append-only containers (full relayout per change; see S5 numbers).
-- Selection highlight is an overlay, not painted behind the glyphs (drag auto-scroll and `selectionchange` were added in the 0.4 polish).
+- Selection highlight is an overlay, not painted behind the glyphs.
+- Per-frame cost is flat across glyph iteration, hashing (SipHash on node maps, ~10%), font-family parsing and scene building, because the whole document is re-laid-out (perf profile, 2026-11-11). The candidate fix is incremental layout plus scene culling.
+- Real IME, dead-key and AltGr desktop qualification.
 - Host needed .NET SDK 10 (global.json) — installed user-locally at `~/.dotnet` (set `DOTNET_ROOT`/`PATH`).
 
 ## Hard blockers
