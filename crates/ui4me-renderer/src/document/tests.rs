@@ -700,3 +700,57 @@ fn sub_pixel_overflow_is_not_scrollable() {
     let s = d.scroll_state(Some("b")).unwrap();
     assert_eq!((s.max_y, s.scrollable), (0.0, true));
 }
+
+#[test]
+fn selection_drag_autoscrolls_and_reports_changes() {
+    let rows: String = (0..60)
+        .map(|i| format!("<p style='margin:0;height:20px'>row {i}</p>"))
+        .collect();
+    let mut d = Document::parse(&format!("<!doctype html><style>body{{margin:0;font-size:14px}}#box{{height:100px;overflow:auto}}</style><div id=box>{rows}</div><p id=after>after</p>")).unwrap();
+    d.render(400, 300, 1.0).unwrap();
+    let r = d.element_rect("box").unwrap().unwrap();
+    let changes = |events: &[Value]| {
+        events
+            .iter()
+            .filter(|e| e["type"] == "selectionchange")
+            .count()
+    };
+    let ev = d
+        .handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: r.x + 2.0,
+            y: r.y + 5.0,
+        })
+        .unwrap();
+    assert_eq!(
+        changes(&ev),
+        1,
+        "a press that sets a caret point is a change"
+    );
+    let mut moved = 0;
+    for _ in 0..10 {
+        let ev = d
+            .handle_input(Input::PointerMoved {
+                x: r.x + 50.0,
+                y: r.y + r.height + 30.0,
+            })
+            .unwrap();
+        moved += changes(&ev);
+    }
+    d.handle_input(Input::PointerButton {
+        pressed: false,
+        button: 0,
+        x: r.x + 50.0,
+        y: r.y + r.height + 30.0,
+    })
+    .unwrap();
+    let s = d.scroll_state(Some("box")).unwrap();
+    assert!(s.y > 100.0, "dragging below the box scrolled it: {}", s.y);
+    assert!(d.selection_text().unwrap().contains("row 10"));
+    assert!(moved >= 1);
+    d.clear_selection();
+    assert_eq!(changes(&d.drain_events()), 1);
+    d.clear_selection();
+    assert_eq!(changes(&d.drain_events()), 0, "no change, no event");
+}

@@ -356,6 +356,10 @@ impl Document {
             let generation = NonZeroU32::new(u32::try_from(token.get(1)?.as_u64()?).ok()?)?;
             Some(NodeId::from_raw(RawId { index, generation }))
         };
+        // Document-level notifications (`selectionchange`) carry no target and are always current.
+        if event.get("_target").is_none() && event.get("_element").is_none() {
+            return true;
+        }
         let Some(target) = decode("_target") else {
             return false;
         };
@@ -1193,8 +1197,9 @@ impl Document {
         if follow {
             self.update_follow();
         }
-        let events = result?;
+        let mut events = result?;
         self.selection_input(&probe, &events)?;
+        events.extend(self.drain_events());
         Ok(events)
     }
     fn handle_input_inner(&mut self, input: Input) -> Result<Vec<Value>> {

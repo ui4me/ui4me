@@ -358,6 +358,11 @@ impl Document {
         Ok(out)
     }
     pub fn clear_selection(&mut self) {
+        let before = (self.selection.anchor, self.selection.focus);
+        self.clear_selection_quiet();
+        self.note_selection_change(before);
+    }
+    fn clear_selection_quiet(&mut self) {
         if self.selection.anchor.is_some() {
             self.repaint = true;
         }
@@ -369,7 +374,13 @@ impl Document {
     /// Select all document text inside `element` (or the whole document for `None`).
     pub fn select_text(&mut self, element: Option<&str>) -> Result<()> {
         let scope = element.map(|e| self.node(e)).transpose()?;
-        self.clear_selection();
+        let before = (self.selection.anchor, self.selection.focus);
+        self.clear_selection_quiet();
+        let result = self.select_text_inner(scope);
+        self.note_selection_change(before);
+        result
+    }
+    fn select_text_inner(&mut self, scope: Option<NodeId>) -> Result<()> {
         let Some(c) = self.committed_tree()? else {
             return Ok(());
         };
@@ -438,7 +449,64 @@ impl Document {
             .is_some_and(|n| in_control(d, n))
     }
     /// Pointer/keyboard handling after the engine processed the input (its events are `events`).
+    /// Queue `selectionchange` when the selection differs from `before`.
+    fn note_selection_change(&mut self, before: (Option<SelPoint>, Option<SelPoint>)) {
+        if before != (self.selection.anchor, self.selection.focus) && self.events.len() < 1024 {
+            self.events
+                .push(serde_json::json!({"type": "selectionchange"}));
+        }
+    }
+    /// While dragging a selection past the edge of the scroll container that holds the anchor
+    /// (innermost first, then the viewport), scroll it toward the pointer.
+    fn drag_autoscroll(&mut self, y: f64) -> Result<()> {
+        let Some(anchor) = self.selection.anchor else {
+            return Ok(());
+        };
+        let chain: Vec<ScrollTarget> = self
+            .pipeline
+            .scroll_chain(anchor.root)
+            .into_iter()
+            .filter(|e| e.user_y && e.range.max.1 > e.range.min.1)
+            .map(|e| e.target)
+            .collect();
+        let id = self.id();
+        for target in chain {
+            let Some((_, top, _, height)) = self.scrollport_rect(target) else {
+                continue;
+            };
+            let dy = if y < top {
+                (y - top).max(-40.0)
+            } else if y > top + height {
+                (y - top - height).min(40.0)
+            } else {
+                0.0
+            };
+            if dy == 0.0 {
+                return Ok(());
+            }
+            let Some(e) = self.pipeline.scroll_entry(target) else {
+                continue;
+            };
+            let node = match target {
+                ScrollTarget::Viewport => None,
+                ScrollTarget::Node(n) => Some(n),
+            };
+            let applied =
+                crate::interaction::scroll::scroll_to(self, id, node, e.offset.0, e.offset.1 + dy)?;
+            if applied.changed {
+                self.repaint = true;
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
     pub(super) fn selection_input(&mut self, input: &Input, events: &[Value]) -> Result<()> {
+        let before = (self.selection.anchor, self.selection.focus);
+        let result = self.selection_input_inner(input, events);
+        self.note_selection_change(before);
+        result
+    }
+    fn selection_input_inner(&mut self, input: &Input, events: &[Value]) -> Result<()> {
         let prevented = |ty: &str| {
             events
                 .iter()
@@ -466,7 +534,7 @@ impl Document {
                             || d.local_name(a).is_ok_and(|t| t == "select")
                     });
                     if entry {
-                        self.clear_selection();
+                        self.clear_selection_quiet();
                     }
                     return Ok(());
                 }
@@ -476,7 +544,7 @@ impl Document {
                 let tree = &c.layout.fragments;
                 let index = TextIndex::build(tree, self.pipeline.document());
                 let Some(at) = self.position_at(tree, &index, x, y) else {
-                    self.clear_selection();
+                    self.clear_selection_quiet();
                     return Ok(());
                 };
                 let now = Instant::now();
@@ -525,6 +593,7 @@ impl Document {
             Input::PointerMoved { x, y }
                 if self.selection.dragging && self.pointer_buttons & 1 != 0 =>
             {
+                self.drag_autoscroll(y)?;
                 let Some(c) = self.committed_tree()? else {
                     return Ok(());
                 };
@@ -600,7 +669,10 @@ impl Document {
                             );
                         }
                     }
-                    "a" | "A" => self.select_text(None)?,
+                    "a" | "A" => {
+                        self.clear_selection_quiet();
+                        self.select_text_inner(None)?
+                    }
                     _ => {}
                 }
             }

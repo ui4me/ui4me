@@ -36,9 +36,7 @@ Do not paste massive raw logs, long audit reports or all research feature record
 - **Release packaging (separate publication task):** since S9 (`rfd` zenity fallback → Rust std `pidfd_spawnp`/`pidfd_getpid`, weak symbols), the Linux wheel is tagged `manylinux_2_39`, up from 2_35, which blocks pip installs on Debian 12 and Ubuntu 22.04. Fix by building in a manylinux_2_28/2_35 container or by patching out the zenity fallback. Loading on older glibc was not verified.
 - Platform accessibility bridge (AccessKit → AT-SPI/UIA) from the donor `ui4me-a11y` crate (0.5 candidate).
 - Incremental layout for append-only containers (full relayout per change; see S5 numbers).
-- Selection: no drag auto-scroll, no selectionchange event; highlight is an overlay.
-- The modal `<dialog>` in the file utility shows a thin scrollbar-like strip at its right edge, even though nothing overflows (cosmetic; UA dialog overflow/scrollbar rendering).
-- Journey J05 on the small Windows console: the drag uses rectangles saved before the conversation scrolled, so it may select more text than the first message. The check still passes; this is a test-precision issue, not a product defect.
+- Selection highlight is an overlay, not painted behind the glyphs (drag auto-scroll and `selectionchange` were added in the 0.4 polish).
 - Host needed .NET SDK 10 (global.json) — installed user-locally at `~/.dotnet` (set `DOTNET_ROOT`/`PATH`).
 
 ## Hard blockers

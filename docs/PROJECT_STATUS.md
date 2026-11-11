@@ -241,8 +241,9 @@ block, joined by line feeds. Form-control contents (including passwords), button
 labels and generated `::before`/`::after` text are never part of the document
 selection. Text controls keep their own selection and clipboard behavior. The
 highlight is a translucent overlay clipped to scroll containers. Bidi text is
-selected in logical order. Drag auto-scroll and selection-change events are not
-provided. `get_clipboard_text`/`set_clipboard_text` use the native OS clipboard (plain
+selected in logical order. Dragging past the edge of a scroll container scrolls it
+(while the pointer moves). Every change of the document selection emits a document-level
+`selectionchange` event (subscribe with `window.on("selectionchange", ...)`). `get_clipboard_text`/`set_clipboard_text` use the native OS clipboard (plain
 text, 16 MiB), or process memory in headless sessions.
 For streaming, `append_text` appends a literal chunk of up to 16 KiB. It extends a
 small trailing text node or starts a new one, so each append costs only the chunk's

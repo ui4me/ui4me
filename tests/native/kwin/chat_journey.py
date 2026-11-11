@@ -249,6 +249,10 @@ def journey(out: Path, command: list[str]) -> dict:
             return {"search": s["search"], "focus": s["focus"], "lines_during": s["lines"] - lines}
 
         def drag_select():
+            # Let both streamed replies finish so the conversation stops scrolling, then use a
+            # state saved after that (rectangles must match what is on screen).
+            done = wait(state_path, lambda s: s["replies"] >= 2, timeout=30)
+            wait(state_path, lambda s: s["lines"] > done["lines"] + 25, timeout=10)
             s = read_state(state_path)
             fake(f"move {at(s, 'm0', 0.0, 0.75, dx=12)}")
             fake("down")
@@ -256,7 +260,7 @@ def journey(out: Path, command: list[str]) -> dict:
             fake(f"move {at(s, 'm0', 0.98, 0.75)}")
             fake("up")
             s = wait(state_path, lambda s: len(s["selection"]) > 10)
-            if "Type below" not in s["selection"]:
+            if not s["selection"].startswith("Hello") or "you" in s["selection"]:
                 raise AssertionError(f"selection {s['selection']!r}")
             return {"selection": s["selection"]}
 

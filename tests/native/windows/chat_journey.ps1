@@ -146,12 +146,15 @@ try {
         @{ search = $s.search; focus = @($s.focus); lines_during = $s.lines - $lines }
     }
     Case 'J05_drag_select_document_text' {
+        # Let the streamed replies finish so the conversation stops scrolling, then use fresh state.
+        $done = Wait-State { param($s) $s.replies -ge 2 } 30
+        $null = Wait-State { param($s) $s.lines -gt $done.lines + 25 } 10
         $s = Read-State
         $a = At $s 'm0' 0 0.75 12; $b = At $s 'm0' 0.98 0.75
         [Win]::Move($a[0], $a[1]); [Win]::Button($true)
         [Win]::Move([int](($a[0] + $b[0]) / 2), $b[1]); [Win]::Move($b[0], $b[1]); [Win]::Button($false)
         $s = Wait-State { param($s) ([string]$s.selection).Length -gt 10 }
-        if (-not ([string]$s.selection).Contains('Type below')) { throw "selection $($s.selection)" }
+        if (-not ([string]$s.selection).StartsWith('Hello') -or ([string]$s.selection).Contains("`nyou")) { throw "selection $($s.selection)" }
         @{ selection = $s.selection }
     }
     Case 'J06_copy_button_os_clipboard' {
