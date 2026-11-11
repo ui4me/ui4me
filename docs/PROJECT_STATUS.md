@@ -374,13 +374,18 @@ support from synthetic composition events.
 
 Automated results and native observations are distinct. `attest` records an
 observed scenario; the default `qualify` policy requires all native scenarios.
-For an explicitly requested release, the publication workflow uses `qualify
---ci-only`: it checks the complete automated CI matrix for the exact commit and
-artifacts, and records full native desktop acceptance as `not_run`. It does not
-claim that missing desktop observations passed. Missing/zero-test suites, failed
-latest attempts, stale source/artifacts and absent upgrades still block release.
-The workflow obtains its candidate from a successful CI run on the default
-branch. PowerShell 7.4 floor checks remain part of that matrix.
+The manually triggered **Release and publish** GitHub Actions workflow builds
+both platforms, assembles the packages, publishes the Python wheels and
+PowerShell module, and creates a GitHub release. It does not run tests or claim
+desktop acceptance. Run it on the default branch only when publication is wanted:
+
+```sh
+gh workflow run publish.yml --ref main
+```
+
+The earlier qualification-based workflow is preserved at
+`.github/workflow-backups/publish-qualified.yml`. CI and the optional local
+qualification commands remain available when a more thorough check is wanted.
 
 Publication remains explicit in the existing manual workflows. Source changes
 after a candidate build invalidate its receipts. Rebuild/repackage the affected

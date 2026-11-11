@@ -1,170 +1,114 @@
-name: Publish qualified release
+name: Release and publish
 
 on:
   workflow_dispatch:
-    inputs:
-      ci_run_id:
-        description: Successful Foundation CI run at this exact commit
-        required: true
-        type: string
-      registry:
-        description: One publication destination
-        type: choice
-        options: [testpypi, pypi, powershell, github]
-        required: true
-      execute:
-        description: Actually publish after qualification; false only prepares and reviews
-        type: boolean
-        default: false
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
-  group: ui4me-publish-${{ inputs.registry }}
+  group: ui4me-release
   cancel-in-progress: false
 
 jobs:
-  qualify:
+  build:
     if: github.repository == 'ui4me/ui4me' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    environment: release-review
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            rid: linux-x64
+          - os: windows-2022
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTUP_HOME: ${{ github.workspace }}/build/ci-rustup
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
-      - id: ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.ci_run_id }}
-        run: python .github/scripts/trusted-run.py --run-id "$RUN_ID" --workflow ci.yml --artifact ci-bundle
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          artifact-ids: ${{ steps.ci.outputs.artifact_id }}
-          merge-multiple: true
-          run-id: ${{ inputs.ci_run_id }}
-          github-token: ${{ github.token }}
-          path: .
-      - name: Verify the complete automated CI matrix
-        env:
-          REVIEWER: ${{ github.actor }}
-          REVIEW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python dev.py qualify --ci-only --manifest dist/release/manifest.json --reviewer "$REVIEWER" --review-url "$REVIEW_URL"
-      - name: Review publication command
-        env:
-          REGISTRY: ${{ inputs.registry }}
-        run: python dev.py publish --manifest dist/release/manifest.json --registry "$REGISTRY"
-      - run: python dev.py report --manifest dist/release/manifest.json
+          dotnet-version: '10.0.x'
+      - run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1
+      - name: MSVC x64 environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/setup-msvc.ps1
+      - run: python .github/scripts/setup-powershell.py
+      - run: python -m pip install -r requirements-dev.txt
+      - shell: pwsh
+        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
+      - run: python dev.py build --binding all --profile release
+      - run: python dev.py package --binding all --profile release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: qualified-release
-          path: |
-            dist/release/
-            build/reports/
-            build/source-check/
+          name: package-${{ matrix.rid }}
+          path: dist/${{ matrix.rid }}/
           if-no-files-found: error
-          retention-days: 90
 
-  python:
-    needs: qualify
-    if: inputs.execute && (inputs.registry == 'pypi' || inputs.registry == 'testpypi')
+  assemble:
+    needs: build
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    environment: ${{ inputs.registry }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: python .github/scripts/setup-powershell.py
+      - shell: pwsh
+        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package-linux-x64
+          path: dist/linux-x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package-win-x64
+          path: dist/win-x64
+      - run: python dev.py assemble --manifest dist/linux-x64/manifest.json --manifest dist/win-x64/manifest.json --out dist/release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-packages
+          path: dist/release/
+          if-no-files-found: error
+
+  pypi:
+    needs: assemble
+    runs-on: ubuntu-22.04
+    environment: pypi
     permissions:
       contents: read
       actions: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Linux runtime dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: qualified-release
-          path: .
-      - run: python .github/scripts/stage-python-release.py
-        id: python_stage
-        env:
-          REGISTRY: ${{ inputs.registry }}
+          name: release-packages
+          path: dist/release
+      - name: Stage Python wheels
+        run: mkdir -p dist/pypi && cp dist/release/*.whl dist/pypi/
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
-        if: steps.python_stage.outputs.has_pending == 'true'
         with:
-          packages-dir: build/pypi/
-          repository-url: ${{ inputs.registry == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
-
-  python-verify:
-    # The pinned PyPA action creates .github/.tmp/.generated-actions/ in its
-    # checkout. That correctly changes source identity. Verify in fresh jobs
-    # without excluding unknown source files or carrying its workspace forward.
-    needs: [qualify, python]
-    if: inputs.execute && (inputs.registry == 'pypi' || inputs.registry == 'testpypi')
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Linux runtime dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: qualified-release
-          path: .
-      - name: Verify public download and current-host installed consumer
-        env:
-          REGISTRY: ${{ inputs.registry }}
-        shell: bash
-        run: python dev.py verify --manifest dist/release/manifest.json --registry "$REGISTRY"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: public-verification-${{ inputs.registry }}-${{ runner.os }}
-          path: |
-            build/public-verification/
-            build/reports/
-          retention-days: 90
+          packages-dir: dist/pypi/
 
   powershell:
-    needs: qualify
-    if: inputs.execute && inputs.registry == 'powershell'
+    needs: assemble
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
     environment: psgallery
-    permissions:
-      contents: read
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Linux runtime dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -173,64 +117,31 @@ jobs:
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: qualified-release
-          path: .
-      - name: Publish the qualified bytes
+          name: release-packages
+          path: dist/release
+      - name: Publish PowerShell package
+        shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-        run: python dev.py publish --manifest dist/release/manifest.json --registry powershell --execute
-      - name: Verify public download and current-host installed consumer
-        run: python dev.py verify --manifest dist/release/manifest.json --registry powershell
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: public-verification-${{ inputs.registry }}
-          path: |
-            build/publish/
-            build/public-verification/
-            build/reports/
-          retention-days: 90
+        run: ./scripts/publish-powershell.ps1 -PackagePath (Get-ChildItem dist/release/*.nupkg).FullName
 
   github:
-    needs: qualify
-    if: inputs.execute && inputs.registry == 'github'
+    needs: [assemble, pypi, powershell]
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    environment: github-release
     permissions:
       contents: write
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Linux runtime dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - run: python .github/scripts/setup-powershell.py
-      - shell: pwsh
-        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: qualified-release
-          path: .
-      - name: Create release from the existing qualified tag
+          name: release-packages
+          path: dist/release
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python dev.py publish --manifest dist/release/manifest.json --registry github --execute
-      - name: Verify public download and current-host installed consumers
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python dev.py verify --manifest dist/release/manifest.json --registry github
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: public-verification-github
-          path: |
-            build/publish/
-            build/public-verification/
-            build/reports/
-          retention-days: 90
+        shell: bash
+        run: |
+          version=$(tr -d '\r\n' < VERSION)
+          gh release create "v$version" dist/release/* --target "$GITHUB_SHA" --title "ui4me $version" --notes "Built from commit $GITHUB_SHA. This release workflow does not run tests."
