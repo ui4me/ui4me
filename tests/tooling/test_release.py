@@ -133,6 +133,10 @@ class QualificationPortabilityTests(unittest.TestCase):
 
 
 class PublicationControlsTests(unittest.TestCase):
+    def test_gallery_lookup_uses_an_exact_version_path(self):
+        self.assertEqual(publishing.gallery_package_url("0.2.0"),
+                         "https://cdn.powershellgallery.com/packages/ui4me.0.2.0.nupkg")
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

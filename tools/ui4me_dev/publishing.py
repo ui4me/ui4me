@@ -16,6 +16,12 @@ from .process import run
 from .testing import installed
 
 
+def gallery_package_url(package_version: str) -> str:
+    # The Gallery v2 package endpoint falls back to the latest version when a
+    # requested version is absent. The versioned CDN path returns a real 404.
+    return f"https://cdn.powershellgallery.com/packages/ui4me.{package_version}.nupkg"
+
+
 def source_zip(destination: Path) -> Path:
     destination = output_path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +80,7 @@ def publish(manifest_path: Path, registry: str, execute: bool) -> None:
             item = find_artifact(manifest, "powershell-package")
             existing = folder / "existing.nupkg"
             try:
-                download(f"https://www.powershellgallery.com/api/v2/package/Ui4me/{manifest['version']}", existing)
+                download(gallery_package_url(manifest["version"]), existing)
             except urllib.error.HTTPError as error:
                 if error.code != 404:
                     raise
@@ -198,7 +204,7 @@ def verify(manifest_path: Path, registry: str) -> bool:
         binding = "python"
     elif registry == "powershell":
         item = find_artifact(manifest, "powershell-package")
-        download(f"https://www.powershellgallery.com/api/v2/package/Ui4me/{manifest['version']}", destination / item["path"])
+        download(gallery_package_url(manifest["version"]), destination / item["path"])
         selected.append(item)
         binding = "powershell"
     elif registry == "github":
