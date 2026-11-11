@@ -45,7 +45,7 @@ def main() -> int:
             os.replace(tmp, args.state)
 
         def record(event: dict) -> None:
-            state["events"].append({"type": event["type"], "element": event.get("element"), "files": event.get("files")})
+            state["events"].append({"type": event["type"], "element": event.get("element"), "files": event.get("files"), "x": event.get("x"), "y": event.get("y")})
             save()
 
         for kind in ("cancel", "commit", "click"):
