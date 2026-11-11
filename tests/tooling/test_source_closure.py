@@ -25,7 +25,7 @@ class SourceClosureTests(unittest.TestCase):
         }.items():
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            path.write_bytes(content.encode("utf-8"))
 
     def test_sibling_crates_and_nested_assets_survive_staging(self):
         with tempfile.TemporaryDirectory() as temporary:

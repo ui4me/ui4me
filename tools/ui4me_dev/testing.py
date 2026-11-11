@@ -50,7 +50,9 @@ def unit(binding: str, profile: str) -> bool:
                 command.append("--release")
             env["UI4ME_SOURCE_ID"] = source_id()
             env["UI4ME_GIT_REVISION"] = revision()
-            env["CARGO_TARGET_DIR"] = str(ROOT / "build/cargo" / host())
+            # Cargo test can replace the cdylib built for packaging, especially
+            # on Windows. Keep test outputs separate from receipted artifacts.
+            env["CARGO_TARGET_DIR"] = str(ROOT / "build/cargo-tests" / host())
             env.pop("CARGO_BUILD_TARGET", None)
             step = run(command, cwd=ROOT, env=env, log=folder / "unit.log", check=False)
             receipt["steps"].append(step)
