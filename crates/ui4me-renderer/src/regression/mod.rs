@@ -4,5 +4,6 @@ mod dom_query;
 mod fault;
 mod incremental_vs_cold;
 mod inline_style;
+mod long_document;
 mod scroll_retention;
 mod views;

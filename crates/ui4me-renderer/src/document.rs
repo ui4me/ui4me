@@ -1401,6 +1401,14 @@ impl Document {
         self.repaint = false;
         Ok(pixels)
     }
+    #[cfg(test)]
+    pub(crate) fn resources_weak_for_testing(&self) -> std::sync::Weak<Mutex<ResourceManager>> {
+        Arc::downgrade(&self.resources)
+    }
+    #[cfg(test)]
+    pub(crate) fn pipeline_mut_for_testing(&mut self) -> &mut DocumentPipeline {
+        &mut self.pipeline
+    }
     pub fn has_pending_resources(&self) -> bool {
         lock(&self.resources).pending(self.id()).unwrap_or(0) != 0
     }

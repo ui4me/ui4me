@@ -234,7 +234,7 @@ impl DocumentPipeline {
             earliest_mutation: None,
             no_animation_paint_path: false,
             no_layout_reuse: false,
-            scene_reuse: false, // Enable only after retained-lifetime qualification.
+            scene_reuse: std::env::var_os("UI4ME_SCENE_REUSE").is_none_or(|v| v != "0"), // F1004: on (qualified by the F1006 soak and the long-document RSS tests); UI4ME_SCENE_REUSE=0 turns it off.
             no_damage_raster: false,
             font_gen: 0,
             layout_font_gen: 0,
