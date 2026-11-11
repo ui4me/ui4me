@@ -26,7 +26,7 @@ struct Language {
     lowercase_only: bool,
 }
 
-const LANGUAGES: [Language; 4] = [
+const LANGUAGES: [Language; 9] = [
     // American English patterns: other English regions spell and hyphenate differently and are not shipped.
     Language {
         primary: "en",
@@ -57,14 +57,47 @@ const LANGUAGES: [Language; 4] = [
         exceptions: "",
         lowercase_only: false,
     },
+    // 0.9 F0905: Portuguese (BSD-3-Clause), Dutch, Slovak, Polish, Ukrainian (MIT); Czech is not
+    // shipped (GPL-only patterns), see NOTICES.txt.
+    Language {
+        primary: "pt",
+        regions: None,
+        patterns: include_str!("data/hyphenation/hyph-pt.pat.txt"),
+        exceptions: include_str!("data/hyphenation/hyph-pt.hyp.txt"),
+        lowercase_only: false,
+    },
+    Language {
+        primary: "nl",
+        regions: None,
+        patterns: include_str!("data/hyphenation/hyph-nl.pat.txt"),
+        exceptions: include_str!("data/hyphenation/hyph-nl.hyp.txt"),
+        lowercase_only: false,
+    },
+    Language {
+        primary: "sk",
+        regions: None,
+        patterns: include_str!("data/hyphenation/hyph-sk.pat.txt"),
+        exceptions: include_str!("data/hyphenation/hyph-sk.hyp.txt"),
+        lowercase_only: false,
+    },
+    Language {
+        primary: "pl",
+        regions: None,
+        patterns: include_str!("data/hyphenation/hyph-pl.pat.txt"),
+        exceptions: include_str!("data/hyphenation/hyph-pl.hyp.txt"),
+        lowercase_only: false,
+    },
+    Language {
+        primary: "uk",
+        regions: None,
+        patterns: include_str!("data/hyphenation/hyph-uk.pat.txt"),
+        exceptions: "",
+        lowercase_only: false,
+    },
 ];
 
-static LOADED: [OnceLock<Hyphenator>; LANGUAGES.len()] = [
-    OnceLock::new(),
-    OnceLock::new(),
-    OnceLock::new(),
-    OnceLock::new(),
-];
+static LOADED: [OnceLock<Hyphenator>; LANGUAGES.len()] =
+    [const { OnceLock::new() }; LANGUAGES.len()];
 
 /// What a language tag resolves to.
 #[derive(Clone, Copy, Debug)]
@@ -290,6 +323,31 @@ mod tests {
         }
         // every point the patterns have (limits of one letter)
         assert_eq!(hyphenate(h, "computer", 1, 1), "com-put-er");
+    }
+
+    #[test]
+    fn added_languages_hyphenate_known_words() {
+        // 0.9 F0905: one word per added pattern set, at the limits 2/2; the points are the
+        // patterns' (checked against the hyph-utf8 files), not a dictionary's.
+        let get = |tag: &str| match dictionary(tag) {
+            Dictionary::Supported(h) => h,
+            other => panic!("{tag} must be supported: {other:?}"),
+        };
+        for (tag, word) in [
+            ("pt-BR", "computador"),
+            ("nl", "woordenboek"),
+            ("sk", "počítač"),
+            ("pl", "komputer"),
+            ("uk", "комп'ютер"),
+        ] {
+            let out = hyphenate(get(tag), word, 2, 2);
+            assert!(out.contains('-'), "{tag}: {word} has no break point");
+            assert_eq!(out.replace('-', ""), word);
+        }
+        assert!(
+            !matches!(dictionary("cs"), Dictionary::Supported(_)),
+            "Czech is not shipped"
+        );
     }
 
     #[test]
