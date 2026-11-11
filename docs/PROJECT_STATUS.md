@@ -1,4 +1,4 @@
-# UI4ME Core 0.6: implementation status and contract
+# UI4ME Core 0.7: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
@@ -6,6 +6,13 @@ are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
 Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
+
+**Core 0.7.0 is the current candidate** (native desktop services;
+[`core-roadmap/versions/0_7.md`](core-roadmap/versions/0_7.md)): system notifications,
+tray/status icon with menu, window menu bars and context menus (Windows; accelerators on every
+platform), global shortcuts, the OS dark/high-contrast preference, rich clipboard HTML,
+element drag and drop, pointer confinement/lock, startup activation and single-instance
+open-with delivery.
 
 **Core 0.6.0 is released (2026-11-11)** — [GitHub v0.6.0](https://github.com/ui4me/ui4me/releases/tag/v0.6.0), PyPI `ui4me==0.6.0` (`manylinux_2_35_x86_64`, `win_amd64`), PowerShell Gallery `Ui4me 0.6.0`, built from `3f9eaf7` (gated `f004dd6`; complete public document and HTML interface;
 [`core-roadmap/versions/0_6.md`](core-roadmap/versions/0_6.md), ledger
@@ -187,6 +194,14 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Forms (0.6) | `get_validity(id)`, `check_validity(id)`; event `invalid`; `submit` carries `submitter` | `GetValidityJson`, `CheckValidityJson` |
 | File input (0.6) | `get_files(id)`; `commit`/`change` events carry `files`, `cancel` on dismissal | `GetFiles` |
 | Links (0.6) | `app.set_link_policy(schemes, hosts=, open=False)`; event `link_activated` | `$app.SetLinkPolicy(schemes, hosts, open)` |
+| Notifications (0.7) | `app.notify(title, body, icon=, urgency=, actions=, on_event=)`, `close_notification(token)`; event `notification` | `Notify`, `CloseNotification` |
+| Tray (0.7) | `app.set_tray(icon=, tooltip=, menu=)`, `remove_tray()`; events `tray`, `menu_command` | `SetTray`, `RemoveTray` |
+| Menus (0.7) | `window.set_menu(menu)`, `show_context_menu(x, y, menu)`; event `menu_command` | `SetMenu`, `ShowContextMenu` |
+| Global shortcuts (0.7) | `app.register_hotkey(id, accelerator)`, `unregister_hotkey(id)`; event `hotkey` | `RegisterHotkey`, `UnregisterHotkey` |
+| Rich clipboard (0.7) | `set_clipboard_html(html, text)`, `get_clipboard_html(raw=False)` | `SetClipboardHtml`, `GetClipboardHtml` |
+| Pointer (0.7) | `set_pointer_grab(mode, cursor_visible=)`; event `pointer_grab` | `SetPointerGrab` |
+| Instance (0.7) | `app.claim_instance(open_files)`; event `open_files` | `ClaimInstance` |
+| Drag and drop (0.7) | `draggable="true"`; events `dragstart`, `dragover`, `drop`, `dragend`; `file_drop` carries `element` | — |
 
 **0.5 contract.** `capabilities` (wire op, no window) returns `platform` (`wayland`,
 `x11`, `windows`, `headless`, or `pending` before `run()` starts the native backend),
@@ -238,6 +253,31 @@ never navigates; only `https`, `http` and `mailto` can be allowed (optionally pe
 `example.com` or `*.example.com`), and with `open` Core launches allowed links through the
 OS handler without a shell. Declarative default-action rules also cancel link activation,
 submission, dialog Escape (`cancel`), selection drags and `select` popups (`mousedown`).
+
+**0.7 contract.** Desktop services answer `{"status": ..., "reason"?}` with `sent`/`ok`/
+`registered`/`supported`, or `unsupported`, `unavailable`, `denied`, `conflict` and the exact
+cause; nothing is simulated, and headless sessions report `unavailable`. Linux uses D-Bus
+(`org.freedesktop.Notifications`; StatusNotifierItem + dbusmenu with the
+StatusNotifierWatcher; the xdg-desktop-portal GlobalShortcuts and Settings interfaces);
+Windows uses the notification area (balloon notifications: no action buttons, Focus Assist
+may suppress them), Win32 menus and `RegisterHotKey`. Menus are trees of `{id, label,
+enabled, checked, accelerator}`, separators and submenus (unique ids, at most 512 items, 4
+levels, colliding accelerators rejected). Window menu bars and context menus are native on
+Windows and `unsupported` on Linux (no client menu-bar protocol on Wayland/X11): render them in
+the document; menu accelerators are matched by Core on every platform and arrive as
+`menu_command` with `source: "accelerator"`. Global shortcuts need Ctrl, Alt or Super (or a
+function key), at most 32, end with the session; the KDE portal may ask the user. The OS
+colour scheme and high contrast come from the portal (Linux) or the registry/system settings
+(Windows) and update every window (`environment_changed`; `high_contrast` is reported, but
+`forced-colors` is not evaluated). `get_clipboard_html` sanitizes by default (scripts,
+styles, embedded content, comments, handlers, style attributes and non-http(s)/mailto URLs
+removed); image clipboard formats are unsupported. `set_pointer_grab` (`confined`, `locked`,
+`none`) reports its outcome as `pointer_grab` and is released on focus loss. On Linux the
+launcher's activation token activates the first window; activating an existing window stays
+unsupported on Wayland (winit 0.30). `claim_instance` makes the first process per user and
+`app_id` the primary (a 0600 socket in `XDG_RUNTIME_DIR` or a local named pipe); later ones
+forward bounded path lists (data only) and get `primary: false`. Core installs no file
+associations.
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.
