@@ -119,6 +119,32 @@ try {
                 }
             }
         } 'Local candidate version and fresh session; public upgrade is assessed separately'
+        Test-Case F13 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $page = '<style>body{margin:0}.r{height:30px}</style><div id="log" style="height:100px;overflow:auto"><div id="r0" class="r">Příliš</div></div><form id="f"><textarea id="t"></textarea></form>'
+                $window = $app.Open($page, 'f13', 400, 300)
+                $window.SetScrollFollow('log', $true)
+                foreach ($i in 1..7) {
+                    $window.Batch(@(@{ op = 'insert_html'; element = 'log'; position = 'beforeend'; html = "<div id=""r$i"" class=""r"">$i</div>" }, @{ op = 'trim_children'; element = 'log'; keep = 6 }))
+                }
+                if (($window.Query('#log > div') -join ',') -ne 'r2,r3,r4,r5,r6,r7') { throw 'batch/trim' }
+                $scroll = $window.GetScroll('log')
+                if ($scroll.Y -ne 80 -or $scroll.MaxY -ne 80) { throw 'follow' }
+                $window.ScrollIntoView('r2', 'start', 'nearest')
+                if ($window.GetRect('r2').Y -ne 0) { throw 'into view' }
+                $window.MoveElement('r7', 'r2', 'beforebegin')
+                $window.AppendText('r7', ' ✓')
+                if ($window.GetText('r7') -ne '7 ✓' -or $window.GetAttribute('r7', 'class') -ne 'r') { throw 'move/append/read' }
+                $window.SelectText('r7')
+                if ($window.CopySelection() -ne '7 ✓' -or $window.GetClipboardText() -ne '7 ✓') { throw 'selection/clipboard' }
+                $window.SetDefaultAction('f', 'keydown', $true, 'Enter', $false)
+                $rejected = $false
+                try { $window.Batch(@(@{ op = 'remove_element'; element = 'r3' }, @{ op = 'remove_element'; element = 'missing' })) } catch { $rejected = $_.Exception.Message -match 'batch operation 1' }
+                if (-not $rejected -or -not $window.HasElement('r3')) { throw 'atomic batch' }
+                $null = $app.On('started', { param($e) $app.Stop() })
+            }
+        } '0.3 Core contract: batch/trim, follow scroll, into-view geometry, move/append/read, selection copy, clipboard, default-action rule'
     }
     else {
         Write-Host 'Use the labeled controls. Close session 1 to open session 2. Capture the actual desktop externally.'

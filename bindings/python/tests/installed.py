@@ -153,10 +153,41 @@ def installed_cases():
                 app.on("started", lambda _: app.stop())
                 app.run()
 
+    def core_03_contract():
+        page = ('<style>body{margin:0}.r{height:30px}</style><div id="log" style="height:100px;overflow:auto">'
+                '<div id="r0" class="r">Příliš</div></div><form id="f"><textarea id="t"></textarea></form>')
+        with App(backend="headless", handle_sigint=False) as app:
+            window = app.open(page, width=400, height=300)
+            window.set_scroll_follow("log")
+            for i in range(1, 8):
+                window.batch([{"op": "insert_html", "element": "log", "position": "beforeend", "html": f'<div id="r{i}" class="r">{i}</div>'},
+                              {"op": "trim_children", "element": "log", "keep": 6}])
+            assert window.query("#log > div") == [f"r{i}" for i in range(2, 8)]
+            scroll = window.get_scroll("log")
+            assert scroll["y"] == scroll["max_y"] == 80.0, scroll
+            window.scroll_into_view("r2", block="start")
+            assert window.get_rect("r2")["y"] == 0.0
+            window.move_element("r7", "r2", "beforebegin")
+            window.append_text("r7", " ✓")
+            assert window.get_text("r7") == "7 ✓" and window.get_attribute("r7", "class") == "r"
+            window.select_text("r7")
+            assert window.copy_selection() == "7 ✓" == window.get_clipboard_text()
+            window.set_default_action("f", "keydown", key="Enter", shift=False)
+            try:
+                window.batch([{"op": "remove_element", "element": "r3"}, {"op": "remove_element", "element": "missing"}])
+            except ui4me.Ui4meError as error:
+                assert "batch operation 1" in str(error)
+            else:
+                raise AssertionError("invalid batch accepted")
+            assert window.has_element("r3")
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
+    check("F13", core_03_contract, "0.3 Core contract: batch/trim, follow scroll, into-view geometry, move/append/read, selection copy, clipboard, default-action rule")
     return cases
 
 

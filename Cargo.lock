@@ -3468,7 +3468,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "ui4me-assets"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "brotli-decompressor",
  "data-url",
@@ -3487,7 +3487,7 @@ dependencies = [
 
 [[package]]
 name = "ui4me-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arboard",
  "png",
@@ -3500,7 +3500,7 @@ dependencies = [
 
 [[package]]
 name = "ui4me-document"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "html5ever",
  "markup5ever",
@@ -3512,14 +3512,14 @@ dependencies = [
 
 [[package]]
 name = "ui4me-engine-types"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "ui4me-renderer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "app_units",
  "cssparser",
