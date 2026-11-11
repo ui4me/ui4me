@@ -70,7 +70,7 @@ pub fn run(session: Arc<Session>) -> Result<()> {
         *lock(&session.proxy) = Some(event_loop.create_proxy());
         let clipboard = Rc::new(RefCell::new(arboard::Clipboard::new().map_err(|e| e.to_string())));
         *lock(&session.clipboard) = Some(clipboard.borrow().as_ref().map(|_| ()).map_err(Clone::clone));
-        let mut app = Desktop { session, windows: BTreeMap::new(), started: false, resumed: false, clipboard };
+        let mut app = Desktop { session, windows: BTreeMap::new(), started: false, resumed: false, clipboard, used_startup_token: false };
         let result = event_loop.run_app_on_demand(&mut app).map_err(|e| Error::native(format!("native event loop: {e}")));
         app.windows.clear();
         if result.is_err() { INITIALIZATION_FAILED.store(true, Ordering::Release); }
@@ -155,6 +155,9 @@ struct NativeWindow {
     /// The platform emptied its preedit; unless a commit follows in the same batch (Windows and
     /// text-input-v3 send an empty preedit before every commit) the composition was canceled.
     preedit_cleared: bool,
+    /// Pointer grab in force (`none`, `confined`, `locked`) and cursor visibility (0.7 F0709).
+    pointer_grab: &'static str,
+    cursor_visible: bool,
     last_cursor: CursorIcon,
     a11y: Accessibility,
 }
@@ -205,6 +208,9 @@ struct Desktop {
     started: bool,
     resumed: bool,
     clipboard: SharedClipboard,
+    /// The launcher's activation token was given to the first window (0.7 F0708).
+    #[allow(dead_code)]
+    used_startup_token: bool,
 }
 
 pub(crate) fn new_size(last: &mut Option<PhysicalSize<u32>>, size: PhysicalSize<u32>) -> bool {
@@ -242,6 +248,25 @@ impl Desktop {
         let attributes = {
             use winit::platform::windows::WindowAttributesExtWindows;
             attributes.with_class_name(self.session.app_id.clone())
+        };
+        // The launcher's startup activation token (XDG_ACTIVATION_TOKEN / DESKTOP_STARTUP_ID) lets
+        // the first window take the focus on Wayland; it is used once (0.7 F0708).
+        #[cfg(target_os = "linux")]
+        let attributes = {
+            use winit::platform::startup_notify::{
+                EventLoopExtStartupNotify, WindowAttributesExtStartupNotify,
+            };
+            match event_loop
+                .read_token_from_env()
+                .filter(|_| !self.used_startup_token)
+            {
+                Some(token) => {
+                    self.used_startup_token = true;
+                    winit::platform::startup_notify::reset_activation_token_env();
+                    attributes.with_activation_token(token)
+                }
+                None => attributes,
+            }
         };
         #[cfg(target_os = "linux")]
         let attributes = {
@@ -305,6 +330,8 @@ impl Desktop {
                 ime_resets: 0,
                 ime_quiet_until: None,
                 preedit_cleared: false,
+                pointer_grab: "none",
+                cursor_visible: true,
                 last_cursor: CursorIcon::Default,
                 a11y,
             },
@@ -529,6 +556,10 @@ impl Desktop {
                     match op {
                         WindowOp::FileDialog(request) => self.spawn_file_dialog(id, request),
                         WindowOp::Menu(menu) => self.apply_menu(id, menu),
+                        WindowOp::PointerGrab {
+                            mode,
+                            cursor_visible,
+                        } => self.pointer_grab(id, mode, cursor_visible),
                         WindowOp::ContextMenu { x, y, menu } => self.context_menu(id, x, y, menu),
                         op => {
                             if let Some(native) = self.windows.get_mut(&id) {
@@ -775,6 +806,46 @@ impl Desktop {
             self.send_input(id, Input::ImeDisabled);
         }
     }
+    /// Confine or lock the pointer and show/hide the cursor (0.7 F0709); the outcome is reported
+    /// as a `pointer_grab` event (a platform may refuse a mode).
+    fn pointer_grab(&mut self, id: u64, mode: &'static str, cursor_visible: bool) {
+        use winit::window::CursorGrabMode;
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        let grab = match mode {
+            "confined" => CursorGrabMode::Confined,
+            "locked" => CursorGrabMode::Locked,
+            _ => CursorGrabMode::None,
+        };
+        let focused = native.window.has_focus();
+        let result = if grab != CursorGrabMode::None && !focused {
+            Err("the window does not have the focus".to_string())
+        } else {
+            native
+                .window
+                .set_cursor_grab(grab)
+                .map_err(|e| e.to_string())
+        };
+        native
+            .window
+            .set_cursor_visible(cursor_visible || mode == "none");
+        native.cursor_visible = cursor_visible || mode == "none";
+        let mut event = json!({"type":"pointer_grab","window":id,"mode":mode,"cursor_visible":native.cursor_visible});
+        match result {
+            Ok(()) => {
+                native.pointer_grab = mode;
+                event["applied"] = json!(true);
+            }
+            Err(e) => {
+                native.pointer_grab = "none";
+                let _ = native.window.set_cursor_grab(CursorGrabMode::None);
+                event["applied"] = json!(false);
+                event["reason"] = json!(format!("the platform refused the {mode} pointer: {e}"));
+            }
+        }
+        self.session.emit(event);
+    }
     fn raw_handle(&self, id: u64) -> Option<winit::raw_window_handle::RawWindowHandle> {
         use winit::raw_window_handle::HasWindowHandle;
         let native = self.windows.get(&id)?;
@@ -995,9 +1066,23 @@ impl ApplicationHandler<()> for Desktop {
             } => self.keyboard(id, event),
             WindowEvent::Focused(focused) => {
                 if !focused {
+                    let mut released = false;
                     if let Some(native) = self.windows.get_mut(&id) {
                         native.modifiers = ModifiersState::empty();
                         native.composing = false;
+                        // A pointer grab never outlives the focus (0.7 F0709).
+                        if native.pointer_grab != "none" || !native.cursor_visible {
+                            let _ = native
+                                .window
+                                .set_cursor_grab(winit::window::CursorGrabMode::None);
+                            native.window.set_cursor_visible(true);
+                            native.pointer_grab = "none";
+                            native.cursor_visible = true;
+                            released = true;
+                        }
+                    }
+                    if released {
+                        self.session.emit(json!({"type":"pointer_grab","window":id,"mode":"none","applied":true,"reason":"the window lost the focus"}));
                     }
                 }
                 self.send_input(id, Input::Focus(focused));
@@ -1088,7 +1173,10 @@ fn apply_op(native: &mut NativeWindow, op: WindowOp, hidden: bool) {
             w.set_max_inner_size(Some(LogicalSize::new(max.0 as f64, max.1 as f64)));
             w.set_resizable(resizable);
         }
-        WindowOp::FileDialog(_) | WindowOp::Menu(_) | WindowOp::ContextMenu { .. } => {}
+        WindowOp::FileDialog(_)
+        | WindowOp::Menu(_)
+        | WindowOp::ContextMenu { .. }
+        | WindowOp::PointerGrab { .. } => {}
         WindowOp::Icon(icon) => {
             let icon = icon.and_then(|(rgba, width, height)| {
                 winit::window::Icon::from_rgba(rgba, width, height).ok()

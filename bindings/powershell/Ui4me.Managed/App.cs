@@ -241,6 +241,9 @@ public sealed class App : IDisposable
     /// <summary>The platform capability report as JSON: platform, backend and per-feature status
     /// (supported, unsupported, denied, unavailable, unknown) with the reason.</summary>
     public string CapabilitiesJson() => Command(new { op = "capabilities" }).GetRawText();
+    /// <summary>Single instance per user and app id: JSON {primary, ...}; a second instance forwards
+    /// its paths (delivered to the primary as "open_files" events) and should exit.</summary>
+    public string ClaimInstance(string[]? openFiles = null) => Command(new { op = "claim_instance", open_files = (openFiles ?? Array.Empty<string>()).Select(Path.GetFullPath).ToArray() }).GetRawText();
     /// <summary>Show a native notification; returns JSON {status, token, reason?}. Its events
     /// arrive as "notification" with the token.</summary>
     public string Notify(string title, string body = "", string? icon = null, string? urgency = null, object? actions = null)
@@ -547,6 +550,8 @@ public sealed class Window
     static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
     /// <summary>Set (menu array of item hashtables) or clear ($null) the window menu; JSON status.</summary>
     public string SetMenu(object? menu) { Check(); return app.Command(new { op = "set_menu", window = Id, menu }).GetRawText(); }
+    /// <summary>Pointer grab: none, confined or locked; outcome as a pointer_grab event.</summary>
+    public string SetPointerGrab(string mode, bool cursorVisible = true) { Check(); return app.Command(new { op = "set_pointer_grab", window = Id, mode, cursor_visible = cursorVisible }).GetRawText(); }
     public string ShowContextMenu(double x, double y, object menu) { Check(); return app.Command(new { op = "show_context_menu", window = Id, x, y, menu }).GetRawText(); }
     /// <summary>Serialize an element (by id), a node reference, or the whole document (both empty).</summary>
     public string GetHtml(string? element = null, string? node = null, bool outer = false) { Check(); return app.Command(new { op = "get_html", window = Id, element = NullIfEmpty(element), node = NullIfEmpty(node), outer }).GetProperty("html").GetString()!; }

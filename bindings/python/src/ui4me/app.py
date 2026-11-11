@@ -292,6 +292,14 @@ class App:
         scale, position (None on Wayland), refresh rate and primary flag."""
         return self._command({"op": "list_monitors"})["monitors"]
 
+    def claim_instance(self, open_files=()) -> dict:
+        """Opt in to a single instance per user for this ``app_id``. The first instance gets
+        ``{"primary": True}`` and later receives other instances' paths as ``open_files`` events
+        (``source == "second_instance"``; its own ``open_files`` arrive with ``"startup"``). A
+        later instance forwards ``open_files`` and gets ``{"primary": False}`` — it should exit.
+        Paths are data only; Core installs no file associations."""
+        return self._command({"op": "claim_instance", "open_files": [str(Path(p).absolute()) for p in open_files]})
+
     def notify(self, title: str, body: str = "", *, icon=None, urgency: str | None = None,
                actions: list[tuple[str, str]] | tuple = (), on_event: Callable[[dict], object] | None = None) -> dict:
         """Show a native system notification. Returns ``{"status": "sent" | "unsupported" |
@@ -559,6 +567,12 @@ class Window:
         Accelerators (``"Ctrl+S"``) work on every platform; the native menu bar where the
         platform has one (``status``). Choices arrive as ``menu_command`` events."""
         return self._command("set_menu", menu=menu)
+
+    def set_pointer_grab(self, mode: str, *, cursor_visible: bool = True) -> dict:
+        """Confine (``"confined"``) or lock (``"locked"``) the pointer to the focused window, or
+        release it (``"none"``); the outcome arrives as a ``pointer_grab`` event (a platform may
+        refuse a mode). A grab is released when the window loses the focus."""
+        return self._command("set_pointer_grab", mode=mode, cursor_visible=cursor_visible)
 
     def show_context_menu(self, x: float, y: float, menu: list[dict]) -> dict:
         """Show a native context menu at viewport CSS px; the choice arrives as

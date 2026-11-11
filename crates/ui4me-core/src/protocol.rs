@@ -451,6 +451,11 @@ pub enum Command {
     ListMonitors,
     /// The platform capability report (0.5 F0508).
     Capabilities,
+    /// Single instance and open-with delivery (0.7 F0710).
+    ClaimInstance {
+        #[serde(default)]
+        open_files: Vec<String>,
+    },
     /// Native desktop services (0.7).
     Notify {
         token: u64,
@@ -480,6 +485,13 @@ pub enum Command {
         window: u64,
         #[serde(default)]
         menu: Option<Vec<crate::services::MenuItem>>,
+    },
+    /// Pointer confinement/lock and cursor visibility (0.7 F0709).
+    SetPointerGrab {
+        window: u64,
+        mode: String,
+        #[serde(default = "yes")]
+        cursor_visible: bool,
     },
     ShowContextMenu {
         window: u64,

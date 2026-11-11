@@ -75,6 +75,11 @@ pub enum WindowOp {
     FileDialog(FileDialogRequest),
     /// Native menu bar (0.7 F0703).
     Menu(Option<Vec<crate::services::MenuItem>>),
+    /// Pointer confinement/lock and cursor visibility (0.7 F0709).
+    PointerGrab {
+        mode: &'static str,
+        cursor_visible: bool,
+    },
     /// Context menu at CSS px (0.7 F0703).
     ContextMenu {
         x: f64,
@@ -180,6 +185,8 @@ pub struct Session {
     service_events: Arc<Mutex<VecDeque<Value>>>,
     /// Menu accelerators per window: (accelerator, command) (0.7 F0703).
     menu_accelerators: Mutex<BTreeMap<u64, Vec<(crate::services::Accelerator, String)>>>,
+    /// The single-instance listener while this session is the primary (0.7 F0710).
+    instance: Mutex<Option<crate::instance::Listener>>,
     /// Registered global shortcut ids (0.7 F0705).
     hotkeys: Mutex<std::collections::BTreeSet<String>>,
 }
@@ -386,6 +393,7 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         service_events: Arc::new(Mutex::new(VecDeque::new())),
         menu_accelerators: Mutex::new(BTreeMap::new()),
         hotkeys: Mutex::new(Default::default()),
+        instance: Mutex::new(None),
     }));
     Ok(id)
 }
@@ -628,6 +636,9 @@ impl Session {
                 "environment.contrast": capability("unsupported", "prefers-contrast and forced-colors are not evaluated"),
                 "environment.locale": capability("unsupported", "Core does not read the OS locale; set lang in the document"),
                 "environment.font_changes": capability("unsupported", "system font changes are not observed; restart the app or reopen the window"),
+                "pointer.confine": native(None),
+                "pointer.lock": if headless || pending { native(None) } else if platform == "x11" { capability("unsupported", "X11 cannot lock the pointer (confine it instead)") } else { ok() },
+                "window.startup_activation": if headless { capability("unavailable", "the headless backend has no windows") } else if cfg!(target_os = "linux") { capability("supported", "the launcher's XDG_ACTIVATION_TOKEN / DESKTOP_STARTUP_ID activates the first window") } else { ok() },
                 "native_menus.accelerators": if headless { capability("unavailable", "the headless backend has no keyboard") } else { ok() },
             },
         });
@@ -1295,6 +1306,7 @@ impl Session {
         lock(&self.control).phase = Phase::Stopped;
         // Tray icon, shortcuts and notifications end with the session.
         crate::services::shutdown();
+        *lock(&self.instance) = None;
         lock(&self.hotkeys).clear();
         lock(&self.menu_accelerators).clear();
         self.emit(json!({"type":"stopped"}));
@@ -1886,6 +1898,27 @@ impl Session {
             })?,
             Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
             Command::Capabilities => self.capabilities(),
+            Command::ClaimInstance { open_files } => {
+                crate::instance::validate_paths(&open_files).map_err(Error::arg)?;
+                if lock(&self.instance).is_some() {
+                    return Err(Error::state("this session already claimed the instance"));
+                }
+                let sink = self.service_sink();
+                let deliver: Arc<dyn Fn(Vec<String>) + Send + Sync> = Arc::new(move |paths| {
+                    sink(json!({"type":"open_files","paths":paths,"source":"second_instance"}));
+                });
+                match crate::instance::claim(&self.app_id, &open_files, deliver) {
+                    Ok(crate::instance::Claim::Primary(listener)) => {
+                        *lock(&self.instance) = Some(listener);
+                        if !open_files.is_empty() {
+                            (self.service_sink())(json!({"type":"open_files","paths":open_files,"source":"startup"}));
+                        }
+                        json!({"primary": true})
+                    }
+                    Ok(crate::instance::Claim::Forwarded) => json!({"primary": false, "forwarded": open_files.len()}),
+                    Err(reason) => json!({"primary": true, "single_instance": false, "reason": reason}),
+                }
+            }
             Command::Notify {
                 token,
                 title,
@@ -1945,6 +1978,29 @@ impl Session {
                 };
                 v["accelerators"] = json!(true);
                 v
+            }
+            Command::SetPointerGrab {
+                window,
+                mode,
+                cursor_visible,
+            } => {
+                let mode: &'static str = match mode.as_str() {
+                    "none" => "none",
+                    "confined" => "confined",
+                    "locked" => "locked",
+                    _ => return Err(Error::arg("mode is none, confined or locked")),
+                };
+                if !self.native {
+                    self.with_window(window, |_| Ok(()))?;
+                    json!({"status":"unavailable","reason":"the headless backend has no pointer"})
+                } else {
+                    self.with_window(window, |w| {
+                        w.ops.push_back(WindowOp::PointerGrab { mode, cursor_visible });
+                        Ok(())
+                    })?;
+                    self.wake();
+                    json!({"status":"pending","reason":"the outcome is reported as a pointer_grab event"})
+                }
             }
             Command::ShowContextMenu { window, x, y, menu } => {
                 crate::services::validate_menu(&menu).map_err(Error::arg)?;
@@ -2323,7 +2379,8 @@ impl Session {
                     | WindowOp::Icon(_)
                     | WindowOp::FileDialog(_)
                     | WindowOp::Menu(_)
-                    | WindowOp::ContextMenu { .. } => {}
+                    | WindowOp::ContextMenu { .. }
+                    | WindowOp::PointerGrab { .. } => {}
                 }
             }
             Ok(())
