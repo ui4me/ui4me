@@ -78,7 +78,8 @@ def main() -> None:
             run("consumer", [str(python), "-I", str(script), "--result", str(output / "consumer.json")], work)
             data = json.loads((output / "consumer.json").read_text(encoding="utf-8"))
             cases = data.get("cases", [])
-            if len(cases) != 4 or {c.get("id") for c in cases} != {"F01", "F09", "F11", "F12"} or any(c.get("status") != "passed" for c in cases):
+            expected = {"F01", "F09", "F11", "F12", "F13", "F14"}  # keep in step with tools/ui4me_dev/testing.py INSTALLED
+            if len(cases) != len(expected) or {c.get("id") for c in cases} != expected or any(c.get("status") != "passed" for c in cases):
                 raise RuntimeError("Source-built consumer did not pass every installed case")
             info = data.get("build_info", {})
             payload = Path(info.get("library_path", "")).resolve()

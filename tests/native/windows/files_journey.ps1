@@ -206,8 +206,10 @@ try {
         $r = [Win+RECT]::new(); [void][Win]::GetWindowRect($script:hwnd, [ref] $r)
         $y = [int](($r.T + $r.B) / 2)
         # A real drag of the right border (cross-thread SetWindowPos is avoided).
-        [Win]::Move($r.R - 3, $y); Start-Sleep -Milliseconds 150; [Win]::Button($true)
-        foreach ($step in 1..10) { [Win]::Move($r.R - 3 - $step * 30, $y); Start-Sleep -Milliseconds 30 }
+        # Drag a border that is on screen (a cascaded window can put its right edge off screen).
+        if ($r.R - 3 -lt [Win]::ScreenWidth()) { $edge = $r.R - 3; $dir = -1 } else { $edge = $r.L + 3; $dir = 1 }
+        [Win]::Move($edge, $y); Start-Sleep -Milliseconds 150; [Win]::Button($true)
+        foreach ($step in 1..10) { [Win]::Move($edge + $dir * $step * 30, $y); Start-Sleep -Milliseconds 30 }
         [Win]::Button($false)
         $s = Wait-State { param($s) $s.layout -eq 'column' -and @($s.resized).Count -gt 0 }
         Update-Origin
