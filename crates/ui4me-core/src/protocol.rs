@@ -351,6 +351,9 @@ pub enum Command {
         #[serde(default)]
         filters: Vec<FileFilter>,
     },
+    GetAccessibilityTree {
+        window: u64,
+    },
     Diagnostics {
         window: u64,
     },

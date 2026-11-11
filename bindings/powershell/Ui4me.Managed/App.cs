@@ -572,6 +572,8 @@ public sealed class Window
     public ulong OpenFileDialog(ScriptBlock handler, string? title = null, string? directory = null, System.Collections.IDictionary? filters = null, bool multiple = false) { Check(); return app.FileDialog(Id, multiple ? "open_multiple" : "open", handler, title, directory, null, filters); }
     public ulong SaveFileDialog(ScriptBlock handler, string? title = null, string? directory = null, string? fileName = null, System.Collections.IDictionary? filters = null) { Check(); return app.FileDialog(Id, "save", handler, title, directory, fileName, filters); }
     public ulong FolderDialog(ScriptBlock handler, string? title = null, string? directory = null) { Check(); return app.FileDialog(Id, "folder", handler, title, directory, null, null); }
+    /// <summary>The semantic tree exposed to screen readers, as JSON.</summary>
+    public string AccessibilityTreeJson() { Check(); return app.Command(new { op = "get_accessibility_tree", window = Id }).GetProperty("tree").GetRawText(); }
     public void ShowDialog(string element, bool modal = true) { Check(); app.Command(new { op = "show_dialog", window = Id, element, modal }); }
     public void CloseDialog(string element, string? returnValue = null)
     {

@@ -24,6 +24,7 @@ mod build;
 
 pub use build::{BuildInput, RenderInfo, Rendering, build};
 
+pub use accesskit;
 use accesskit::{
     Action, ActionData, ActionRequest, Affine, Node, NodeId as AkId, Rect, Role, Toggled, TreeId,
     TreeInfo, TreeUpdate,

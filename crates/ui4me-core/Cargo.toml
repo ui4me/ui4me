@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["dep:winit", "dep:softbuffer", "dep:arboard", "dep:rfd"]
+native = ["dep:winit", "dep:softbuffer", "dep:arboard", "dep:rfd", "dep:accesskit_winit"]
 
 [dependencies]
 serde_json = "=1.0.154"
@@ -24,6 +24,8 @@ ui4me-renderer = { path = "../ui4me-renderer" }
 arboard = { version = "=3.6.1", optional = true, default-features = false, features = ["wayland-data-control"] }
 png = "=0.18.1"
 # Native file dialogs: xdg-desktop-portal over a dlopen'd libdbus on Linux, IFileDialog on Windows.
+# Screen-reader bridge: AT-SPI (accesskit_unix, async-io) on Linux, UI Automation on Windows.
+accesskit_winit = { version = "=0.34.2", optional = true, default-features = false, features = ["accesskit_unix", "async-io", "rwh_06"] }
 rfd = { version = "=0.18.0", optional = true, default-features = false, features = ["xdg-portal"] }
 winit = { version = "=0.30.13", optional = true, default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
 softbuffer = { version = "=0.4.8", optional = true, default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }

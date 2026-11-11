@@ -230,8 +230,11 @@ def main() -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.inner:
-        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", "--out", str(args.out), "--", *command],
-                               env=cj.isolated_environment())
+        env = cj.isolated_environment()
+        try:
+            return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", "--out", str(args.out), "--", *command], env=env)
+        finally:
+            shutil.rmtree(env["XDG_RUNTIME_DIR"], ignore_errors=True)
     result = journey(args.out.resolve(), command)
     (args.out / "journey.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     for c in result["cases"]:

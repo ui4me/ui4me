@@ -607,6 +607,10 @@ class Window:
     def folder_dialog(self, callback, **options) -> int:
         return self.file_dialog("folder", callback, **options)
 
+    def accessibility_tree(self) -> dict:
+        """The semantic tree exposed to screen readers (roles, names, states, values, bounds)."""
+        return self._command("get_accessibility_tree")["tree"]
+
     def show_dialog(self, element: str, *, modal: bool = True) -> None:
         """Open a ``<dialog>``; a modal one traps focus and makes the rest inert until closed."""
         self._command("show_dialog", element=element, modal=bool(modal))

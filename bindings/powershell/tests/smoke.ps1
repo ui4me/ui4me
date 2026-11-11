@@ -417,6 +417,15 @@ try {
         }
         if (($seen -join ',') -ne 'cancel,cancel') { throw "Headless file dialogs: $($seen -join ',')" }
     }
+    Test-Case 'PS21j_accessibility_tree' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<button id="b">Save</button><label for="n">Name</label><input id="n">')
+            $json = $window.AccessibilityTreeJson()
+            if ($json -notmatch 'Save' -or $json -notmatch 'Name') { throw "Accessibility tree: $json" }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

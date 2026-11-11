@@ -32,8 +32,11 @@ def isolated_environment() -> dict:
     D-Bus-activated services (xdg-desktop-portal and its file chooser) inherit the bus's
     activation environment; without this they would draw on the real session's display."""
     env = dict(os.environ)
-    for name in ("WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
+    for name in ("WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "AT_SPI_BUS_ADDRESS"):
         env.pop(name, None)
+    # A private runtime directory: the compositor socket, the AT-SPI bus (otherwise the user-wide
+    # $XDG_RUNTIME_DIR/at-spi/bus of the real session) and portal state stay inside the run.
+    env["XDG_RUNTIME_DIR"] = tempfile.mkdtemp(prefix="ui4me-runtime-")
     return env
 
 
@@ -400,8 +403,11 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.inner:
         plain = ["--plain"] if args.plain else []
-        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", *plain, "--out", str(args.out), "--", *command],
-                               env=isolated_environment())
+        env = isolated_environment()
+        try:
+            return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", *plain, "--out", str(args.out), "--", *command], env=env)
+        finally:
+            shutil.rmtree(env["XDG_RUNTIME_DIR"], ignore_errors=True)
     if args.plain:
         return run_plain(args.out.resolve(), command)
     result = journey(args.out.resolve(), command)

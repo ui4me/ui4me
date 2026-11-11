@@ -122,6 +122,48 @@ struct NativeWindow {
     shown_pending: bool,
     last_ime: Option<ImeState>,
     last_cursor: CursorIcon,
+    a11y: Accessibility,
+}
+/// Per-window screen-reader bridge. AccessKit calls the handlers on its own thread (AT-SPI) or
+/// from the window procedure (UIA); they only record the request and wake the owner, which
+/// builds the tree and executes actions on the next loop turn.
+struct Accessibility {
+    adapter: accesskit_winit::Adapter,
+    shared: Arc<A11yShared>,
+    previous: Option<ui4me_renderer::a11y::A11yTree>,
+    dirty: bool,
+}
+#[derive(Default)]
+struct A11yShared {
+    active: AtomicBool,
+    needs_full: AtomicBool,
+    actions: Mutex<std::collections::VecDeque<ui4me_renderer::a11y::accesskit::ActionRequest>>,
+}
+struct Activation(Arc<A11yShared>, Arc<Session>);
+impl ui4me_renderer::a11y::accesskit::ActivationHandler for Activation {
+    fn request_initial_tree(&mut self) -> Option<ui4me_renderer::a11y::accesskit::TreeUpdate> {
+        self.0.active.store(true, Ordering::Release);
+        self.0.needs_full.store(true, Ordering::Release);
+        self.1.wake();
+        None
+    }
+}
+struct Actions(Arc<A11yShared>, Arc<Session>);
+impl ui4me_renderer::a11y::accesskit::ActionHandler for Actions {
+    fn do_action(&mut self, request: ui4me_renderer::a11y::accesskit::ActionRequest) {
+        let mut queue = lock(&self.0.actions);
+        if queue.len() < 64 {
+            queue.push_back(request);
+        }
+        drop(queue);
+        self.1.wake();
+    }
+}
+struct Deactivation(Arc<A11yShared>);
+impl ui4me_renderer::a11y::accesskit::DeactivationHandler for Deactivation {
+    fn deactivate_accessibility(&mut self) {
+        self.0.active.store(false, Ordering::Release);
+    }
 }
 struct Desktop {
     session: Arc<Session>,
@@ -185,6 +227,20 @@ impl Desktop {
                 .create_window(attributes)
                 .map_err(|e| Error::native(format!("create window: {e}")))?,
         );
+        let shared = Arc::new(A11yShared::default());
+        let adapter = accesskit_winit::Adapter::with_direct_handlers(
+            event_loop,
+            &window,
+            Activation(shared.clone(), self.session.clone()),
+            Actions(shared.clone(), self.session.clone()),
+            Deactivation(shared.clone()),
+        );
+        let a11y = Accessibility {
+            adapter,
+            shared,
+            previous: None,
+            dirty: true,
+        };
         let context = Context::new(window.clone())
             .map_err(|e| Error::native(format!("create software context: {e}")))?;
         let surface = Surface::new(&context, window.clone())
@@ -210,6 +266,7 @@ impl Desktop {
                 shown_pending: false,
                 last_ime: None,
                 last_cursor: CursorIcon::Default,
+                a11y,
             },
         );
         // Paint before reveal. Some backends do not send redraw while a window is hidden.
@@ -284,6 +341,51 @@ impl Desktop {
                 json!({"paths": null, "error": "cannot start the file dialog thread"}),
             );
         }
+    }
+    /// Execute queued assistive-technology actions, then send the tree (full on activation,
+    /// otherwise the changes) when an assistive technology is attached and a frame was drawn.
+    fn update_accessibility(&mut self, id: u64) {
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        let actions: Vec<_> = lock(&native.a11y.shared.actions).drain(..).collect();
+        for action in &actions {
+            if let Some(request) = ui4me_renderer::a11y::decode_request(action) {
+                self.session.accessibility_request(id, &request);
+            }
+        }
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        let a = &mut native.a11y;
+        if !a.shared.active.load(Ordering::Acquire) {
+            a.previous = None;
+            return;
+        }
+        let full = a.shared.needs_full.swap(false, Ordering::AcqRel) || a.previous.is_none();
+        if !full && !a.dirty && actions.is_empty() {
+            return;
+        }
+        a.dirty = false;
+        let tree = match self.session.accessibility_tree(id) {
+            Ok(tree) => tree,
+            Err(error) => {
+                self.session.report_document_error(id, error);
+                return;
+            }
+        };
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        let a = &mut native.a11y;
+        let update = match (&a.previous, full) {
+            (Some(previous), false) => ui4me_renderer::a11y::diff_update(previous, &tree),
+            _ => Some(ui4me_renderer::a11y::full_update(&tree)),
+        };
+        if let Some(update) = update {
+            a.adapter.update_if_active(|| update);
+        }
+        a.previous = Some(tree);
     }
     /// Report the platform's view of a window (emits `window_state` on change).
     fn observe(&mut self, id: u64) {
@@ -396,6 +498,7 @@ impl Desktop {
                 self.observe(id);
             }
             self.update_input_state(id);
+            self.update_accessibility(id);
             let shown = self.windows.get_mut(&id).is_some_and(|w| {
                 if self.started && w.shown_pending {
                     w.shown_pending = false;
@@ -451,6 +554,7 @@ impl Desktop {
         buffer
             .present()
             .map_err(|e| Error::native(format!("present software buffer: {e}")))?;
+        native.a11y.dirty = true;
         let hidden = self.session.window_info(id).is_some_and(|i| i.hidden);
         if !native.visible && !hidden {
             native.window.set_visible(true);
@@ -627,6 +731,9 @@ impl ApplicationHandler<()> for Desktop {
             .find(|(_, w)| w.window.id() == window_id)
             .map(|(id, _)| *id);
         let Some(id) = id else { return };
+        if let Some(native) = self.windows.get_mut(&id) {
+            native.a11y.adapter.process_event(&native.window, &event);
+        }
         match event {
             WindowEvent::CloseRequested => {
                 if self.session.close_requested(id) {

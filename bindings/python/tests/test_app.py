@@ -1,4 +1,5 @@
 """Authored contract tests. They require the real built native library; no fake engine."""
+import json
 import gc
 from pathlib import Path
 import tempfile
@@ -325,6 +326,13 @@ class BindingTests(unittest.TestCase):
             app.timer(50, lambda _: app.stop())
             app.run()
         self.assertEqual(results, [{"paths": None}, {"paths": None}])
+
+    def test_accessibility_tree(self):
+        with self.app() as app:
+            window = app.open('<button id="b">Save</button><label for="n">Name</label><input id="n">')
+            text = json.dumps(window.accessibility_tree())
+            self.assertIn("Save", text)
+            self.assertIn("Name", text)
 
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:

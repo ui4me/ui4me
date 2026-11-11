@@ -432,6 +432,27 @@ impl Session {
         self.with_owner(|o| Ok(o.windows.keys().copied().collect()))
             .unwrap_or_default()
     }
+    /// The window's accessibility tree (owner thread).
+    #[cfg(feature = "native")]
+    pub fn accessibility_tree(&self, id: u64) -> Result<ui4me_renderer::a11y::A11yTree> {
+        self.with_window(id, |w| {
+            let title = w.info.title.clone();
+            Ok(w.document.accessibility_tree_titled(&title)?)
+        })
+    }
+    /// Execute an assistive-technology request as the equivalent user input (owner thread).
+    #[cfg(feature = "native")]
+    pub fn accessibility_request(&self, id: u64, request: &ui4me_renderer::a11y::A11yRequest) {
+        let result = self.with_window(id, |w| {
+            w.document.accessibility_request(request)?;
+            w.info.dirty = true;
+            Ok(w.document.drain_events())
+        });
+        match result {
+            Ok(events) => self.emit_document_events(id, events),
+            Err(error) => self.report_document_error(id, error),
+        }
+    }
     /// Native window operations queued since the last call (owner/event loop).
     pub fn take_window_ops(&self, id: u64) -> Vec<WindowOp> {
         self.with_window(id, |w| Ok(w.ops.drain(..).collect()))
@@ -1268,6 +1289,9 @@ impl Session {
                 }
                 json!({"token": token})
             }
+            Command::GetAccessibilityTree { window } => self.with_window(window, |w| {
+                Ok(json!({"tree": w.document.accessibility_json()?}))
+            })?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {

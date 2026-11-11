@@ -753,6 +753,13 @@ impl Document {
     /// The accessibility tree of the committed document state (roles, names, states, values and
     /// viewport bounds); flushes the pipeline first.
     pub fn accessibility_tree(&mut self) -> Result<crate::a11y::A11yTree> {
+        self.accessibility_tree_titled("")
+    }
+    /// The tree with `window_title` as the name of its root (the platform window).
+    pub fn accessibility_tree_titled(
+        &mut self,
+        window_title: &str,
+    ) -> Result<crate::a11y::A11yTree> {
         self.apply_follow()?;
         self.pipeline.flush()?;
         let id = self.id();
@@ -768,7 +775,7 @@ impl Document {
             document: model,
             info: &info,
             focused,
-            title: "",
+            title: window_title,
             viewport: (cfg.viewport_width, cfg.viewport_height),
             scale: cfg.scale,
         }))
