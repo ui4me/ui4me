@@ -54,7 +54,7 @@ impl Document {
         self.pipeline.mutate(|d| d.set_inner_html(host, &html))?;
         self.after_mutation(true);
         let fresh = self.rich_load(host);
-        self.set_rich_selection(&fresh, sel.0, sel.1);
+        self.set_rich_selection(host, &fresh, sel.0, sel.1);
         self.fire_input(host, "input", input_type, data, false, composing);
         Ok(true)
     }
@@ -106,7 +106,7 @@ impl Document {
         self.after_mutation(true);
         let fresh = self.rich_load(host);
         let len = fresh.flat_len();
-        self.set_rich_selection(&fresh, snap.sel.0.min(len), snap.sel.1.min(len));
+        self.set_rich_selection(host, &fresh, snap.sel.0.min(len), snap.sel.1.min(len));
         self.fire_input(host, "input", input_type, None, false, false);
         Ok(true)
     }

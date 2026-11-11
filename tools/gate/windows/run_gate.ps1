@@ -59,7 +59,7 @@ if ($only -match 'capabilities') {
 }
 if (($only -match 'data') -and (Test-Path "$root\data_journey.py")) {
   New-Item -ItemType Directory -Force "$out\data-app" | Out-Null
-  & $py -I "$root\data_journey.py" --out "$out\data-app\data.json" *> "$out\data-app\command.log"
+  & $py -I "$root\data_journey.py" --app "$root\examples\python\data_viewer.py" --out "$out\data-app\data.json" *> "$out\data-app\command.log"
 }
 if (($only -match 'lua') -and (Test-Path "$root\lua_probe.lua") -and (Test-Path "$root\luajit\luajit.exe")) {
   New-Item -ItemType Directory -Force "$out\lua" | Out-Null

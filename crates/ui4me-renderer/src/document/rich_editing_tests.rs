@@ -501,3 +501,18 @@ fn model_round_trips_unknown_markup_and_reports_flat_offsets() {
     assert_eq!(r.flat_of(0, 3), 3);
     let _ = Rich::paste_paragraphs("<p>x</p>").unwrap();
 }
+
+#[test]
+fn exec_edit_formats_a_selection_made_without_focus() {
+    // A host program selects and formats before (or without) the window having OS focus.
+    let mut d =
+        Document::parse("<!doctype html><div id=ed contenteditable>hello world</div>").unwrap();
+    d.select_text(Some("ed")).unwrap();
+    // Loose host text is one synthetic paragraph; formatting it was a no-op that reported success.
+    assert!(d.exec_edit("ed", "bold", None).unwrap());
+    assert_eq!(html(&d), "<p><b>hello world</b></p>");
+    assert_eq!(d.get_edit_state("ed").unwrap()["bold"], true);
+    d.select_text(Some("ed")).unwrap();
+    assert!(d.exec_edit("ed", "italic", None).unwrap());
+    assert_eq!(html(&d), "<p><b><i>hello world</i></b></p>");
+}

@@ -398,8 +398,15 @@ impl Document {
             // Rich hosts: the points are in the host's leaf blocks; flat offsets join them.
             let r = self.rich_load(host);
             let ids = r.block_ids();
+            // Loose text directly in the host (`<div contenteditable>text</div>`) is one
+            // synthetic block with no element of its own: its points are rooted at the host.
+            let loose = ids.len() == 1 && ids[0].is_none();
             let flat = |p: SelPoint| {
-                let i = ids.iter().position(|x| *x == Some(p.root))?;
+                let i = if loose && p.root == host {
+                    0
+                } else {
+                    ids.iter().position(|x| *x == Some(p.root))?
+                };
                 (p.nth == 0).then(|| r.flat_of(i, p.byte))
             };
             return Some((flat(a)?, flat(f)?));
@@ -410,7 +417,7 @@ impl Document {
     pub(super) fn set_host_selection(&mut self, host: NodeId, anchor: usize, focus: usize) {
         if self.is_rich_host(host) {
             let r = self.rich_load(host);
-            self.set_rich_selection(&r, anchor, focus);
+            self.set_rich_selection(host, &r, anchor, focus);
             return;
         }
         let point = |byte| SelPoint {
@@ -423,16 +430,18 @@ impl Document {
     /// Place the selection of a rich host from flat offsets, using its current tree.
     pub(super) fn set_rich_selection(
         &mut self,
+        host: NodeId,
         r: &super::rich_edit::Rich,
         anchor: usize,
         focus: usize,
     ) {
         let ids = r.block_ids();
+        let loose = ids.len() == 1 && ids[0].is_none();
         let point = |flat: usize| {
             let (i, byte) = r.locate(flat);
-            ids.get(i)
-                .copied()
-                .flatten()
+            let root = ids.get(i).copied().flatten();
+            // The single synthetic block of loose host text is addressed through the host.
+            root.or(loose.then_some(host))
                 .map(|root| SelPoint { root, nth: 0, byte })
         };
         if let (Some(a), Some(f)) = (point(anchor), point(focus)) {
