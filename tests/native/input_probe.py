@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
                 "focus": window.query(":focus"),
                 "rects": {e: window.get_rect(e) for e in (*FIELDS, "go")},
                 "commands": read["offset"],
+                "scroll_t": window.get_scroll("t").get("y"),
             }
             tmp = args.state.with_suffix(".tmp")
             tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
@@ -65,13 +66,15 @@ def main(argv: list[str] | None = None) -> int:
                          bool(event.get("is_composing"))]
             elif kind.startswith("composition"):
                 entry = [kind, event.get("element"), event.get("data")]
+            elif kind == "touch":
+                entry = [kind, event.get("phase"), event.get("id")]
             else:
                 entry = [kind, event.get("element")]
             log.append(entry)
             save()
 
         for kind in ("keydown", "keyup", "input", "compositionstart", "compositionupdate",
-                     "compositionend", "focus", "blur"):
+                     "compositionend", "focus", "blur", "touch"):
             window.on(kind, record)
 
         def poll(_=None) -> None:

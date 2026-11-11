@@ -406,6 +406,38 @@ def journey(out: Path, command: list[str]) -> dict:
             s = typed("a", "replacedX")
             return {"value": s["values"]["a"]}
 
+        def touch_tap():
+            # 0.8 F0802: a tap through the compositor's touch path is a click at the touch point.
+            host(op="clear")
+            r = read_state(state_path)["rects"]["t"]
+            x, y = geo["origin"][0] + r["x"] + 20, geo["origin"][1] + r["y"] + r["height"] / 2
+            fake(f"tdown 1 {x:.0f} {y:.0f}")
+            fake("tup 1")
+            s = wait(state_path, lambda s: s["focus"] == ["t"])
+            phases = [e[1] for e in s["log"] if e[0] == "touch"]
+            if phases[:2] != ["start", "end"]:
+                raise AssertionError(f"touch events {phases}")
+            return {"focus": s["focus"], "touch": phases}
+
+        def touch_scroll():
+            # A finger drag scrolls the content under it (it follows the finger) and selects nothing.
+            r = read_state(state_path)["rects"]["t"]
+            host(op="set_value", element="t", value="\n".join(f"line {i}" for i in range(60)))
+            s = wait(state_path, lambda s: s["values"]["t"].startswith("line 0"))
+            x, y = geo["origin"][0] + r["x"] + 40, geo["origin"][1] + r["y"] + r["height"] - 10
+            fake(f"tdown 2 {x:.0f} {y:.0f}")
+            for step in range(1, 9):
+                fake(f"tmove 2 {x:.0f} {y - step * 10:.0f}")
+            fake("tup 2")
+            try:
+                s = wait(state_path, lambda s: (s.get("scroll_t") or 0) > 30)
+            except Exception:
+                s = read_state(state_path)
+                raise AssertionError(f"scroll {s.get('scroll_t')} touch {[e for e in s['log'] if e[0] == 'touch']}")
+            if not s["values"]["t"].startswith("line 0"):
+                raise AssertionError("the drag edited the text")
+            return {"scroll_y": s["scroll_t"]}
+
         def close_during_preedit():
             fresh("a")
             ime("preedit 3 か")
@@ -425,6 +457,8 @@ def journey(out: Path, command: list[str]) -> dict:
                              ("I05-astral-commit", astral), ("I06-cancel", cancel),
                              ("I07-host-focus-move", focus_move_host), ("I08-click-during-preedit", click_during_preedit),
                              ("I09-host-write-during-preedit", host_write_during_preedit),
+                             ("T01-touch-tap-focuses", touch_tap),
+                             ("T02-touch-drag-scrolls", touch_scroll),
                              ("I10-close-during-preedit", close_during_preedit)):
             case(name, action)
     finally:

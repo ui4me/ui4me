@@ -133,6 +133,9 @@ impl Clipboard for NativeClipboard {
     }
 }
 
+/// The primary touch contact: (id, start CSS px, last CSS px, scrolling).
+type PrimaryTouch = (u64, (f64, f64), (f64, f64), bool);
+
 struct NativeWindow {
     // Drop order: surface, context, final window handle.
     surface: Surface<Rc<Window>, Rc<Window>>,
@@ -157,6 +160,8 @@ struct NativeWindow {
     preedit_cleared: bool,
     /// Pointer grab in force (`none`, `confined`, `locked`) and cursor visibility (0.7 F0709).
     pointer_grab: &'static str,
+    /// The primary touch: (id, start CSS px, last CSS px, scrolling) (0.8 F0802).
+    touch: Option<PrimaryTouch>,
     cursor_visible: bool,
     last_cursor: CursorIcon,
     a11y: Accessibility,
@@ -331,6 +336,7 @@ impl Desktop {
                 ime_quiet_until: None,
                 preedit_cleared: false,
                 pointer_grab: "none",
+                touch: None,
                 cursor_visible: true,
                 last_cursor: CursorIcon::Default,
                 a11y,
@@ -806,6 +812,69 @@ impl Desktop {
             self.send_input(id, Input::ImeDisabled);
         }
     }
+    /// Touch (0.8 F0802): every contact is reported as a `touch` event (id, phase, CSS px, force);
+    /// the primary contact also drives the page like a finger: a tap is a click at the touch
+    /// point, a drag beyond 8 CSS px scrolls (content follows the finger) and never selects text,
+    /// a canceled contact does nothing.
+    fn touch(&mut self, id: u64, t: winit::event::Touch) {
+        use winit::event::TouchPhase;
+        let Some(native) = self.windows.get_mut(&id) else {
+            return;
+        };
+        let scale = native.window.scale_factor();
+        let (x, y) = (t.location.x / scale, t.location.y / scale);
+        let phase = match t.phase {
+            TouchPhase::Started => "start",
+            TouchPhase::Moved => "move",
+            TouchPhase::Ended => "end",
+            TouchPhase::Cancelled => "cancel",
+        };
+        let force = t.force.map(|f| f.normalized());
+        let mut inputs: Vec<Input> = Vec::new();
+        match (t.phase, native.touch) {
+            (TouchPhase::Started, None) => native.touch = Some((t.id, (x, y), (x, y), false)),
+            (TouchPhase::Moved, Some((tid, start, last, scrolling))) if tid == t.id => {
+                let far = ((x - start.0).powi(2) + (y - start.1).powi(2)).sqrt() >= 8.0;
+                if scrolling || far {
+                    inputs.push(Input::Wheel {
+                        dx: last.0 - x,
+                        dy: last.1 - y,
+                        x,
+                        y,
+                    });
+                    native.touch = Some((tid, start, (x, y), true));
+                } else {
+                    native.touch = Some((tid, start, last, false));
+                }
+            }
+            (TouchPhase::Ended, Some((tid, _, _, scrolling))) if tid == t.id => {
+                native.touch = None;
+                if !scrolling {
+                    inputs.push(Input::PointerMoved { x, y });
+                    inputs.push(Input::PointerButton {
+                        pressed: true,
+                        button: 0,
+                        x,
+                        y,
+                    });
+                    inputs.push(Input::PointerButton {
+                        pressed: false,
+                        button: 0,
+                        x,
+                        y,
+                    });
+                }
+            }
+            (TouchPhase::Cancelled, Some((tid, ..))) if tid == t.id => native.touch = None,
+            _ => {}
+        }
+        self.session.emit(
+            json!({"type":"touch","window":id,"id":t.id,"phase":phase,"x":x,"y":y,"force":force}),
+        );
+        for input in inputs {
+            self.send_input(id, input);
+        }
+    }
     /// Confine or lock the pointer and show/hide the cursor (0.7 F0709); the outcome is reported
     /// as a `pointer_grab` event (a platform may refuse a mode).
     fn pointer_grab(&mut self, id: u64, mode: &'static str, cursor_visible: bool) {
@@ -1037,6 +1106,7 @@ impl ApplicationHandler<()> for Desktop {
             WindowEvent::MouseInput { state, button, .. } => {
                 self.pointer_button(id, state == ElementState::Pressed, button)
             }
+            WindowEvent::Touch(t) => self.touch(id, t),
             WindowEvent::MouseWheel { delta, .. } => {
                 if let Some(native) = self.windows.get(&id) {
                     let scale = native.window.scale_factor();

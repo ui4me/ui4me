@@ -1020,7 +1020,20 @@ impl Document {
         let tree = &c.layout.fragments;
         let mut bounds: Option<(f64, f64, f64, f64)> = None;
         let offsets = self.pipeline.scroll_offsets();
-        for &f in tree.fragments_of(n) {
+        let own = tree.fragments_of(n);
+        // A control's inner content (a textarea's lines) also belongs to it and overflows its
+        // scrollport: when the node has boxes, its rect is theirs.
+        let is_text = |f: &crate::layout::fragment::FragmentId| {
+            matches!(
+                tree.get(*f).kind,
+                crate::layout::fragment::FragmentKind::Text(_)
+            )
+        };
+        let boxed = own.iter().any(|f| !is_text(f));
+        for &f in own {
+            if boxed && is_text(&f) {
+                continue;
+            }
             let r = tree.document_rect(f).rect;
             // `position: sticky` boxes (the fragment or an ancestor) are drawn shifted.
             let (mut dx, mut dy) = (0.0, 0.0);
@@ -2557,10 +2570,10 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 
 #[cfg(test)]
 mod a11y_text_tests;
-pub(crate) mod editable;
 #[cfg(test)]
 mod bidi_tests;
 mod drag;
+pub(crate) mod editable;
 pub mod file_input;
 #[cfg(test)]
 mod focus_pointer_tests;

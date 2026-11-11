@@ -1322,18 +1322,37 @@ fn plain_text_contenteditable_edits_with_keys_ime_clipboard_and_undo() {
     d.render(300, 200, 1.0).unwrap();
     d.handle_input(Input::Focus(true)).unwrap();
     let _ = click(&mut d, "ed");
-    assert_eq!(d.interaction.focused_element(d.id()), d.node("ed").ok(), "a host is focusable");
+    assert_eq!(
+        d.interaction.focused_element(d.id()),
+        d.node("ed").ok(),
+        "a host is focusable"
+    );
     let text = |d: &Document| d.get_text("ed").unwrap();
     let mut events = Vec::new();
     events.extend(d.handle_input(Input::Text("!".into())).unwrap());
-    assert_eq!(text(&d), "Ahoj světe!", "markup flattened to text, caret at the end");
-    assert!(d.get_html(Some("ed"), None, false).unwrap() == "Ahoj světe!", "content is one text node");
-    assert!(events.iter().any(|e| e["type"] == "input" && e["input_type"] == "insertText" && e["data"] == "!"));
+    assert_eq!(
+        text(&d),
+        "Ahoj světe!",
+        "markup flattened to text, caret at the end"
+    );
+    assert!(
+        d.get_html(Some("ed"), None, false).unwrap() == "Ahoj světe!",
+        "content is one text node"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "input" && e["input_type"] == "insertText" && e["data"] == "!")
+    );
     press(&mut d, "Enter");
     d.handle_input(Input::Text("😀👍🏽".into())).unwrap();
     assert_eq!(text(&d), "Ahoj světe!\n😀👍🏽");
     press(&mut d, "Backspace");
-    assert_eq!(text(&d), "Ahoj světe!\n😀", "a whole grapheme (emoji + skin tone) is deleted");
+    assert_eq!(
+        text(&d),
+        "Ahoj světe!\n😀",
+        "a whole grapheme (emoji + skin tone) is deleted"
+    );
     press(&mut d, "Backspace");
     press(&mut d, "Backspace");
     assert_eq!(text(&d), "Ahoj světe!");
@@ -1351,7 +1370,10 @@ fn plain_text_contenteditable_edits_with_keys_ime_clipboard_and_undo() {
     *shared.borrow_mut() = "<img src=x onerror=alert(1)>".into();
     d.handle_input(key("v", true, false)).unwrap();
     assert_eq!(text(&d), "x<img src=x onerror=alert(1)>");
-    assert!(d.query_ids("#ed img", 10).unwrap().1 == 0, "no element was created");
+    assert!(
+        d.query_ids("#ed img", 10).unwrap().1 == 0,
+        "no element was created"
+    );
     // Arrows and Home/End move the caret; Shift extends; Delete removes forward.
     d.handle_input(key("Home", true, false)).unwrap();
     d.handle_input(Input::Text(">".into())).unwrap();
@@ -1361,9 +1383,17 @@ fn plain_text_contenteditable_edits_with_keys_ime_clipboard_and_undo() {
     d.handle_input(key("Delete", false, false)).unwrap();
     assert!(text(&d).ends_with("alert(1)"), "{}", text(&d));
     // IME: the preedit is shown in the text and committed once.
-    d.handle_input(Input::ImePreedit { text: "に".into(), cursor: Some((3, 3)) }).unwrap();
+    d.handle_input(Input::ImePreedit {
+        text: "に".into(),
+        cursor: Some((3, 3)),
+    })
+    .unwrap();
     assert!(text(&d).ends_with("alert(1)に"));
-    d.handle_input(Input::ImePreedit { text: "日本".into(), cursor: Some((6, 6)) }).unwrap();
+    d.handle_input(Input::ImePreedit {
+        text: "日本".into(),
+        cursor: Some((6, 6)),
+    })
+    .unwrap();
     d.handle_input(Input::ImeCommit("日本".into())).unwrap();
     assert!(text(&d).ends_with("alert(1)日本"), "{}", text(&d));
     assert_eq!(text(&d).matches("日本").count(), 1);
@@ -1375,11 +1405,50 @@ fn plain_text_contenteditable_edits_with_keys_ime_clipboard_and_undo() {
 
 #[test]
 fn editing_hosts_are_multiline_text_fields_for_assistive_technology() {
-    let mut d = Document::parse("<!doctype html><div id=ed contenteditable aria-label=Notes>Hello</div>").unwrap();
+    let mut d =
+        Document::parse("<!doctype html><div id=ed contenteditable aria-label=Notes>Hello</div>")
+            .unwrap();
     d.render(300, 200, 1.0).unwrap();
     let t = d.accessibility_tree().unwrap();
-    let n = t.nodes.values().find(|n| n.html_id.as_deref() == Some("ed")).unwrap();
+    let n = t
+        .nodes
+        .values()
+        .find(|n| n.html_id.as_deref() == Some("ed"))
+        .unwrap();
     assert_eq!(n.role, accesskit::Role::MultilineTextInput);
     assert_eq!(n.value.as_deref(), Some("Hello"));
     assert!(n.states.focusable);
+}
+
+#[test]
+fn element_rect_of_a_scrolled_textarea_is_its_border_box() {
+    let mut d = Document::parse("<!doctype html><style>textarea{display:block;width:520px;height:120px;font-size:20px}</style><p>x</p><textarea id=t></textarea>").unwrap();
+    d.render(600, 400, 1.0).unwrap();
+    let before = d.viewport_rect(d.node("t").unwrap());
+    d.set_value(
+        "t",
+        &(0..60)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    d.render(600, 400, 1.0).unwrap();
+    {
+        let c = d.pipeline.committed.as_deref().unwrap();
+        let tree = &c.layout.fragments;
+        for &f in tree.fragments_of(d.node("t").unwrap()) {
+            let fr = tree.get(f);
+            eprintln!(
+                "DBG {f:?} parent {:?} kind {} rect {:?}",
+                fr.parent,
+                match &fr.kind {
+                    crate::layout::fragment::FragmentKind::Text(_) => "text",
+                    _ => "other",
+                },
+                tree.document_rect(f).rect
+            );
+        }
+    }
+    assert_eq!(d.viewport_rect(d.node("t").unwrap()), before);
 }

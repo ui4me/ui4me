@@ -38,7 +38,7 @@ Invoke-Ui4meApp -ArgumentList @($page, $StatePath, $CommandsPath, $Seconds) {
             $r = $window.GetRect($e)
             $rects[$e] = if ($r) { [ordered]@{ x = $r.X; y = $r.Y; width = $r.Width; height = $r.Height } } else { $null }
         }
-        $state = [ordered]@{ log = $log; values = $values; focus = @($window.Query(':focus')); rects = $rects; commands = $read.offset }
+        $state = [ordered]@{ log = $log; values = $values; focus = @($window.Query(':focus')); rects = $rects; commands = $read.offset; scroll_t = $window.GetScroll('t').Y }
         $tmp = "$statePath.tmp"
         [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $state -Depth 6 -Compress), [Text.UTF8Encoding]::new($false))
         Move-Item -Force -LiteralPath $tmp -Destination $statePath
@@ -54,13 +54,15 @@ Invoke-Ui4meApp -ArgumentList @($page, $StatePath, $CommandsPath, $Seconds) {
             $entry = @($kind, $j.element, $j.input_type, $j.data, [bool]$j.is_composing)
         } elseif ($kind.StartsWith('composition')) {
             $entry = @($kind, $j.element, $j.data)
+        } elseif ($kind -eq 'touch') {
+            $entry = @($kind, $j.phase, $j.id)
         } else {
             $entry = @($kind, $j.element)
         }
         $log.Add($entry)
         & $save
     }.GetNewClosure()
-    foreach ($kind in 'keydown', 'keyup', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'focus', 'blur') {
+    foreach ($kind in 'keydown', 'keyup', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'focus', 'blur', 'touch') {
         $null = $window.On($kind, $record)
     }
 

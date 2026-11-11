@@ -1,7 +1,7 @@
 /* Dev/test tool: drive a (virtual) KWin through org_kde_kwin_fake_input.
  * usage: fakeinput <cmd>...   |  fakeinput serve   (one command line per stdin line, 'ok' printed after each; keeps ONE
  *        fake-input device for the whole session, which avoids the seat's pointer capability flapping on every call)
- * cmds: move X Y | click [X Y] | down | up | key CODE | kd CODE | ku CODE | wheel V | type TEXT | sleep MS
+ * cmds: move X Y | click [X Y] | down | up | key CODE | kd CODE | ku CODE | wheel V | type TEXT | sleep MS | tdown ID X Y | tmove ID X Y | tup ID
  * Needs KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 in the compositor environment. Not shipped. Ported from the 0.1 alpha tooling. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,6 +64,10 @@ static void run(int argc, char **argv) {
         if (sh) { org_kde_kwin_fake_input_keyboard_key(fi, 42, 0); flush(); } }
     }
     else if (!strcmp(argv[i], "sleep")) usleep(atoi(argv[++i]) * 1000);
+    /* touch DOWN|MOVE ID X Y, touch UP ID: one contact through the compositor's touch path */
+    else if (!strcmp(argv[i], "tdown")) { org_kde_kwin_fake_input_touch_down(fi, atoi(argv[i+1]), wl_fixed_from_double(atof(argv[i+2])), wl_fixed_from_double(atof(argv[i+3]))); org_kde_kwin_fake_input_touch_frame(fi); flush(); i += 3; usleep(16000); }
+    else if (!strcmp(argv[i], "tmove")) { org_kde_kwin_fake_input_touch_motion(fi, atoi(argv[i+1]), wl_fixed_from_double(atof(argv[i+2])), wl_fixed_from_double(atof(argv[i+3]))); org_kde_kwin_fake_input_touch_frame(fi); flush(); i += 3; usleep(16000); }
+    else if (!strcmp(argv[i], "tup")) { org_kde_kwin_fake_input_touch_up(fi, atoi(argv[++i])); org_kde_kwin_fake_input_touch_frame(fi); flush(); usleep(16000); }
   }
 }
 int main(int argc, char **argv) {

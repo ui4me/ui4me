@@ -60,7 +60,10 @@ pub(crate) fn editing_host(d: &Model, n: NodeId) -> Option<NodeId> {
         host = a;
     }
     // A text node's host is its element.
-    d.arena().get(host).and_then(|x| x.as_element()).map(|_| host)
+    d.arena()
+        .get(host)
+        .and_then(|x| x.as_element())
+        .map(|_| host)
 }
 
 /// Whether `n` itself is an editing host (focusable, `pre-wrap`).
@@ -98,11 +101,14 @@ fn unicode_mark(c: char) -> bool {
 fn grapheme_right(t: &str, at: usize) -> usize {
     let mut b = at.min(t.len());
     let mut chars = t[b..].char_indices();
-    let Some((_, first)) = chars.next() else { return t.len() };
+    let Some((_, first)) = chars.next() else {
+        return t.len();
+    };
     b += first.len_utf8();
     let mut joined = first == '\u{200D}';
     for (_, c) in t[b..].char_indices() {
-        let mark = matches!(c, '\u{300}'..='\u{36F}' | '\u{200D}' | '\u{FE0E}' | '\u{FE0F}' | '\u{1F3FB}'..='\u{1F3FF}') || unicode_mark(c);
+        let mark = matches!(c, '\u{300}'..='\u{36F}' | '\u{200D}' | '\u{FE0E}' | '\u{FE0F}' | '\u{1F3FB}'..='\u{1F3FF}')
+            || unicode_mark(c);
         if mark || joined {
             joined = c == '\u{200D}';
             b += c.len_utf8();
@@ -126,9 +132,14 @@ fn word_left(t: &str, at: usize) -> usize {
 fn word_right(t: &str, at: usize) -> usize {
     let start = at.min(t.len());
     let rest = &t[start..];
-    let skip = rest.len() - rest.trim_start_matches(|c: char| !c.is_alphanumeric()).len();
+    let skip = rest.len()
+        - rest
+            .trim_start_matches(|c: char| !c.is_alphanumeric())
+            .len();
     let after = &rest[skip..];
-    let word = after.find(|c: char| !c.is_alphanumeric()).unwrap_or(after.len());
+    let word = after
+        .find(|c: char| !c.is_alphanumeric())
+        .unwrap_or(after.len());
     start + skip + word
 }
 
@@ -144,10 +155,22 @@ impl Document {
     /// The selection in `host` (anchor, focus), defaulting to a caret at the end.
     fn host_range(&self, host: NodeId) -> (usize, usize) {
         let len = self.host_value(host).len();
-        self.host_selection(host).map_or((len, len), |(a, f)| (a.min(len), f.min(len)))
+        self.host_selection(host)
+            .map_or((len, len), |(a, f)| (a.min(len), f.min(len)))
     }
-    fn fire_input(&mut self, host: NodeId, ty: &str, input_type: &str, data: Option<&str>, cancelable: bool, composing: bool) -> bool {
-        let mut e = EventInit::new(ty).interface(EventInterface::InputEvent).bubbles(true).cancelable(cancelable);
+    fn fire_input(
+        &mut self,
+        host: NodeId,
+        ty: &str,
+        input_type: &str,
+        data: Option<&str>,
+        cancelable: bool,
+        composing: bool,
+    ) -> bool {
+        let mut e = EventInit::new(ty)
+            .interface(EventInterface::InputEvent)
+            .bubbles(true)
+            .cancelable(cancelable);
         e.data.input_type = Some(input_type.to_owned());
         e.data.data = data.map(str::to_owned);
         e.data.is_composing = Some(composing);
@@ -158,7 +181,15 @@ impl Document {
     }
     /// Replace bytes `start..end` of the host's text with `text` (a user edit): `beforeinput`
     /// (cancelable unless composing), the change, the caret after it, `input`.
-    fn host_edit(&mut self, host: NodeId, start: usize, end: usize, text: &str, input_type: &str, record: bool) -> Result<bool> {
+    fn host_edit(
+        &mut self,
+        host: NodeId,
+        start: usize,
+        end: usize,
+        text: &str,
+        input_type: &str,
+        record: bool,
+    ) -> Result<bool> {
         let value = self.host_value(host);
         let (start, end) = (start.min(value.len()), end.min(value.len()));
         let (start, end) = (start.min(end), start.max(end));
@@ -166,7 +197,15 @@ impl Document {
             return Ok(false);
         }
         let composing = self.editable.comp.is_some();
-        if self.fire_input(host, "beforeinput", input_type, Some(text), !composing, composing) && !composing {
+        if self.fire_input(
+            host,
+            "beforeinput",
+            input_type,
+            Some(text),
+            !composing,
+            composing,
+        ) && !composing
+        {
             return Ok(false);
         }
         let d = self.pipeline.document();
@@ -198,7 +237,11 @@ impl Document {
             self.editable.comp = None;
             return Ok(false);
         };
-        let prevented = |t: &str| events.iter().any(|e| e["type"] == t && e["default_prevented"] == true);
+        let prevented = |t: &str| {
+            events
+                .iter()
+                .any(|e| e["type"] == t && e["default_prevented"] == true)
+        };
         match input {
             Input::Text(t) if self.editable.comp.is_none() => {
                 let t: String = t.chars().filter(|c| !c.is_control()).collect();
@@ -234,7 +277,15 @@ impl Document {
                 self.host_edit(host, s, e, text, "insertFromComposition", true)?;
                 Ok(true)
             }
-            Input::Key { key, pressed: true, ctrl, shift, alt: false, meta: false, .. } if !prevented("keydown") && self.editable.comp.is_none() => {
+            Input::Key {
+                key,
+                pressed: true,
+                ctrl,
+                shift,
+                alt: false,
+                meta: false,
+                ..
+            } if !prevented("keydown") && self.editable.comp.is_none() => {
                 self.editable_key(host, key, *ctrl, *shift)
             }
             _ => Ok(false),
@@ -257,23 +308,69 @@ impl Document {
                 self.host_edit(host, lo, hi, "\n", "insertParagraph", true)?;
             }
             ("Backspace", _) => {
-                let start = if lo != hi { lo } else if ctrl { word_left(&value, lo) } else { grapheme_left(&value, lo) };
+                let start = if lo != hi {
+                    lo
+                } else if ctrl {
+                    word_left(&value, lo)
+                } else {
+                    grapheme_left(&value, lo)
+                };
                 if start != hi {
-                    self.host_edit(host, start, hi, "", if ctrl { "deleteWordBackward" } else { "deleteContentBackward" }, true)?;
+                    self.host_edit(
+                        host,
+                        start,
+                        hi,
+                        "",
+                        if ctrl {
+                            "deleteWordBackward"
+                        } else {
+                            "deleteContentBackward"
+                        },
+                        true,
+                    )?;
                 }
             }
             ("Delete", _) => {
-                let end = if lo != hi { hi } else if ctrl { word_right(&value, hi) } else { grapheme_right(&value, hi) };
+                let end = if lo != hi {
+                    hi
+                } else if ctrl {
+                    word_right(&value, hi)
+                } else {
+                    grapheme_right(&value, hi)
+                };
                 if end != lo {
-                    self.host_edit(host, lo, end, "", if ctrl { "deleteWordForward" } else { "deleteContentForward" }, true)?;
+                    self.host_edit(
+                        host,
+                        lo,
+                        end,
+                        "",
+                        if ctrl {
+                            "deleteWordForward"
+                        } else {
+                            "deleteContentForward"
+                        },
+                        true,
+                    )?;
                 }
             }
             ("ArrowLeft", _) => {
-                let to = if !shift && lo != hi { lo } else if ctrl { word_left(&value, f) } else { grapheme_left(&value, f) };
+                let to = if !shift && lo != hi {
+                    lo
+                } else if ctrl {
+                    word_left(&value, f)
+                } else {
+                    grapheme_left(&value, f)
+                };
                 place(self, to);
             }
             ("ArrowRight", _) => {
-                let to = if !shift && lo != hi { hi } else if ctrl { word_right(&value, f) } else { grapheme_right(&value, f) };
+                let to = if !shift && lo != hi {
+                    hi
+                } else if ctrl {
+                    word_right(&value, f)
+                } else {
+                    grapheme_right(&value, f)
+                };
                 place(self, to);
             }
             ("Home", true) => place(self, 0),
@@ -292,10 +389,16 @@ impl Document {
                     }),
                     _ => {
                         let x = self.editable.goal_x.or_else(|| {
-                            lines.get(li).and_then(|l| l.3.iter().min_by_key(|s| s.0.abs_diff(f)).map(|s| s.1))
+                            lines.get(li).and_then(|l| {
+                                l.3.iter().min_by_key(|s| s.0.abs_diff(f)).map(|s| s.1)
+                            })
                         });
                         self.editable.goal_x = x;
-                        let target = if key == "ArrowUp" { li.checked_sub(1) } else { Some(li + 1).filter(|&n| n < lines.len()) };
+                        let target = if key == "ArrowUp" {
+                            li.checked_sub(1)
+                        } else {
+                            Some(li + 1).filter(|&n| n < lines.len())
+                        };
                         match (target, x) {
                             (Some(t), Some(x)) => lines[t]
                                 .3
@@ -315,7 +418,10 @@ impl Document {
                 if lo != hi {
                     self.clipboard
                         .write_text(&value[lo..hi])
-                        .map_err(|e| Error { code: 6, message: format!("Clipboard write failed: {e}") })?;
+                        .map_err(|e| Error {
+                            code: 6,
+                            message: format!("Clipboard write failed: {e}"),
+                        })?;
                     if matches!(key, "x" | "X") {
                         self.host_edit(host, lo, hi, "", "deleteByCut", true)?;
                     }
@@ -325,7 +431,10 @@ impl Document {
                 // Pasted content is text: HTML from the clipboard is never parsed here.
                 if let Ok(Some(t)) = self.clipboard.read_text() {
                     let t = t.replace("\r\n", "\n").replace('\r', "\n");
-                    let t: String = t.chars().filter(|c| !c.is_control() || *c == '\n' || *c == '\t').collect();
+                    let t: String = t
+                        .chars()
+                        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                        .collect();
                     self.host_edit(host, lo, hi, &t, "insertFromPaste", true)?;
                 }
             }
@@ -362,10 +471,17 @@ impl Document {
     }
     /// A click in a focused editing host places the caret there (a collapsed selection).
     pub(super) fn editable_pointer(&mut self, input: &Input) -> Result<()> {
-        let Input::PointerButton { pressed: false, button: 0, .. } = input else {
+        let Input::PointerButton {
+            pressed: false,
+            button: 0,
+            ..
+        } = input
+        else {
             return Ok(());
         };
-        let Some(host) = self.focused_host() else { return Ok(()) };
+        let Some(host) = self.focused_host() else {
+            return Ok(());
+        };
         if self.host_selection(host).is_none() {
             let len = self.host_value(host).len();
             self.set_host_selection(host, len, len);
@@ -373,18 +489,27 @@ impl Document {
         Ok(())
     }
     /// Draw the caret of a focused editing host with a collapsed selection.
-    pub(super) fn paint_editing_caret(&mut self, pixels: &mut [u32], width: u32, height: u32, scale: f64) -> Result<()> {
-        let Some(host) = self.focused_host() else { return Ok(()) };
+    pub(super) fn paint_editing_caret(
+        &mut self,
+        pixels: &mut [u32],
+        width: u32,
+        height: u32,
+        scale: f64,
+    ) -> Result<()> {
+        let Some(host) = self.focused_host() else {
+            return Ok(());
+        };
         let (a, f) = self.host_range(host);
         if a != f {
             return Ok(());
         }
         let lines = self.host_lines(host)?;
-        let caret = lines
-            .iter()
-            .rev()
-            .find(|l| l.0.start <= f)
-            .and_then(|l| l.3.iter().find(|s| s.0 == f).or_else(|| l.3.last()).map(|s| (s.1, l.1, l.2)));
+        let caret = lines.iter().rev().find(|l| l.0.start <= f).and_then(|l| {
+            l.3.iter()
+                .find(|s| s.0 == f)
+                .or_else(|| l.3.last())
+                .map(|s| (s.1, l.1, l.2))
+        });
         let (x, y, h) = match caret {
             Some(c) => c,
             None => match self.viewport_rect(host) {
