@@ -822,6 +822,15 @@ impl Document {
             K::SetValue(v) => {
                 assistive::set_text_value(self, id, el, v)?;
             }
+            K::SetTextSelection { anchor, focus } => {
+                let tree = self.accessibility_tree()?;
+                if let (Some(a), Some(f)) = (tree.run_offset(*anchor), tree.run_offset(*focus)) {
+                    assistive::set_selection(self, id, el, a, f)?;
+                }
+            }
+            K::ReplaceSelectedText(text) => {
+                assistive::replace_selection(self, id, el, text)?;
+            }
             K::SetNumericValue(v) => {
                 assistive::set_number(self, id, el, *v)?;
             }
@@ -2358,6 +2367,8 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 }
 
 #[cfg(test)]
+mod a11y_text_tests;
+#[cfg(test)]
 mod bidi_tests;
 mod selection;
 #[cfg(test)]
@@ -2407,5 +2418,69 @@ impl crate::a11y::RenderInfo for A11yInfo<'_> {
     }
     fn has_listeners(&self, element: NodeId) -> bool {
         self.doc.interaction.listener_count(self.id, element) > 0
+    }
+    fn text_lines(&self, field: NodeId) -> Option<Vec<crate::a11y::TextLine>> {
+        let tree = &self.committed?.layout.fragments;
+        let (frag, bf) = tree.box_fragment(field)?;
+        let inner = bf.extras.control_inner.as_ref()?;
+        if inner.select.is_some() {
+            return None;
+        }
+        // Viewport position of the content box, as `control_geometry` computes it.
+        let origin = tree.document_rect(frag.id).rect.origin;
+        let (mut sx, mut sy) = (0.0, 0.0);
+        for e in self.doc.pipeline.scroll_chain(field) {
+            if e.target != ScrollTarget::Node(field) {
+                sx += e.offset.0;
+                sy += e.offset.1;
+            }
+        }
+        let own = self
+            .doc
+            .pipeline
+            .scroll_offsets()
+            .offset(ScrollTarget::Node(field));
+        let ox = origin.x.to_f64() + inner.viewport.origin.x.to_f64() - sx - own.0;
+        let oy = origin.y.to_f64() + inner.viewport.origin.y.to_f64() - sy - own.1;
+        let width = inner.viewport.size.width.to_f64();
+        Some(
+            inner
+                .lines
+                .iter()
+                .map(|l| {
+                    let clusters = if l.clusters.is_empty() {
+                        // A left-to-right line: each pair of neighbouring caret stops is a character.
+                        l.stops
+                            .windows(2)
+                            .filter(|w| w[1].0 > w[0].0)
+                            .map(|w| {
+                                let (a, b) = (f64::from(w[0].1), f64::from(w[1].1));
+                                (w[0].0, w[1].0, ox + a.min(b), ox + a.max(b), false)
+                            })
+                            .collect()
+                    } else {
+                        l.clusters
+                            .iter()
+                            .map(|c| (c.0, c.1, ox + f64::from(c.2), ox + f64::from(c.3), c.4))
+                            .collect()
+                    };
+                    crate::a11y::TextLine {
+                        start: if inner.placeholder_shown { 0 } else { l.start },
+                        end: if inner.placeholder_shown { 0 } else { l.end },
+                        bounds: crate::a11y::Bounds {
+                            x: ox,
+                            y: oy + f64::from(l.top),
+                            w: width,
+                            h: f64::from(l.height),
+                        },
+                        clusters: if inner.placeholder_shown {
+                            Vec::new()
+                        } else {
+                            clusters
+                        },
+                    }
+                })
+                .collect(),
+        )
     }
 }

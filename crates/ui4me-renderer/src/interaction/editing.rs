@@ -1204,6 +1204,72 @@ pub(crate) fn replace_all(
     Ok(changed)
 }
 
+/// An assistive SetTextSelection (0.5 F0504): any composition ends, then the selection is placed
+/// at `anchor`..`focus` (UTF-16, clamped) and the caret revealed.
+pub(crate) fn assistive_select(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    node: NodeId,
+    anchor: u32,
+    focus: u32,
+    origin: DispatchOrigin,
+) -> Result<(), Status> {
+    let cx = Cx {
+        doc,
+        node,
+        m: Modifiers::default(),
+        origin,
+        ts: None,
+    };
+    ime::finish(host, doc, true, Modifiers::default(), origin, None)?;
+    let Some(c) = snapshot(host, &cx)? else {
+        return Ok(());
+    };
+    let (a, f) = (anchor.min(c.len()), focus.min(c.len()));
+    write_selection(host, &cx, a, f, true)?;
+    reveal_caret(host, &cx, f, false)
+}
+
+/// An assistive ReplaceSelectedText (0.5 F0504): the selection (or nothing, at the caret) is
+/// replaced by `text` as one edit (`insertReplacementText`). Returns whether the value changed.
+pub(crate) fn assistive_replace(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    node: NodeId,
+    text: &str,
+    origin: DispatchOrigin,
+) -> Result<bool, Status> {
+    let cx = Cx {
+        doc,
+        node,
+        m: Modifiers::default(),
+        origin,
+        ts: None,
+    };
+    ime::finish(host, doc, true, Modifiers::default(), origin, None)?;
+    let Some(c) = snapshot(host, &cx)? else {
+        return Ok(false);
+    };
+    if c.readonly {
+        return Ok(false);
+    }
+    let mut text = text.to_owned();
+    if !c.kind.multiline {
+        text.retain(|ch| ch != '\n' && ch != '\r');
+    }
+    edit(
+        host,
+        &cx,
+        Edit::new(
+            "insertReplacementText",
+            Some(text.clone()),
+            (c.start, c.end),
+            text,
+            history::StepKind::Other,
+        ),
+    )
+}
+
 /// The default action of an uncanceled `keydown` at a text control. Returns `true` when the key
 /// was consumed (no further default action).
 pub(crate) fn keydown(

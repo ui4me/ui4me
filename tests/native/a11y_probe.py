@@ -3,7 +3,9 @@
     python3 tests/native/kwin/chat_journey.py --plain --out DIR -- python3 tests/native/a11y_probe.py --out DIR/a11y.json
 
 Enables accessibility on the private bus, starts a small ui4me app as a child process, reads its
-tree through AT-SPI like a screen reader, and invokes a button's default action. Automated.
+tree through AT-SPI like a screen reader, and invokes a button's default action. The text cases
+(0.5 F0504) read text, lines, the caret and character extents of fields and move the caret, select
+and replace text through the AT-SPI Text/EditableText interfaces. Automated.
 """
 from __future__ import annotations
 
@@ -19,16 +21,22 @@ from pathlib import Path
 APP = r'''
 import json, sys
 from ui4me import App
-state = {"clicks": 0}
+state = {"clicks": 0, "values": {}}
 with App(app_id="org.ui4me.a11yprobe") as app:
     w = app.open("""<h1>Probe heading</h1><button id="go">Press me</button>
       <label for="name">Your name</label><input id="name" value="Ada">
+      <label for="notes">Notes</label><textarea id="notes" style="width:300px;height:80px">Line one
+line two</textarea>
       <label><input id="ok" type="checkbox" checked> Agree</label>
       <a id="lnk" href="#x">A link</a><button id="menu" aria-expanded="false">Menu</button><p style="display:none">Hidden text</p>""", title="ui4me a11y probe", width=500, height=300)
     def click(_):
         state["clicks"] += 1
         open(sys.argv[1], "w").write(json.dumps(state))
     w.on("click", click, element="go")
+    def edited(e):
+        state["values"][e["element"]] = e.get("value")
+        open(sys.argv[1], "w").write(json.dumps(state))
+    w.on("input", edited)
     app.timer(25000, lambda _: app.stop())
     app.run()
 '''
@@ -110,6 +118,51 @@ def main() -> int:
                         break
                     time.sleep(0.25)
         check("A08_button_default_action_clicks", acted, json.loads(clicks.read_text()) if acted else None)
+
+        # Text (0.5 F0504): read, navigate and edit fields like a screen reader.
+        def node_named(role_names, name):
+            return next((n["node"] for n in walk(target[0]) if n["role"] in role_names and n["name"] == name), None)
+        def poll(fn, want, seconds=5.0):
+            got = None
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                try:
+                    got = fn()
+                except Exception as error:  # a node rebuilt under us: retry
+                    got = f"{type(error).__name__}: {error}"
+                if got == want:
+                    return got
+                time.sleep(0.2)
+            return got
+        entry = node_named(("entry", "text"), "Your name")
+        notes = node_named(("entry", "text"), "Notes")
+        text = entry.get_text_iface() if entry else None
+        ntext = notes.get_text_iface() if notes else None
+        check("A10_entry_text", text is not None and Atspi.Text.get_text(text, 0, -1) == "Ada" and Atspi.Text.get_character_count(text) == 3,
+              Atspi.Text.get_text(text, 0, -1) if text else None)
+        line = Atspi.Text.get_string_at_offset(ntext, 12, Atspi.TextGranularity.LINE) if ntext else None
+        check("A11_textarea_lines", ntext is not None and Atspi.Text.get_text(ntext, 0, -1) == "Line one\nline two"
+              and line is not None and line.content.rstrip("\n") == "line two",
+              {"text": Atspi.Text.get_text(ntext, 0, -1) if ntext else None, "line": line.content if line else None})
+        moved = Atspi.Text.set_caret_offset(text, 1) if text else False
+        caret = poll(lambda: Atspi.Text.get_caret_offset(text), 1)
+        check("A12_set_caret_offset", bool(moved) and caret == 1, {"returned": moved, "caret": caret})
+        e0 = Atspi.Text.get_character_extents(text, 0, Atspi.CoordType.WINDOW) if text else None
+        e2 = Atspi.Text.get_character_extents(text, 2, Atspi.CoordType.WINDOW) if text else None
+        check("A13_character_extents", e0 is not None and e2 is not None and e0.width > 0 and e2.x > e0.x and e2.y == e0.y,
+              {"0": (e0.x, e0.y, e0.width, e0.height) if e0 else None, "2": (e2.x, e2.y, e2.width) if e2 else None})
+        selected = Atspi.Text.set_selection(ntext, 0, 9, 13) if ntext else False
+        def sel():
+            r = Atspi.Text.get_selection(ntext, 0)
+            return (r.start_offset, r.end_offset)
+        got = poll(sel, (9, 13))
+        check("A14_set_selection", bool(selected) and got == (9, 13), {"returned": selected, "selection": got})
+        editable = entry.get_editable_text_iface() if entry else None
+        replaced = Atspi.EditableText.set_text_contents(editable, "Grace") if editable else False
+        def value():
+            return json.loads(clicks.read_text()).get("values", {}).get("name") if clicks.exists() else None
+        check("A15_editable_set_text_contents", bool(replaced) and poll(value, "Grace") == "Grace",
+              {"returned": replaced, "app_value": value(), "at_text": poll(lambda: Atspi.Text.get_text(text, 0, -1), "Grace")})
     finally:
         app.terminate()
         try:

@@ -22,12 +22,12 @@
 
 mod build;
 
-pub use build::{BuildInput, RenderInfo, Rendering, build};
+pub use build::{BuildInput, RenderInfo, Rendering, TextLine, build};
 
 pub use accesskit;
 use accesskit::{
-    Action, ActionData, ActionRequest, Affine, Node, NodeId as AkId, Rect, Role, Toggled, TreeId,
-    TreeInfo, TreeUpdate,
+    Action, ActionData, ActionRequest, Affine, Node, NodeId as AkId, Rect, Role, TextDirection,
+    TextPosition, TextSelection, Toggled, TreeId, TreeInfo, TreeUpdate,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -42,10 +42,14 @@ pub fn node_key(n: NodeId) -> u64 {
     (u64::from(r.generation.get()) << 32) | u64::from(r.index)
 }
 
-/// The DOM node of an AccessKit id (`None` for the root and malformed ids); the text run of a
-/// text field resolves to the field.
+/// The DOM node of an AccessKit id (`None` for the root and malformed ids); the text runs of a
+/// text field resolve to the field.
 pub fn node_of_key(k: u64) -> Option<NodeId> {
-    let k = k & !build::TEXT_RUN_TAG;
+    let k = if k & build::TEXT_RUN_TAG != 0 {
+        k & !build::TEXT_RUN_TAG & !build::RUN_LINE_MASK
+    } else {
+        k
+    };
     let generation = std::num::NonZeroU32::new((k >> 32) as u32)?;
     Some(NodeId::from_raw(RawId {
         index: k as u32,
@@ -59,11 +63,14 @@ pub fn node_label(k: u64) -> String {
         return "window".to_string();
     }
     let run = if k & build::TEXT_RUN_TAG != 0 {
-        "/run"
+        match (k & build::RUN_LINE_MASK) >> build::RUN_LINE_SHIFT {
+            0 => "/run".to_string(),
+            line => format!("/run{line}"),
+        }
     } else {
-        ""
+        String::new()
     };
-    let k = k & !build::TEXT_RUN_TAG;
+    let k = k & !build::TEXT_RUN_TAG & !build::RUN_LINE_MASK;
     format!("n:{}:{}{run}", k >> 32, k & 0xffff_ffff)
 }
 
@@ -122,6 +129,11 @@ pub enum A11yAction {
     /// Expand / collapse (UIA ExpandCollapse pattern) on a node with an expanded state.
     Expand,
     Collapse,
+    /// Move the caret / selection inside a text field (AT-SPI Text.setCaretOffset/setSelection,
+    /// UIA TextPattern range Select), 0.5 F0504.
+    SetTextSelection,
+    /// Replace the selected text (AT-SPI EditableText, UIA), 0.5 F0504.
+    ReplaceSelectedText,
 }
 
 impl A11yAction {
@@ -134,6 +146,8 @@ impl A11yAction {
             A11yAction::Decrement => Action::Decrement,
             A11yAction::Expand => Action::Expand,
             A11yAction::Collapse => Action::Collapse,
+            A11yAction::SetTextSelection => Action::SetTextSelection,
+            A11yAction::ReplaceSelectedText => Action::ReplaceSelectedText,
         }
     }
 }
@@ -169,6 +183,46 @@ pub struct A11yNode {
     pub bounds: Option<Bounds>,
     #[serde(serialize_with = "ser_ids")]
     pub children: Vec<u64>,
+    /// A text run of a text field (one visual line): its characters and their geometry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<RunText>,
+    /// A text field's caret / selection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<TextSel>,
+}
+
+/// The characters of one text run (0.5 F0504). A character is a caret stop of the editing engine
+/// (a grapheme cluster), so assistive positions and the caret agree.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct RunText {
+    /// UTF-16 value offset where each character starts, then the run's end: `chars + 1` entries.
+    pub offsets: Vec<u32>,
+    /// UTF-8 length of each character of the run's value (AccessKit `character_lengths`).
+    #[serde(skip)]
+    pub lengths: Vec<u8>,
+    /// Start of each character, CSS px from the run's leading edge (left, or right when `rtl`).
+    #[serde(skip)]
+    pub positions: Vec<f32>,
+    #[serde(skip)]
+    pub widths: Vec<f32>,
+    /// Character indices where a word starts (after the first), below 256.
+    #[serde(skip)]
+    pub word_starts: Vec<u8>,
+    pub rtl: bool,
+    /// The run's last character is the line's hard line break.
+    pub hard_break: bool,
+}
+
+/// A text field's selection: AccessKit positions (run id, character index) and the same ends as
+/// UTF-16 value offsets (what the tree JSON reports).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct TextSel {
+    #[serde(skip)]
+    pub anchor: (u64, usize),
+    #[serde(skip)]
+    pub focus: (u64, usize),
+    /// (anchor, focus) as UTF-16 offsets into the value.
+    pub value: (u32, u32),
 }
 
 fn ser_id<S: serde::Serializer>(v: &u64, s: S) -> Result<S::Ok, S::Error> {
@@ -230,6 +284,15 @@ impl A11yTree {
         self.nodes.get(&node_key(n))
     }
 
+    /// The UTF-16 value offset of an AccessKit text position (run id, character index), clamped
+    /// to the run; `None` when the run is not in the tree.
+    pub fn run_offset(&self, (run, index): (u64, usize)) -> Option<u32> {
+        let r = self.nodes.get(&run)?.run.as_ref()?;
+        r.offsets
+            .get(index.min(r.offsets.len().saturating_sub(1)))
+            .copied()
+    }
+
     /// The tree invariants AccessKit relies on: the root exists, every child exists, every node but the
     /// root has exactly one parent and is reachable from the root, the focus is a node.
     pub fn validate(&self) -> Result<(), String> {
@@ -288,9 +351,28 @@ fn ak_node(n: &A11yNode, scale: f64) -> Node {
     let mut a = Node::new(n.role);
     if n.role == Role::TextRun {
         let v = n.value.clone().unwrap_or_default();
-        let lengths: Vec<u8> = v.chars().map(|c| c.len_utf8() as u8).collect();
+        match &n.run {
+            Some(r) => {
+                a.set_character_lengths(r.lengths.clone());
+                if r.positions.len() == r.lengths.len() {
+                    a.set_character_positions(r.positions.clone());
+                    a.set_character_widths(r.widths.clone());
+                }
+                if !r.word_starts.is_empty() {
+                    a.set_word_starts(r.word_starts.clone());
+                }
+                // AccessKit computes character extents only with an explicit direction.
+                a.set_text_direction(if r.rtl {
+                    TextDirection::RightToLeft
+                } else {
+                    TextDirection::LeftToRight
+                });
+            }
+            None => {
+                a.set_character_lengths(v.chars().map(|c| c.len_utf8() as u8).collect::<Vec<u8>>())
+            }
+        }
         a.set_value(v);
-        a.set_character_lengths(lengths);
         if let Some(b) = n.bounds {
             a.set_bounds(Rect {
                 x0: b.x,
@@ -318,6 +400,16 @@ fn ak_node(n: &A11yNode, scale: f64) -> Node {
     }
     if let Some(p) = &n.placeholder {
         a.set_placeholder(p.clone());
+    }
+    if let Some(sel) = &n.selection {
+        let at = |(run, index): (u64, usize)| TextPosition {
+            node: AkId(run),
+            character_index: index,
+        };
+        a.set_text_selection(TextSelection {
+            anchor: at(sel.anchor),
+            focus: at(sel.focus),
+        });
     }
     if let Some(l) = n.level {
         // AccessKit levels are zero-based (ARIA's are one-based).
@@ -457,6 +549,14 @@ pub enum A11yRequestKind {
     /// Expand / collapse: the runtime activates the element only when its current expanded state differs.
     Expand,
     Collapse,
+    /// Place the caret / selection of a text field: anchor and focus as (run id, character index),
+    /// resolved against the current tree by the runtime.
+    SetTextSelection {
+        anchor: (u64, usize),
+        focus: (u64, usize),
+    },
+    /// Replace the selected text of a text field (the caret's position when collapsed).
+    ReplaceSelectedText(String),
 }
 
 /// One action request: the target DOM node (`None` = the window root / document).
@@ -477,10 +577,14 @@ pub fn decode_request(r: &ActionRequest) -> Option<A11yRequest> {
         (Action::SetValue, Some(ActionData::NumericValue(v))) => {
             A11yRequestKind::SetNumericValue(*v)
         }
-        // AT-SPI EditableText / UIA ValuePattern write the whole text through ReplaceSelectedText on an
-        // all-selected field in some clients; a field's whole value is replaced (beta).
         (Action::ReplaceSelectedText, Some(ActionData::Value(v))) => {
-            A11yRequestKind::SetValue(v.to_string())
+            A11yRequestKind::ReplaceSelectedText(v.to_string())
+        }
+        (Action::SetTextSelection, Some(ActionData::SetTextSelection(s))) => {
+            A11yRequestKind::SetTextSelection {
+                anchor: (s.anchor.node.0, s.anchor.character_index),
+                focus: (s.focus.node.0, s.focus.character_index),
+            }
         }
         (Action::Increment, _) => A11yRequestKind::Increment,
         (Action::Decrement, _) => A11yRequestKind::Decrement,

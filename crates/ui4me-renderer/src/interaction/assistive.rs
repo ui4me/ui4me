@@ -125,6 +125,52 @@ pub fn set_text_value(
     })
 }
 
+/// The text control `el` accepts an assistive edit: focus it first when it is not focused.
+fn text_target(host: &mut dyn DispatchHost, doc: DocumentId, el: NodeId) -> Result<(), Status> {
+    check(host, doc, el)?;
+    let ok = eng(host, doc, |_, d| {
+        crate::interaction::editing::text_kind(d, el).is_some() && !is_disabled_form_control(d, el)
+    })?;
+    if !ok {
+        return Err(unsupported("not an editable text control"));
+    }
+    if rt(host, |ix| ix.focused_element(doc)) != Some(el)
+        && eng(host, doc, |_, d| is_focusable(d, el))?
+    {
+        focus_update(host, doc, Some(el), ORIGIN, FocusSource::Keyboard)?;
+    }
+    Ok(())
+}
+
+/// SetTextSelection on a text control (0.5 F0504): focus it when not focused, then place the
+/// caret / selection at UTF-16 offsets `anchor`..`focus` (clamped), ending any composition.
+pub fn set_selection(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    el: NodeId,
+    anchor: u32,
+    focus: u32,
+) -> Result<(), Status> {
+    operation(host, |h| {
+        text_target(h, doc, el)?;
+        crate::interaction::editing::assistive_select(h, doc, el, anchor, focus, ORIGIN)
+    })
+}
+
+/// ReplaceSelectedText on a text control (0.5 F0504): replace the selection (insert at the caret)
+/// as one edit (`insertReplacementText`). Returns whether the value changed.
+pub fn replace_selection(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    el: NodeId,
+    text: &str,
+) -> Result<bool, Status> {
+    operation(host, |h| {
+        text_target(h, doc, el)?;
+        crate::interaction::editing::assistive_replace(h, doc, el, text, ORIGIN)
+    })
+}
+
 /// SetValue (numeric) on a range or number input: sanitised, then `input` and `change`.
 pub fn set_number(
     host: &mut dyn DispatchHost,

@@ -6,15 +6,44 @@
 //! `hidden`, `display: none` and `visibility: hidden`. Generic containers (`div`, `span`, `label`,
 //! row groups, unnamed `section`/`form`, ...) are flattened: their children join the parent.
 
-use super::{A11yAction, A11yNode, A11yTree, Bounds, Checked, Numeric, ROOT_ID, States, node_key};
+use super::{
+    A11yAction, A11yNode, A11yTree, Bounds, Checked, Numeric, ROOT_ID, RunText, States, TextSel,
+    node_key,
+};
 use accesskit::Role;
 use std::collections::{BTreeMap, HashMap};
 use ui4me_document::document::Document;
 use ui4me_document::node::{ElementData, NodeKind};
 use ui4me_engine_types::ids::NodeId;
 
-/// Tag bit of the text-run child of a text field (013 adapter-threading §5: a derived id space).
+/// Tag bit of the text-run children of a text field (013 adapter-threading §5: a derived id space).
 pub(crate) const TEXT_RUN_TAG: u64 = 1 << 63;
+/// A text run's line number sits in bits 20..31 of its id (arena indices stay below 2^20: the
+/// document caps nodes at 65,536); a field has at most [`MAX_RUNS`] runs.
+pub(crate) const RUN_LINE_SHIFT: u32 = 20;
+pub(crate) const RUN_LINE_MASK: u64 = 0xfff << RUN_LINE_SHIFT;
+const MAX_RUNS: usize = 0xfff;
+
+/// The id of line `line` of text field `field`.
+fn run_key(field: u64, line: usize) -> u64 {
+    field | TEXT_RUN_TAG | ((line.min(MAX_RUNS) as u64) << RUN_LINE_SHIFT)
+}
+
+/// A character of a run being built: UTF-16 start and end, viewport x extent, right-to-left.
+type RunChar = (u32, u32, Option<(f64, f64)>, bool);
+
+/// One line of a text control's editing area as laid out (0.5 F0504).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextLine {
+    /// The value's UTF-16 range shown on the line (without a trailing line break).
+    pub start: u32,
+    pub end: u32,
+    /// The line box in viewport CSS px (scroll applied).
+    pub bounds: Bounds,
+    /// Each caret-stop character (grapheme cluster) in logical order: UTF-16 start and end, and
+    /// its viewport x extent (x0 < x1), right-to-left.
+    pub clusters: Vec<(u32, u32, f64, f64, bool)>,
+}
 
 /// How an element renders, from the committed computed style.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,6 +69,12 @@ pub trait RenderInfo {
     fn has_listeners(&self, element: NodeId) -> bool {
         let _ = element;
         false
+    }
+    /// The laid-out lines of a text control (`input`, `textarea`); `None` without a layout (the
+    /// field then has one run without geometry).
+    fn text_lines(&self, field: NodeId) -> Option<Vec<TextLine>> {
+        let _ = field;
+        None
     }
 }
 
@@ -103,6 +138,8 @@ pub fn build(input: &BuildInput<'_>) -> A11yTree {
             actions: Vec::new(),
             bounds: Some(viewport),
             children,
+            run: None,
+            selection: None,
         },
     );
     let title = if input.title.is_empty() {
@@ -127,6 +164,8 @@ pub fn build(input: &BuildInput<'_>) -> A11yTree {
             actions: Vec::new(),
             bounds: Some(viewport),
             children: vec![doc_key],
+            run: None,
+            selection: None,
         },
     );
     // Only nodes reachable from the root stay (static text folded into a name, for one, was built
@@ -593,23 +632,31 @@ impl<'a> Builder<'a> {
         };
         let description = self.description(e, &name);
         let bounds = self.info.bounds(n);
+        let mut selection = None;
         if is_text_field(role)
             && let Some(v) = &value
         {
-            // The text-run child AT-SPI Text/EditableText and UIA TextPattern read the text from.
-            let run = id | TEXT_RUN_TAG;
-            self.nodes.insert(
-                run,
-                plain(
+            // The text-run children AT-SPI Text/EditableText and UIA TextPattern read the text from:
+            // one per laid-out line of a native control, with character geometry and the caret.
+            if matches!(e.local_name(), "input" | "textarea") {
+                let (runs, sel) = self.text_runs(n, id, role == Role::PasswordInput, bounds);
+                children = runs;
+                selection = sel;
+            } else {
+                let run = run_key(id, 0);
+                self.nodes.insert(
                     run,
-                    Role::TextRun,
-                    "#text-run".to_string(),
-                    None,
-                    v.clone(),
-                    bounds,
-                ),
-            );
-            children = vec![run];
+                    plain(
+                        run,
+                        Role::TextRun,
+                        "#text-run".to_string(),
+                        None,
+                        v.clone(),
+                        bounds,
+                    ),
+                );
+                children = vec![run];
+            }
         }
         let tag = match e.attr("id").filter(|s| !s.is_empty()) {
             Some(i) => format!("{}#{i}", e.local_name()),
@@ -632,9 +679,152 @@ impl<'a> Builder<'a> {
                 actions,
                 bounds,
                 children,
+                run: None,
+                selection,
             },
         );
         vec![id]
+    }
+
+    /// The text runs of a native text control, one per laid-out line, and its selection.
+    fn text_runs(
+        &mut self,
+        n: NodeId,
+        id: u64,
+        password: bool,
+        bounds: Option<Bounds>,
+    ) -> (Vec<u64>, Option<TextSel>) {
+        let value = self.d.control_value(n).unwrap_or_default();
+        // UTF-16 offset -> byte offset of the value.
+        let mut u16_to_byte: Vec<(u32, usize)> = Vec::with_capacity(value.len() + 1);
+        let mut u = 0u32;
+        for (b, c) in value.char_indices() {
+            u16_to_byte.push((u, b));
+            u += c.len_utf16() as u32;
+        }
+        let len16 = u;
+        u16_to_byte.push((len16, value.len()));
+        let byte = |o: u32| {
+            let i = u16_to_byte.partition_point(|&(x, _)| x < o);
+            u16_to_byte.get(i).map_or(value.len(), |&(_, b)| b)
+        };
+        let lines = self.info.text_lines(n).unwrap_or_else(|| {
+            vec![TextLine {
+                start: 0,
+                end: len16,
+                bounds: bounds.unwrap_or_default(),
+                clusters: Vec::new(),
+            }]
+        });
+        let mut ids = Vec::new();
+        let mut runs: Vec<(u64, RunText)> = Vec::new();
+        for (li, line) in lines.iter().enumerate().take(MAX_RUNS) {
+            let (start, end) = (line.start.min(len16), line.end.min(len16));
+            // Characters: the layout's clusters, gaps (and a missing layout) filled per code point.
+            let mut chars: Vec<RunChar> = Vec::new();
+            let mut clusters = line.clusters.clone();
+            clusters.sort_by_key(|c| c.0);
+            let mut at = start;
+            let fill = |chars: &mut Vec<_>, from: u32, to: u32| {
+                let mut o = from;
+                for c in value[byte(from)..byte(to)].chars() {
+                    let w = c.len_utf16() as u32;
+                    chars.push((o, o + w, None, false));
+                    o += w;
+                }
+            };
+            for &(s, e, x0, x1, rtl) in &clusters {
+                if s < at || e <= s || e > end {
+                    continue;
+                }
+                fill(&mut chars, at, s);
+                chars.push((s, e, Some((x0, x1)), rtl));
+                at = e;
+            }
+            fill(&mut chars, at, end);
+            let hard_break = end < len16 && value[byte(end)..].starts_with('\n');
+            let rb = line.bounds;
+            let rtl = !chars.is_empty() && chars.iter().all(|c| c.3);
+            let mut run = RunText {
+                rtl,
+                hard_break,
+                ..RunText::default()
+            };
+            let mut text = String::new();
+            let mut prev_space = false;
+            let mut last_x = if rtl { rb.x + rb.w } else { rb.x };
+            for (i, &(s, e, ext, _)) in chars.iter().enumerate() {
+                let piece = if password {
+                    "\u{2022}"
+                } else {
+                    &value[byte(s)..byte(e)]
+                };
+                text.push_str(piece);
+                run.offsets.push(s);
+                run.lengths.push(piece.len().min(255) as u8);
+                let (x0, x1) = ext.unwrap_or((last_x, last_x));
+                last_x = if rtl { x0 } else { x1 };
+                run.positions.push(if rtl {
+                    (rb.x + rb.w - x1) as f32
+                } else {
+                    (x0 - rb.x) as f32
+                });
+                run.widths.push((x1 - x0) as f32);
+                let space = piece.chars().all(char::is_whitespace);
+                if i > 0 && i < 256 && prev_space && !space {
+                    run.word_starts.push(i as u8);
+                }
+                prev_space = space;
+            }
+            if hard_break {
+                text.push('\n');
+                run.offsets.push(end);
+                run.lengths.push(1);
+                run.positions.push(if rtl {
+                    (rb.x + rb.w - last_x) as f32
+                } else {
+                    (last_x - rb.x) as f32
+                });
+                run.widths.push(0.0);
+                run.offsets.push(end + 1);
+            } else {
+                run.offsets.push(end);
+            }
+            let rid = run_key(id, li);
+            let mut node = plain(
+                rid,
+                Role::TextRun,
+                "#text-run".to_string(),
+                None,
+                text,
+                Some(rb),
+            );
+            node.run = Some(run.clone());
+            self.nodes.insert(rid, node);
+            ids.push(rid);
+            runs.push((rid, run));
+        }
+        let selection = self
+            .d
+            .control_state(n)
+            .ok()
+            .flatten()
+            .and_then(|c| c.selection)
+            .and_then(|s| {
+                let backward =
+                    s.direction == ui4me_document::control_state::SelectionDirection::Backward;
+                let (anchor, focus) = if backward {
+                    (s.end, s.start)
+                } else {
+                    (s.start, s.end)
+                };
+                Some(TextSel {
+                    anchor: position(&runs, anchor.min(len16))?,
+                    focus: position(&runs, focus.min(len16))?,
+                    value: (anchor.min(len16), focus.min(len16)),
+                })
+            });
+        (ids, selection)
     }
 
     /// Native role (HTML-AAM) after an explicit ARIA role.
@@ -1270,12 +1460,38 @@ impl<'a> Builder<'a> {
         {
             out.push(A11yAction::SetValue);
         }
+        if native_field && is_text_field(role) {
+            out.push(A11yAction::SetTextSelection);
+            if !s.read_only {
+                out.push(A11yAction::ReplaceSelectedText);
+            }
+        }
         if !s.read_only && local == "input" && matches!(role, Role::Slider | Role::SpinButton) {
             out.push(A11yAction::Increment);
             out.push(A11yAction::Decrement);
         }
         out
     }
+}
+
+/// The AccessKit position of UTF-16 offset `o` among a field's runs: a soft-wrapped line's end is
+/// the next line's start (downstream); at the end of a line with a hard break the position is on
+/// the break character (AccessKit `character_lengths`).
+fn position(runs: &[(u64, RunText)], o: u32) -> Option<(u64, usize)> {
+    for (i, (id, r)) in runs.iter().enumerate() {
+        let chars = r.offsets.len() - 1;
+        let text_end = if r.hard_break {
+            r.offsets[chars - 1]
+        } else {
+            r.offsets[chars]
+        };
+        let last = i + 1 == runs.len();
+        if o < text_end || (o == text_end && (r.hard_break || last)) {
+            let index = r.offsets[..chars].partition_point(|&x| x < o);
+            return Some((*id, index));
+        }
+    }
+    runs.last().map(|(id, r)| (*id, r.offsets.len() - 1))
 }
 
 /// A node with a role, name and bounds only.
@@ -1307,5 +1523,7 @@ fn plain(
         actions: Vec::new(),
         bounds,
         children: Vec::new(),
+        run: None,
+        selection: None,
     }
 }
