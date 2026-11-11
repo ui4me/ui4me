@@ -186,11 +186,17 @@ def package(binding: str, profile: str) -> Path:
         wheel = candidates[0]
         if rid == "linux-x64":
             repaired = staging / "repaired"
-            run([sys.executable, "-m", "auditwheel", "repair", "--wheel-dir", str(repaired), str(wheel)], cwd=ROOT, log=staging / "auditwheel.log")
+            # Release builds pin the glibc floor: a dependency that needs newer symbols must fail
+            # the build instead of silently raising the tag (unset locally: best available tag).
+            policy = os.environ.get("UI4ME_MANYLINUX_POLICY")
+            plat = ["--plat", policy] if policy else []
+            run([sys.executable, "-m", "auditwheel", "repair", *plat, "--wheel-dir", str(repaired), str(wheel)], cwd=ROOT, log=staging / "auditwheel.log")
             candidates = list(repaired.glob("*.whl"))
             if len(candidates) != 1:
                 raise DevError("Expected exactly one repaired wheel")
             wheel = candidates[0]
+            if policy and not wheel.name.endswith(f"-{policy}.whl"):
+                raise DevError(f"Repaired wheel {wheel.name} does not carry the required {policy} tag")
         run([sys.executable, "-m", "twine", "check", str(wheel)], cwd=ROOT, log=staging / "twine-check.log")
         with zipfile.ZipFile(wheel) as contents:
             metadata = [name for name in contents.namelist() if name.endswith(".dist-info/WHEEL")]

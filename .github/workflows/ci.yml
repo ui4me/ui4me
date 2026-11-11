@@ -65,6 +65,9 @@ jobs:
         run: python dev.py test --binding all --suite unit --profile release
       - name: Platform packages
         run: python dev.py package --binding all --profile release
+        env:
+          # The Linux wheel keeps the 0.2/0.3 glibc floor; a newer requirement fails here.
+          UI4ME_MANYLINUX_POLICY: ${{ matrix.rid == 'linux-x64' && 'manylinux_2_35_x86_64' || '' }}
       - name: Build and install from the source distribution
         run: python .github/scripts/check-sdist.py
       - name: Dependency locks remain unchanged

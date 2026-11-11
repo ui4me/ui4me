@@ -692,3 +692,11 @@ fn sustained_log_and_chat_streams_stay_bounded() {
     assert_eq!(d.get_text("m").unwrap().len(), 200_000);
     assert!(d.append_text("m", &"x".repeat(MAX_TEXT + 1)).is_err());
 }
+
+#[test]
+fn sub_pixel_overflow_is_not_scrollable() {
+    let mut d = Document::parse("<!doctype html><style>body{margin:0}#b{height:100px;overflow:auto}#c{height:100.4px}</style><div id=b><div id=c></div></div>").unwrap();
+    d.render(400, 300, 1.0).unwrap();
+    let s = d.scroll_state(Some("b")).unwrap();
+    assert_eq!((s.max_y, s.scrollable), (0.0, true));
+}

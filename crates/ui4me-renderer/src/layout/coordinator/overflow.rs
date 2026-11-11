@@ -130,7 +130,11 @@ fn axis_range(
 ) -> (f64, f64) {
     let min = (so_start - sp_start).to_f64().min(0.0);
     let max = (so_end - sp_end).to_f64().max(0.0);
-    (min, max)
+    // Sub-pixel overflow is a layout rounding artifact (e.g. 1/64 px from fractional line
+    // heights), not scrollable content: browsers round scroll dimensions, so it neither scrolls
+    // nor shows a scrollbar.
+    let snap = |v: f64| if v.abs() < 1.0 { 0.0 } else { v };
+    (snap(min), snap(max))
 }
 
 /// The reachable offsets of `target` in `tree`.

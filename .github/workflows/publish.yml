@@ -48,6 +48,9 @@ jobs:
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
       - run: python dev.py build --binding all --profile release
       - run: python dev.py package --binding all --profile release
+        env:
+          # The Linux wheel keeps the 0.2/0.3 glibc floor; a newer requirement fails here.
+          UI4ME_MANYLINUX_POLICY: ${{ matrix.rid == 'linux-x64' && 'manylinux_2_35_x86_64' || '' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-${{ matrix.rid }}
