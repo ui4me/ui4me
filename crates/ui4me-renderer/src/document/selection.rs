@@ -399,8 +399,16 @@ impl Document {
     /// Place the selection inside `host`'s paragraph (byte offsets).
     pub(super) fn set_host_selection(&mut self, host: NodeId, anchor: usize, focus: usize) {
         let before = (self.selection.anchor, self.selection.focus);
-        self.selection.anchor = Some(SelPoint { root: host, nth: 0, byte: anchor });
-        self.selection.focus = Some(SelPoint { root: host, nth: 0, byte: focus });
+        self.selection.anchor = Some(SelPoint {
+            root: host,
+            nth: 0,
+            byte: anchor,
+        });
+        self.selection.focus = Some(SelPoint {
+            root: host,
+            nth: 0,
+            byte: focus,
+        });
         self.selection.dragging = false;
         self.selection.unit = None;
         self.repaint = true;
@@ -409,7 +417,10 @@ impl Document {
     /// The lines of `host`'s paragraph: byte range, viewport top and height, and the caret stops
     /// `(byte, viewport x)` in logical order.
     #[allow(clippy::type_complexity)]
-    pub(super) fn host_lines(&mut self, host: NodeId) -> Result<Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)>> {
+    pub(super) fn host_lines(
+        &mut self,
+        host: NodeId,
+    ) -> Result<Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)>> {
         let Some(c) = self.committed_tree()? else {
             return Ok(Vec::new());
         };
