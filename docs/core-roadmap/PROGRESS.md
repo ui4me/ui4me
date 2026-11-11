@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **Current milestone:** 0.7 (`versions/0_7.md`) — all eleven items implemented; 0.7.0 candidate gate in progress. Then 0.8 and 0.9 (owner authorized releasing each).
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** GO, candidate 0.7.0 @ `33b1d77` (being released). **Current milestone:** 0.8, then 0.9 (owner authorized releasing each).
 
 ## Version ledger
 
@@ -11,7 +11,7 @@
 | 0.4 | OWNER-REPORTED RELEASED | `8138e78` release tag | repository-reported PASS | repository-reported PASS | repository-reported release jobs | Do not requalify unless relevant change/new defect |
 | 0.5 | RELEASED 0.5.0 (`089e7a8`) | `0b79117`, source sha256:ce114407… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 7/7, PowerShell 7/7 both hosts) | 8/8 items; see gate entry |
 | 0.6 | RELEASED 0.6.0 (`3f9eaf7`) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
-| 0.7 | CANDIDATE (gate in progress) | see gate entry | KDE services probe 11/11 (dev) | Windows services probe 11/11 (dev) | unit PASS | 11/11 items implemented |
+| 0.7 | GO (candidate 0.7.0) | `33b1d77`, source sha256:ab8db0e1… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 9/9, PowerShell 9/9 both hosts) | 11/11 items |
 | 0.8 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.9 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.10 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
@@ -48,6 +48,7 @@ When a new session starts, choose the earliest release not marked GO, then first
 2026-11-11 | 0.7 | F0706 rich clipboard | 8dbbbb8 | `document/rich_clipboard.rs`, native clipboard, core | core test (round trip, sanitizer, text fallback) | PASS | Image formats unsupported (arboard image support would add a codec stack); copy of a styled document selection still copies text | F0707
 2026-11-11 | 0.7 | F0707 drag and drop | 8cea8ba | `document/drag.rs`, native file_drop | renderer test | PASS | Declarative sources only (no data payload API); OS file drop on Wayland still unsupported (winit 0.30) | F0708
 2026-11-11 | 0.7 | F0708 startup activation, F0709 pointer grab, F0710 single instance | 8c059b3 | native.rs, runtime, `instance.rs`, bindings | core tests incl. a forwarding round trip; pointer grab in both probes | PASS | Wayland cannot activate an existing window (reported); X11 cannot lock the pointer (reported) | gate
+2026-11-11 | 0.7 | **0.7.0 candidate gate** | `33b1d77` (source sha256:ab8db0e17a0f7…) | release builds per host | **Linux x64** (virtual KWin, installed wheel/module): installed C 1/1, Python 9/9 (F01 F09 F11–F17), PowerShell 9/9; chat 20/20, file utility 20/20, dialogs 5/5, window 10/10, AT-SPI 16/16, input 34/34, environment 3/3, file input 4/4, KDE services (real plasmashell/kded6/portal in the private session) 12/12. **Windows Server 2022** (interactive session, installed): installed C 1/1, Python 9/9, PowerShell 9/9; chat 20/20, file utility 20/20, window 10/10, UIA 17/17 + 2/2, input 28/28, environment 3/3, file input 4/4, services 12/12 | PASS | The Proxmox host rebooted during the first Windows gate run (the VM stopped); after a restart and a new console session the full Windows gate was run again from the start. Automated input, not a person. Evidence `build/evidence-0.7/` | release
 
 ## Outstanding defects / intentional exclusions
 

@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.7.0 is the current candidate** (native desktop services;
+**Core 0.7.0 passed its gate on both hosts and is being released** (native desktop services;
 [`core-roadmap/versions/0_7.md`](core-roadmap/versions/0_7.md)): system notifications,
 tray/status icon with menu, window menu bars and context menus (Windows; accelerators on every
 platform), global shortcuts, the OS dark/high-contrast preference, rich clipboard HTML,
