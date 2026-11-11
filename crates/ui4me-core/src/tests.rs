@@ -1878,7 +1878,7 @@ fn text_range_geometry_and_point_to_text() {
     // 0.6 F0603: wrapped multilingual text, offsets in UTF-16, hidden/clipped text, hit to text.
     let h = Harness::new(0);
     let cmd = |v: Value| h.session.command(v);
-    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>body{margin:0;font:16px sans-serif}#p{width:120px}#clip{height:20px;overflow:hidden}</style><p id=p>Příliš žluťoučký kůň 😀 úpěl ďábelské ódy שלום</p><div id=clip><div>one</div><div id=below>two</div></div><p id=gone style='display:none'>hidden</p>"})).unwrap()["window"].as_u64().unwrap();
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>body{margin:0;font:16px sans-serif}#p{width:120px}#clip{height:20px;overflow:hidden;line-height:20px}</style><p id=p>Příliš žluťoučký kůň 😀 úpěl ďábelské ódy שלום</p><div id=clip><div>one</div><div id=below>two</div></div><p id=gone style='display:none'>hidden</p>"})).unwrap()["window"].as_u64().unwrap();
     let all = cmd(json!({"op":"text_rects","window":id,"element":"p"})).unwrap();
     let total = all["length"].as_u64().unwrap();
     assert_eq!(
