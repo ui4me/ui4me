@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** RELEASED 0.8.0 from `24f16e4` (publish run 43078533202: PyPI, PowerShell Gallery, GitHub). **0.9:** RELEASED 0.9.0 from `3a047d7` (publish run 43085807197: PyPI, PowerShell Gallery, GitHub). **0.10 + 1.0:** delivered together as 1.0.0 by the owner's decision (with a LuaJIT binding, F1203); F1005 GPU, F1201 macOS and F1202 ARM64 DEFERRED_APPROVED by the owner. Release authorized by the owner.
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** RELEASED 0.8.0 from `24f16e4` (publish run 43078533202: PyPI, PowerShell Gallery, GitHub). **0.9:** RELEASED 0.9.0 from `3a047d7` (publish run 43085807197: PyPI, PowerShell Gallery, GitHub). **1.0:** RELEASED 1.0.0 from `1bb90e9` (gated `b58399f`; publish run 43116807057: PyPI, PowerShell Gallery, GitHub `v1.0.0` with the LuaJIT zip and SHA256SUMS; a clean `pip install ui4me==1.0.0` on Linux and the asset checksums were verified). **0.10 + 1.0:** delivered together as 1.0.0 by the owner's decision (with a LuaJIT binding, F1203); F1005 GPU, F1201 macOS and F1202 ARM64 DEFERRED_APPROVED by the owner. Release authorized by the owner.
 
 ## Version ledger
 
@@ -15,7 +15,7 @@
 | 0.8 | RELEASED 0.8.0 | `8f20779`, source sha256:ae1940a2… | PASS (installed, virtual KWin) | PASS (installed, interactive session; one flaky case passed on rerun) | PASS (installed C 1/1, Python 10/10, PowerShell 10/10 both hosts) | 8/8 items |
 | 0.9 | RELEASED 0.9.0 | `aa4496f`, source sha256:8c1548cf… | PASS (installed, virtual KWin; animation probe 4/4) | PASS (installed, interactive session; animation probe 4/4) | PASS (installed C 1/1, Python 11/11, PowerShell 11/11 both hosts) | 11/11 items (F0906/F0909 partial, see entries) |
 | 0.10 | MERGED INTO 1.0.0 | see 1.0 | see 1.0 | see 1.0 | see 1.0 | 7/8 items; F1005 GPU deferred |
-| 1.0 | GATED (`b58399f`) | `b58399f`, source sha256:791982b2… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 12/12, PowerShell 12/12 both hosts) | 8/8 items + F1203 Lua; F1005/F1201/F1202 deferred |
+| 1.0 | RELEASED 1.0.0 (`1bb90e9`) | `b58399f`, source sha256:791982b2… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 12/12, PowerShell 12/12 both hosts) | 8/8 items + F1203 Lua; F1005/F1201/F1202 deferred |
 | 1.1 | FUTURE OPTIONAL | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 
 ## Work-item ledger

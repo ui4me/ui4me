@@ -7,7 +7,7 @@ Python (`bindings/python`), PowerShell (`bindings/powershell`) and LuaJIT (`bind
 
 ## Current status
 
-**Core 1.0.0 is the stable Core** (PyPI, PowerShell Gallery, GitHub; 0.10 and 1.0 scope plus a
+**Core 1.0.0 is released and is the stable Core** ([GitHub v1.0.0](https://github.com/ui4me/ui4me/releases/tag/v1.0.0), PyPI `ui4me==1.0.0`, PowerShell Gallery `Ui4me 1.0.0`, built from `1bb90e9`, gated `b58399f`; 0.10 and 1.0 scope plus a
 LuaJIT binding; [`core-roadmap/versions/0_10.md`](core-roadmap/versions/0_10.md),
 [`core-roadmap/versions/1_0.md`](core-roadmap/versions/1_0.md)): paged media, PDF export and
 native printing, rich `contenteditable`, background work in the bindings, versioned developer
