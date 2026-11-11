@@ -5,6 +5,7 @@ import hashlib
 import os
 import platform
 import shutil
+import sys
 import tarfile
 import urllib.request
 import zipfile
@@ -20,14 +21,20 @@ ASSETS = {
 
 def main() -> None:
     system = platform.system()
-    if system not in ASSETS or platform.machine().lower() not in {"x86_64", "amd64"}:
+    version = sys.argv[1] if len(sys.argv) == 2 else VERSION
+    if len(sys.argv) > 2 or version not in {VERSION, "7.4.0"}:
+        raise SystemExit("Usage: setup-powershell.py [7.4.0]")
+    assets = ASSETS if version == VERSION else {
+        "Linux": ("powershell-7.4.0-linux-x64.tar.gz", "aa82c3e9241503b52db1827e3fd7fc099da74f828ba032e9b726e50c72b4bee5"),
+    }
+    if system not in assets or platform.machine().lower() not in {"x86_64", "amd64"}:
         raise SystemExit("This bootstrap supports Linux/Windows x64 only")
-    name, expected = ASSETS[system]
+    name, expected = assets[system]
     root = Path(__file__).resolve().parents[2]
-    destination = root / "build/tools" / ("powershell-" + VERSION)
+    destination = root / "build/tools" / ("powershell-" + version)
     archive = root / "build/tools" / name
     archive.parent.mkdir(parents=True, exist_ok=True)
-    url = "https://github.com/PowerShell/PowerShell/releases/download/v" + VERSION + "/" + name
+    url = "https://github.com/PowerShell/PowerShell/releases/download/v" + version + "/" + name
     if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
         temporary = archive.with_suffix(archive.suffix + ".download")
         with urllib.request.urlopen(url, timeout=120) as response, temporary.open("wb") as stream:
