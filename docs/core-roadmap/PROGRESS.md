@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** candidate 0.8.0 (gate pending). **Current milestone:** 0.8 gate, then 0.9 (owner authorized releasing each).
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** GO, candidate 0.8.0 @ `8f20779` (being released). **Current milestone:** 0.9 (owner authorized releasing each).
 
 ## Version ledger
 
@@ -12,7 +12,7 @@
 | 0.5 | RELEASED 0.5.0 (`089e7a8`) | `0b79117`, source sha256:ce114407… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 7/7, PowerShell 7/7 both hosts) | 8/8 items; see gate entry |
 | 0.6 | RELEASED 0.6.0 (`3f9eaf7`) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
 | 0.7 | RELEASED 0.7.0 | `33b1d77`, source sha256:ab8db0e1… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 9/9, PowerShell 9/9 both hosts) | 11/11 items |
-| 0.8 | CANDIDATE (gate pending) | — | NOT_RUN | NOT_RUN | unit PASS | 8/8 items implemented |
+| 0.8 | GO (candidate 0.8.0) | `8f20779`, source sha256:ae1940a2… | PASS (installed, virtual KWin) | PASS (installed, interactive session; one flaky case passed on rerun) | PASS (installed C 1/1, Python 10/10, PowerShell 10/10 both hosts) | 8/8 items |
 | 0.9 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.10 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 1.0 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
@@ -56,6 +56,7 @@ When a new session starts, choose the earliest release not marked GO, then first
 2026-11-11 | 0.8 | F0805 advanced controls | ed7cb12 (Sonnet worker) | controls.rs, editing baseline, a11y | renderer 13 new | PASS | **Fixed:** range honoured `readonly`; range ignored `dir=rtl`; range value was unsanitized; a number fired a second `change` after stepping; negative progress reported 0. RTL from CSS `direction` without `dir` is not detected | F0807
 2026-11-11 | 0.8 | F0807 pointer events and capture | 5643ebc | sequences.rs, pointer.rs, event JSON, core, bindings | renderer (fields, cancel suppression, capture retarget, implicit release, removed target), core, Python/PowerShell units | PASS | Mouse pointer only (touch contacts are mapped to mouse input and `touch` events); `auxclick`/`dblclick` not dispatched | F0808
 2026-11-11 | 0.8 | F0808 popover, anchor positioning subset | f1d1726 (Sonnet worker) | `interaction/popover.rs`, top layer, `resolve_anchor_positions`, Stylo patch P-006-17, profile 1.23.0 | renderer 12 new (pixel-checked stacking and anchoring), core 1, binding units | PASS | `popover=hint`, `position-try-fallbacks`, `position-area`, `anchor-size()` not implemented (reported Off); RTL/vertical start/end; no `aria-controls` | gate
+2026-11-11 | 0.8 | **0.8.0 candidate gate** | `8f20779` (source sha256:ae1940a262fb…) | release builds per host | **Linux x64** (virtual KWin, installed wheel/module): installed C 1/1, Python 10/10 (F01 F09 F11–F18), PowerShell 10/10; chat 20/20, file utility 20/20, dialogs 5/5, window 10/10, AT-SPI 16/16, input 38/38 (incl. touch tap/drag through the compositor, both bindings), environment 3/3, file input 4/4, KDE services 12/12. **Windows Server 2022** (interactive session, installed): installed C 1/1, Python 10/10, PowerShell 10/10; chat 20/20, file utility 20/20, window 10/10, UIA 17/17 + 2/2, input 28/28, environment 3/3, services 12/12, file input 3/4 in the full run (P03 Space on a `multiple` input: the Open dialog was not seen within the wait) and 4/4 on an isolated rerun with the same packages | PASS | P03 recorded as a timing flake (it passed in 0.7 and on rerun; the rerun replaced the first run's file-input artifacts). Windows touch and stylus not exercised. Automated input, not a person. Evidence `build/evidence-0.8/` | release
 
 ## Outstanding defects / intentional exclusions
 
