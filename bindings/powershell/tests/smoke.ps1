@@ -427,6 +427,16 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21g3_pointer_capture' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<div id="a">A</div>')
+            if ($window.SetPointerCapture('a')) { throw 'Capture without a press was accepted' }
+            $window.ReleasePointerCapture('a')
+            if ($null -ne $window.GetPointerCapture()) { throw 'A capture is reported' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS21h_window_actions' {
         Invoke-Ui4meApp -Backend headless {
             param($app)

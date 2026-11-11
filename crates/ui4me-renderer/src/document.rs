@@ -313,6 +313,12 @@ impl Document {
             "mousedown",
             "mouseup",
             "mousemove",
+            "pointerdown",
+            "pointerup",
+            "pointermove",
+            "pointercancel",
+            "gotpointercapture",
+            "lostpointercapture",
             "wheel",
             "scroll",
             "compositionstart",
@@ -1289,6 +1295,37 @@ impl Document {
             .collect();
         Ok(json!({"valid": fired.is_empty(), "invalid": ids, "count": fired.len()}))
     }
+    /// `setPointerCapture`/`releasePointerCapture` for the mouse pointer (`pointer_id` 1; 0.8
+    /// F0807). Capture needs a pressed button and takes effect at the pointer's next event; it
+    /// ends at the release, on `release`, or when the element is removed. Returns whether the
+    /// request was accepted (false: no button is pressed).
+    pub fn set_pointer_capture(
+        &mut self,
+        element: &str,
+        pointer_id: u32,
+        capture: bool,
+    ) -> Result<bool> {
+        let n = self.node(element)?;
+        if pointer_id != 1 {
+            return Err(Error {
+                code: 3,
+                message: format!("Unknown pointer {pointer_id} (the mouse is pointer 1)"),
+            });
+        }
+        Ok(self
+            .interaction
+            .request_pointer_capture(self.id(), n, capture))
+    }
+    /// The id of the element holding the mouse pointer's capture.
+    pub fn pointer_capture(&self) -> Option<String> {
+        let n = self.interaction.pointer_capture(self.id())?;
+        self.pipeline
+            .document()
+            .get_attribute(n, "id")
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+    }
     pub fn focus(&mut self, element: &str) -> Result<()> {
         let n = self.node(element)?;
         let id = self.id();
@@ -1706,6 +1743,14 @@ impl DispatchHost for Document {
         field!("old_state", old_state);
         field!("new_state", new_state);
         field!("submitter", submitter);
+        field!("pointer_id", pointer_id);
+        field!("pointer_type", pointer_type);
+        field!("is_primary", is_primary);
+        field!("pressure", pressure);
+        if data.client_x.is_some() {
+            value["buttons"] = json!(event.init.buttons);
+        }
+        value["cancelable"] = json!(event.init.cancelable);
         if inv.event_type == "invalid"
             && let Some(cv) = d.constraint_validity(node)
         {
@@ -2356,6 +2401,7 @@ const PREVENTABLE: &[&str] = &[
     "keydown",
     "click",
     "mousedown",
+    "pointerdown",
     "wheel",
     "submit",
     "reset",

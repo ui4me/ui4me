@@ -365,6 +365,12 @@ pub struct EventData {
     pub new_state: Option<String>,
     /// `SubmitEvent.submitter`: the `id` of the submit button that caused the submission, when it has one.
     pub submitter: Option<String>,
+    /// `PointerEvent` `pointerId`, `pointerType` (`"mouse"`, `"pen"`, `"touch"`), `isPrimary`
+    /// and `pressure` (0.8 F0807). Not exported when `None`.
+    pub pointer_id: Option<u32>,
+    pub pointer_type: Option<String>,
+    pub is_primary: Option<bool>,
+    pub pressure: Option<f32>,
 }
 
 /// Members the export marks `nondeterministic` (excluded from byte-identity).

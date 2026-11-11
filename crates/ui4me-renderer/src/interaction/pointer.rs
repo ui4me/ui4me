@@ -129,6 +129,17 @@ impl crate::interaction::dispatch::InteractionRuntime {
             dead(s.hover.active),
             dead(s.pointer.press_target),
         );
+        let lost = dead(s.capture.target);
+        let pending_dead = s.capture.pending.is_some_and(dead);
+        if let Some(s) = self.docs.get_mut(&doc) {
+            if lost {
+                s.capture.target = None;
+                s.capture.lost_removed = true;
+            }
+            if pending_dead {
+                s.capture.pending = None;
+            }
+        }
         if !(hover || active || press) {
             return;
         }
@@ -303,6 +314,7 @@ pub(crate) fn on_move(
     host: &mut dyn DispatchHost,
     doc: DocumentId,
     p: &PointerData,
+    captured: Option<NodeId>,
     m: Modifiers,
     origin: DispatchOrigin,
     ts: Option<f64>,
@@ -323,6 +335,8 @@ pub(crate) fn on_move(
     } else {
         rt(host, |ix| ix.hovered_element(doc)).unwrap_or(target)
     };
+    // A captured pointer's compatibility events go to the capture target too.
+    let target = captured.unwrap_or(target);
     let mut mv = EventInit::mouse(
         "mousemove",
         EventInterface::MouseEvent,

@@ -5,8 +5,11 @@
 //! Mouse presses update hover/active state and dispatch `mousedown`; a primary
 //! press also moves focus and starts editing or control interaction. Releases
 //! dispatch `mouseup` and activate a matching connected, enabled press target.
-//! Full pointer events, pointer capture, `auxclick` and `dblclick` are outside
-//! the foundation profile.
+//! Pointer events (0.8 F0807): `pointermove`/`pointerdown`/`pointerup`/`pointercancel`
+//! precede their compatibility mouse events (a canceled `pointerdown` suppresses `mousedown`);
+//! pointer capture retargets the pointer's events to the capturing element until the release,
+//! with `gotpointercapture`/`lostpointercapture` (a removed capture target loses it at the
+//! Document). `auxclick` and `dblclick` are outside the profile.
 //!
 //! Keyboard events route to the focused element or document body, then apply
 //! Tab navigation, control activation, editing and clipboard defaults. IME
@@ -27,6 +30,135 @@ use ui4me_engine_types::status::Status;
 pub struct PointerState {
     pub press_target: Option<NodeId>,
     pub press_button: Option<i8>,
+}
+
+/// Per-document pointer capture of the mouse pointer (`pointer_id` 1; 0.8 F0807). Capture
+/// requests take effect at the pointer's next event (Pointer Events "process pending pointer
+/// capture").
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CaptureState {
+    pub target: Option<NodeId>,
+    /// `Some(new)` = a pending change (`Some(None)` releases).
+    pub pending: Option<Option<NodeId>>,
+    /// The capture target was removed: `lostpointercapture` fires at the Document.
+    pub lost_removed: bool,
+}
+
+fn pointer_event(ty: &str, p: &PointerData, m: Modifiers) -> EventInit {
+    let cancelable = !matches!(
+        ty,
+        "pointercancel" | "gotpointercapture" | "lostpointercapture"
+    );
+    let button = if ty == "pointermove" || !cancelable {
+        -1
+    } else {
+        p.button as i16
+    };
+    let mut e = EventInit::mouse(
+        ty,
+        EventInterface::PointerEvent,
+        p.x,
+        p.y,
+        button,
+        p.buttons,
+    )
+    .cancelable(cancelable);
+    e.data.pointer_id = Some(p.pointer_id);
+    e.data.pointer_type = Some(p.pointer_type.as_str().to_owned());
+    e.data.is_primary = Some(p.is_primary);
+    e.data.pressure = Some(if p.buttons == 0 { 0.0 } else { p.pressure });
+    e.modifiers = m;
+    e
+}
+
+/// Apply a pending capture change (and a removal loss) before the pointer's next event.
+fn process_pending_capture(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    p: &PointerData,
+    m: Modifiers,
+    origin: DispatchOrigin,
+    ts: Option<f64>,
+) -> Result<Option<NodeId>, Status> {
+    let (old, pending, lost) = eng(host, doc, |ix, d| {
+        let s = ix.doc_state(doc).ok()?;
+        let c = std::mem::take(&mut s.capture);
+        let live = |n: Option<NodeId>| n.filter(|&n| d.arena().is_connected(n));
+        Some((live(c.target), c.pending.map(live), c.lost_removed))
+    })?
+    .unwrap_or((None, None, false));
+    if lost {
+        let root = eng(host, doc, |_, d| d.document_node())?;
+        run_dispatch(
+            host,
+            doc,
+            root,
+            pointer_event("lostpointercapture", p, m),
+            true,
+            origin,
+            ts,
+        )?;
+    }
+    let new = pending.unwrap_or(old);
+    if new != old {
+        if let Some(o) = old {
+            run_dispatch(
+                host,
+                doc,
+                o,
+                pointer_event("lostpointercapture", p, m),
+                true,
+                origin,
+                ts,
+            )?;
+        }
+        if let Some(n) = new {
+            run_dispatch(
+                host,
+                doc,
+                n,
+                pointer_event("gotpointercapture", p, m),
+                true,
+                origin,
+                ts,
+            )?;
+        }
+    }
+    eng(host, doc, |ix, _| {
+        // A change a listener above requested stays pending for the next event.
+        if let Ok(s) = ix.doc_state(doc) {
+            s.capture.target = new;
+        }
+    })?;
+    Ok(new)
+}
+
+/// The pointer's capture ends at its release (implicit release).
+fn implicit_release(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    p: &PointerData,
+    m: Modifiers,
+    origin: DispatchOrigin,
+    ts: Option<f64>,
+) -> Result<(), Status> {
+    let old = eng(host, doc, |ix, d| {
+        let s = ix.doc_state(doc).ok()?;
+        let c = std::mem::take(&mut s.capture);
+        c.target.filter(|&n| d.arena().is_connected(n))
+    })?;
+    if let Some(o) = old {
+        run_dispatch(
+            host,
+            doc,
+            o,
+            pointer_event("lostpointercapture", p, m),
+            true,
+            origin,
+            ts,
+        )?;
+    }
+    Ok(())
 }
 
 fn origin_of(item: &InputItem) -> DispatchOrigin {
@@ -128,7 +260,21 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
             if crate::interaction::scroll::scrollbar_move(host, doc, p, false, origin, ts)? {
                 return Ok(());
             }
-            pointer::on_move(host, doc, p, item.modifiers, origin, ts)?;
+            let captured = process_pending_capture(host, doc, p, item.modifiers, origin, ts)?;
+            let target = match captured {
+                Some(c) => c,
+                None => hit(host, doc, p.x, p.y)?,
+            };
+            run_dispatch(
+                host,
+                doc,
+                target,
+                pointer_event("pointermove", p, item.modifiers),
+                true,
+                origin,
+                ts,
+            )?;
+            pointer::on_move(host, doc, p, captured, item.modifiers, origin, ts)?;
             crate::interaction::editing::on_pointer_move(host, doc, p, item.modifiers, origin, ts)?;
             crate::interaction::controls::pointer_move(host, doc, p, origin, ts)?;
         }
@@ -140,6 +286,21 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
             }
             if matches!(item.kind, InputKind::PointerCancel(_)) {
                 eng(host, doc, |ix, d| ix.set_active(d, None))?;
+                let captured = process_pending_capture(host, doc, p, item.modifiers, origin, ts)?;
+                let target = match captured {
+                    Some(c) => c,
+                    None => hit(host, doc, p.x, p.y)?,
+                };
+                run_dispatch(
+                    host,
+                    doc,
+                    target,
+                    pointer_event("pointercancel", p, item.modifiers),
+                    true,
+                    origin,
+                    ts,
+                )?;
+                implicit_release(host, doc, p, item.modifiers, origin, ts)?;
             }
             pointer::on_leave(host, doc, p, item.modifiers, origin, ts)?;
         }
@@ -179,21 +340,35 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
                     ix.set_active(d, Some(target));
                 }
             })?;
-            let out = run_dispatch(
+            let pdown = run_dispatch(
                 host,
                 doc,
                 target,
-                mouse(
-                    "mousedown",
-                    EventInterface::MouseEvent,
-                    p,
-                    p.buttons,
-                    item.modifiers,
-                ),
+                pointer_event("pointerdown", p, item.modifiers),
                 true,
                 origin,
                 ts,
             )?;
+            // A canceled `pointerdown` suppresses the compatibility `mousedown` (Pointer Events §11).
+            let out = if pdown.canceled {
+                pdown
+            } else {
+                run_dispatch(
+                    host,
+                    doc,
+                    target,
+                    mouse(
+                        "mousedown",
+                        EventInterface::MouseEvent,
+                        p,
+                        p.buttons,
+                        item.modifiers,
+                    ),
+                    true,
+                    origin,
+                    ts,
+                )?
+            };
             if p.button == 0 {
                 crate::interaction::popover::pointer_down(host, doc, target);
             }
@@ -240,8 +415,19 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
             if crate::interaction::scroll::scrollbar_move(host, doc, p, true, origin, ts)? {
                 return Ok(());
             }
-            let target = hit(host, doc, p.x, p.y)?;
-            pointer::sync_hover_silently(host, doc, p, target, item.modifiers, origin)?;
+            let hit_target = hit(host, doc, p.x, p.y)?;
+            pointer::sync_hover_silently(host, doc, p, hit_target, item.modifiers, origin)?;
+            let captured = process_pending_capture(host, doc, p, item.modifiers, origin, ts)?;
+            let target = captured.unwrap_or(hit_target);
+            run_dispatch(
+                host,
+                doc,
+                target,
+                pointer_event("pointerup", p, item.modifiers),
+                true,
+                origin,
+                ts,
+            )?;
             if p.button == 0 {
                 crate::interaction::editing::on_pointer_up(host, doc);
                 crate::interaction::controls::pointer_up(host, doc, p, origin, ts)?;
@@ -261,6 +447,9 @@ fn run_item_inner(host: &mut dyn DispatchHost, item: &InputItem) -> Result<(), S
                 origin,
                 ts,
             )?;
+            if p.buttons == 0 {
+                implicit_release(host, doc, p, item.modifiers, origin, ts)?;
+            }
             if p.button == 0 {
                 crate::interaction::popover::pointer_up(host, doc, target);
             }

@@ -667,6 +667,10 @@ public sealed class Window
     /// <summary>Toggle a popover; returns whether it is showing afterwards.</summary>
     public bool TogglePopover(string element) { Check(); return app.Command(new { op = "toggle_popover", window = Id, element }).GetProperty("open").GetBoolean(); }
     /// <summary>{"open": bool, "kind": "auto"|"manual"} as JSON.</summary>
+    /// <summary>Capture the pointer (the mouse is pointer 1) for an element while a button is pressed; false when none is.</summary>
+    public bool SetPointerCapture(string element, int pointerId = 1) { Check(); return app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = true }).GetProperty("accepted").GetBoolean(); }
+    public void ReleasePointerCapture(string element, int pointerId = 1) { Check(); app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = false }); }
+    public string? GetPointerCapture() { Check(); var e = app.Command(new { op = "get_pointer_capture", window = Id }).GetProperty("element"); return e.ValueKind == System.Text.Json.JsonValueKind.String ? e.GetString() : null; }
     public string GetPopoverJson(string element) { Check(); return app.Command(new { op = "get_popover", window = Id, element }).GetRawText(); }
     public SelectOption[] GetOptions(string element)
     {

@@ -1452,3 +1452,147 @@ fn element_rect_of_a_scrolled_textarea_is_its_border_box() {
     }
     assert_eq!(d.viewport_rect(d.node("t").unwrap()), before);
 }
+
+#[test]
+fn pointer_events_fields_cancel_and_capture() {
+    // 0.8 F0807.
+    let html = "<!doctype html><style>body{margin:0}div{position:absolute;width:100px;height:50px}</style><div id=a style='left:0;top:0'></div><div id=b style='left:200px;top:0'></div>";
+    let mut d = Document::parse(html).unwrap();
+    d.render(400, 200, 1.0).unwrap();
+    d.handle_input(Input::Focus(true)).unwrap();
+    let types = |ev: &[Value]| {
+        ev.iter()
+            .map(|e| {
+                format!(
+                    "{}@{}",
+                    e["type"].as_str().unwrap(),
+                    e["element"].as_str().unwrap()
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let down = d
+        .handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: 10.0,
+            y: 10.0,
+        })
+        .unwrap();
+    let pd = down.iter().find(|e| e["type"] == "pointerdown").unwrap();
+    assert_eq!(
+        (
+            pd["pointer_id"].as_u64(),
+            pd["pointer_type"].as_str(),
+            pd["is_primary"].as_bool()
+        ),
+        (Some(1), Some("mouse"), Some(true))
+    );
+    assert_eq!(
+        (
+            pd["x"].as_f64(),
+            pd["buttons"].as_u64(),
+            pd["cancelable"].as_bool()
+        ),
+        (Some(10.0), Some(1), Some(true))
+    );
+    assert!(pd["pressure"].as_f64().unwrap() > 0.0);
+    assert_eq!(
+        types(&down)[..2],
+        ["pointerdown@a".to_string(), "mousedown@a".to_string()]
+    );
+    // Capture: the moves and the release go to the capture target, even over b.
+    assert!(d.set_pointer_capture("a", 1, true).unwrap());
+    assert!(
+        d.set_pointer_capture("a", 7, true).is_err(),
+        "unknown pointer"
+    );
+    let mv = d
+        .handle_input(Input::PointerMoved { x: 250.0, y: 10.0 })
+        .unwrap();
+    let t = types(&mv);
+    assert_eq!(t[0], "gotpointercapture@a", "{t:?}");
+    assert!(
+        t.contains(&"pointermove@a".to_string()) && t.contains(&"mousemove@a".to_string()),
+        "{t:?}"
+    );
+    assert!(
+        !t.iter()
+            .any(|x| x.starts_with("pointermove@b") || x.starts_with("mousemove@b")),
+        "{t:?}"
+    );
+    assert_eq!(d.pointer_capture().as_deref(), Some("a"));
+    let up = d
+        .handle_input(Input::PointerButton {
+            pressed: false,
+            button: 0,
+            x: 250.0,
+            y: 10.0,
+        })
+        .unwrap();
+    let t = types(&up);
+    assert!(
+        t.contains(&"pointerup@a".to_string())
+            && t.contains(&"mouseup@a".to_string())
+            && t.contains(&"lostpointercapture@a".to_string()),
+        "{t:?}"
+    );
+    assert!(
+        t.contains(&"click@a".to_string()),
+        "the press and the captured release match: {t:?}"
+    );
+    assert_eq!(d.pointer_capture(), None, "implicit release");
+    // Without a pressed button capture is refused.
+    assert!(!d.set_pointer_capture("a", 1, true).unwrap());
+    // A host rule canceling pointerdown suppresses mousedown (not the pointer events).
+    d.set_default_action(
+        DefaultActionRule {
+            element: "b".into(),
+            event: "pointerdown".into(),
+            key: None,
+            shift: None,
+            ctrl: None,
+            alt: None,
+            meta: None,
+        },
+        true,
+    )
+    .unwrap();
+    let down = d
+        .handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: 210.0,
+            y: 10.0,
+        })
+        .unwrap();
+    let t = types(&down);
+    assert!(
+        t.contains(&"pointerdown@b".to_string()) && !t.iter().any(|x| x.starts_with("mousedown")),
+        "{t:?}"
+    );
+    assert!(
+        down.iter()
+            .any(|e| e["type"] == "pointerdown" && e["default_prevented"] == true)
+    );
+    // Stale target: the capture element is removed during the press.
+    assert!(d.set_pointer_capture("b", 1, true).unwrap());
+    d.handle_input(Input::PointerMoved { x: 220.0, y: 10.0 })
+        .unwrap();
+    d.remove_element("b").unwrap();
+    d.render(400, 200, 1.0).unwrap();
+    let mv = d
+        .handle_input(Input::PointerMoved { x: 20.0, y: 10.0 })
+        .unwrap();
+    let t = types(&mv);
+    assert_eq!(t[0], "lostpointercapture@", "lost at the Document: {t:?}");
+    assert!(t.contains(&"pointermove@a".to_string()), "{t:?}");
+    assert_eq!(d.pointer_capture(), None);
+    d.handle_input(Input::PointerButton {
+        pressed: false,
+        button: 0,
+        x: 20.0,
+        y: 10.0,
+    })
+    .unwrap();
+}

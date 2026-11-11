@@ -1829,6 +1829,18 @@ impl Session {
             Command::TogglePopover { window, element } => self.query(window, |d| {
                 d.toggle_popover(&element).map(|open| json!({"open":open}))
             })?,
+            Command::SetPointerCapture {
+                window,
+                element,
+                pointer_id,
+                capture,
+            } => self.query(window, |d| {
+                d.set_pointer_capture(&element, pointer_id, capture)
+                    .map(|accepted| json!({"accepted":accepted}))
+            })?,
+            Command::GetPointerCapture { window } => self.with_window(window, |w| {
+                Ok(json!({"element": w.document.pointer_capture()}))
+            })?,
             Command::GetPopover { window, element } => self.with_window(window, |w| {
                 let (open, kind) = w.document.popover_state(&element)?;
                 Ok(json!({"open":open,"kind":kind}))

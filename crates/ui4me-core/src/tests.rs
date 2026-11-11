@@ -2484,3 +2484,27 @@ fn clipboard_html_round_trips_and_pasted_html_is_sanitized() {
         "a text copy replaces the HTML flavour"
     );
 }
+
+#[test]
+fn pointer_capture_commands_need_a_press_and_a_known_pointer() {
+    // 0.8 F0807 (the capture itself is covered by the renderer tests).
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":300,"height":200,"html":"<div id='a'>A</div>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        cmd(json!({"op":"set_pointer_capture","window":id,"element":"a"})).unwrap(),
+        json!({"accepted":false})
+    );
+    assert!(
+        cmd(json!({"op":"set_pointer_capture","window":id,"element":"a","pointer_id":3})).is_err()
+    );
+    assert!(cmd(json!({"op":"set_pointer_capture","window":id,"element":"zz"})).is_err());
+    cmd(json!({"op":"set_pointer_capture","window":id,"element":"a","capture":false})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_pointer_capture","window":id})).unwrap(),
+        json!({"element":null})
+    );
+}

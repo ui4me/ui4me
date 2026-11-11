@@ -66,6 +66,9 @@ pub fn trim_from_start(from: &str) -> Result<bool> {
 fn nearest() -> String {
     "nearest".into()
 }
+fn mouse_pointer() -> u32 {
+    1
+}
 fn yes() -> bool {
     true
 }
@@ -436,6 +439,18 @@ pub enum Command {
     GetPopover {
         window: u64,
         element: String,
+    },
+    /// Pointer capture of the mouse pointer (0.8 F0807); `capture=false` releases.
+    SetPointerCapture {
+        window: u64,
+        element: String,
+        #[serde(default = "mouse_pointer")]
+        pointer_id: u32,
+        #[serde(default = "yes")]
+        capture: bool,
+    },
+    GetPointerCapture {
+        window: u64,
     },
     GetOptions {
         window: u64,

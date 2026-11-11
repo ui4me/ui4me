@@ -824,6 +824,21 @@ class Window:
         """Toggle a popover; returns whether it is showing afterwards."""
         return bool(self._command("toggle_popover", element=element)["open"])
 
+    def set_pointer_capture(self, element: str, pointer_id: int = 1) -> bool:
+        """Capture the pointer for ``element`` while a button is pressed (Pointer Events
+        ``setPointerCapture``; the mouse is pointer 1): its moves and release are delivered to the
+        element from the next event, with ``gotpointercapture`` / ``lostpointercapture``. Returns
+        False when no button is pressed. Capture ends at the release or when the element is removed."""
+        return bool(self._command("set_pointer_capture", element=element, pointer_id=int(pointer_id), capture=True)["accepted"])
+
+    def release_pointer_capture(self, element: str, pointer_id: int = 1) -> None:
+        """Release a capture ``element`` holds."""
+        self._command("set_pointer_capture", element=element, pointer_id=int(pointer_id), capture=False)
+
+    def get_pointer_capture(self) -> str | None:
+        """The id of the element holding the pointer capture, else None."""
+        return self._command("get_pointer_capture")["element"]
+
     def get_popover(self, element: str) -> dict:
         """``{"open": bool, "kind": "auto" | "manual"}``."""
         return self._command("get_popover", element=element)

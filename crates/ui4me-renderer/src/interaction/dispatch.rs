@@ -312,6 +312,8 @@ pub(crate) struct DocState {
     /// Filled by 003's `on_nodes_freed` hook.
     pub freed: Rc<RefCell<Vec<NodeId>>>,
     pub pointer: PointerState,
+    /// Pointer capture (0.8 F0807).
+    pub capture: crate::interaction::sequences::CaptureState,
     pub scrollbar_drag: Option<crate::interaction::scroll::ScrollbarDrag>,
     pub last_seq: Option<u64>,
     /// Hover, `:active` and modality state (FR-031, FR-042, FR-048).
@@ -479,6 +481,7 @@ impl InteractionRuntime {
                 focus,
                 freed,
                 pointer: PointerState::default(),
+                capture: Default::default(),
                 scrollbar_drag: None,
                 last_seq: None,
                 hover: Default::default(),
@@ -767,6 +770,38 @@ impl InteractionRuntime {
         self.queue.push(item);
     }
     /// The focused element (`None` = the viewport).
+    /// Request (`Some`) or release (`None`) pointer capture of the mouse pointer for `element`
+    /// (0.8 F0807): it applies at the pointer's next event; a request needs a button pressed
+    /// (Pointer Events: an inactive pointer cannot be captured). Returns whether it was accepted.
+    pub fn request_pointer_capture(
+        &mut self,
+        doc: DocumentId,
+        element: NodeId,
+        capture: bool,
+    ) -> bool {
+        let Some(s) = self.docs.get_mut(&doc) else {
+            return false;
+        };
+        if capture {
+            if s.pointer.press_target.is_none() {
+                return false;
+            }
+            s.capture.pending = Some(Some(element));
+            true
+        } else {
+            let current = s.capture.pending.unwrap_or(s.capture.target);
+            if current == Some(element) {
+                s.capture.pending = Some(None);
+            }
+            true
+        }
+    }
+    /// The element that has (or will get at the next event) the mouse pointer's capture.
+    pub fn pointer_capture(&self, doc: DocumentId) -> Option<NodeId> {
+        self.docs
+            .get(&doc)
+            .and_then(|s| s.capture.pending.unwrap_or(s.capture.target))
+    }
     pub fn focused_element(&self, doc: DocumentId) -> Option<NodeId> {
         self.docs.get(&doc).and_then(|s| s.focus.borrow().focused)
     }

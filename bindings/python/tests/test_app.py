@@ -355,6 +355,17 @@ class BindingTests(unittest.TestCase):
             app.run()
             self.assertEqual(states, ["open", "closed", "open", "closed"])
 
+    def test_pointer_capture(self):
+        with self.app() as app:
+            window = app.open('<div id="a">A</div>')
+            self.assertFalse(window.set_pointer_capture("a"), "no button is pressed")
+            with self.assertRaises(Exception):
+                window.set_pointer_capture("a", pointer_id=5)
+            window.release_pointer_capture("a")
+            self.assertIsNone(window.get_pointer_capture())
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     def test_document_html_stylesheets_and_nodes(self):
         with self.app() as app:
             w = app.open("<div id=box><span>no id</span>žluť</div>")
