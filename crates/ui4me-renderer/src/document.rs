@@ -474,6 +474,143 @@ impl Document {
         self.after_mutation(true);
         Ok(())
     }
+    /// Parse `html` as a fragment and insert it relative to `element` (`insertAdjacentHTML`
+    /// positions). The fragment is validated (active content, IDs unique against the whole
+    /// document, limits) before anything is inserted; a rejection leaves the document unchanged.
+    pub fn insert_html(&mut self, element: &str, position: &str, html: &str) -> Result<()> {
+        check_html(html)?;
+        let n = self.node(element)?;
+        let position = parse_position(position)?;
+        if matches!(position, "beforebegin" | "afterend") {
+            self.check_movable(n, "insert_html beside")?;
+        }
+        self.pipeline.mutate(|d| {
+            d.insert_adjacent_html_checked(n, position, html, |d, f| {
+                validate_document(d, None, Some(f))
+            })
+        })?;
+        self.after_mutation(true);
+        Ok(())
+    }
+    /// Remove `element` and its subtree. Focus inside it moves to the viewport with no events;
+    /// its resources, queued events and ID are retired.
+    pub fn remove_element(&mut self, element: &str) -> Result<()> {
+        let n = self.node(element)?;
+        self.check_movable(n, "remove")?;
+        self.pipeline.mutate(|d| d.remove(n))?;
+        self.after_mutation(true);
+        Ok(())
+    }
+    /// Move `element` (with its subtree) relative to `target`. Identity, control values,
+    /// selection and focus within the moved subtree are preserved; no focus events fire.
+    pub fn move_element(&mut self, element: &str, target: &str, position: &str) -> Result<()> {
+        let n = self.node(element)?;
+        let t = self.node(target)?;
+        let position = parse_position(position)?;
+        self.check_movable(n, "move")?;
+        if matches!(position, "beforebegin" | "afterend") {
+            self.check_movable(t, "move beside")?;
+        }
+        let d = self.pipeline.document();
+        if d.arena().is_inclusive_ancestor(n, t) {
+            return Err(arg("Cannot move an element into itself or its descendant"));
+        }
+        let (parent, before) = match position {
+            "beforebegin" => (
+                d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?,
+                Some(t),
+            ),
+            "afterend" => {
+                let parent = d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?;
+                let kids = d.children(parent)?;
+                let at = kids
+                    .iter()
+                    .position(|&c| c == t)
+                    .expect("child of its parent");
+                (parent, kids.get(at + 1).copied())
+            }
+            "afterbegin" => (t, d.children(t)?.first().copied()),
+            _ => (t, None),
+        };
+        if before == Some(n) {
+            return Ok(());
+        }
+        let id = self.id();
+        let focused = self
+            .interaction
+            .focused_element(id)
+            .filter(|&f| d.arena().is_inclusive_ancestor(n, f));
+        let visible = focused.is_some_and(|f| {
+            d.ui_flags(f)
+                .is_ok_and(|g| g.contains(ui4me_document::ui_state::UiFlags::FOCUS_VISIBLE))
+        });
+        self.pipeline
+            .mutate(|d| d.insert_before(parent, n, before).map(|_| ()))?;
+        if let Some(f) = focused {
+            let interaction = &mut self.interaction;
+            self.pipeline.mutate(|d| {
+                if crate::interaction::focus::is_focusable(d, f) {
+                    interaction.set_focus(d, Some(f), visible);
+                }
+                Ok(())
+            })?;
+        }
+        self.after_mutation(false);
+        Ok(())
+    }
+    /// Literal text content of `element` (not a control's value).
+    pub fn get_text(&self, element: &str) -> Result<String> {
+        let n = self.node(element)?;
+        Ok(self.pipeline.text_content(n)?)
+    }
+    pub fn get_attribute(&self, element: &str, name: &str) -> Result<Option<String>> {
+        let n = self.node(element)?;
+        Ok(self
+            .pipeline
+            .document()
+            .get_attribute(n, &name.to_ascii_lowercase())?
+            .map(str::to_owned))
+    }
+    /// All attributes in source order as `(name, value)`.
+    pub fn get_attributes(&self, element: &str) -> Result<Vec<(String, String)>> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        Ok(d.attributes(n)?
+            .iter()
+            .map(|a| (a.name.local.to_string(), a.value.to_string()))
+            .collect())
+    }
+    pub fn has_element(&self, element: &str) -> bool {
+        self.pipeline.element_by_id(element).is_some()
+    }
+    /// IDs of identified elements matching a CSS selector list, in tree order (at most `limit`),
+    /// plus the total number of matches including unidentified elements.
+    pub fn query_ids(&self, selector: &str, limit: usize) -> Result<(Vec<String>, usize)> {
+        if selector.len() > 4096 {
+            return Err(arg("Selector is too long"));
+        }
+        let service = crate::style::query::SelectorService::new();
+        let list = service
+            .parse(selector)
+            .map_err(|e| arg(format!("Invalid selector: {selector} ({:?})", e.sub_reason)))?;
+        let d = self.pipeline.document();
+        let matches = service.query_all(d, &list, d.document_node())?;
+        let ids = matches
+            .iter()
+            .filter_map(|&m| d.get_attribute(m, "id").ok().flatten())
+            .filter(|id| !id.is_empty())
+            .take(limit)
+            .map(str::to_owned)
+            .collect();
+        Ok((ids, matches.len()))
+    }
+    fn check_movable(&self, n: NodeId, what: &str) -> Result<()> {
+        let d = self.pipeline.document();
+        if Some(n) == d.document_element() || Some(n) == d.body() || Some(n) == d.head() {
+            return Err(arg(format!("Cannot {what} the html, head or body element")));
+        }
+        Ok(())
+    }
     fn after_mutation(&mut self, subtree: bool) {
         let id = self.id();
         self.interaction.note_doc(id);
@@ -1292,6 +1429,17 @@ fn validate_document(
         break;
     }
     Ok(())
+}
+fn parse_position(position: &str) -> Result<&'static str> {
+    match position {
+        "beforebegin" => Ok("beforebegin"),
+        "afterbegin" => Ok("afterbegin"),
+        "beforeend" => Ok("beforeend"),
+        "afterend" => Ok("afterend"),
+        _ => Err(arg(
+            "position must be beforebegin, afterbegin, beforeend or afterend",
+        )),
+    }
 }
 fn scroll_target(n: Option<NodeId>) -> ScrollTarget {
     n.map_or(ScrollTarget::Viewport, ScrollTarget::Node)

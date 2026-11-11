@@ -277,6 +277,31 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21b_dom_insert_remove_move_read' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<ul id="list"><li id="b" data-k="v">B</li></ul><input id="edit" value="keep">')
+            $window.PrependHtml('list', '<li id="a">A</li>')
+            $window.AppendHtml('list', '<li id="d">D</li>')
+            $window.InsertHtmlAfter('b', '<li id="c">Č</li>')
+            $window.InsertHtmlBefore('list', '<p id="title">Title</p>')
+            if (($window.Query('#list > li') -join ',') -ne 'a,b,c,d') { throw 'Insert order is wrong' }
+            if ($window.GetText('list') -ne 'ABČD') { throw 'Text read is wrong' }
+            if ($window.GetAttribute('b', 'data-k') -ne 'v') { throw 'Attribute read is wrong' }
+            if ($null -ne $window.GetAttribute('b', 'title')) { throw 'Missing attribute is not null' }
+            if ($window.GetAttributes('b').Count -ne 2) { throw 'Attribute map is wrong' }
+            $rejected = $false
+            try { $window.AppendHtml('list', '<li id="e">E</li><li id="a">dup</li>') } catch { $rejected = $true }
+            if (-not $rejected -or $window.HasElement('e')) { throw 'Duplicate fragment was not atomic' }
+            $window.Focus('edit')
+            $window.MoveElement('edit', 'c')
+            if (($window.Query('#c > input:focus') -join ',') -ne 'edit') { throw 'Move lost focus' }
+            if ($window.GetValue('edit') -ne 'keep') { throw 'Move lost value' }
+            $window.RemoveElement('c')
+            if ($window.HasElement('edit')) { throw 'Removed subtree is still addressable' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

@@ -2,9 +2,9 @@
 
 **Baseline:** Owner reports Core 0.2 is implemented and already running/tested. Publication workflow for 0.2 is being handled separately. No tests were executed when this handoff was assembled. Existing `docs/PROJECT_STATUS.md` may describe an earlier release-candidate snapshot.
 
-**Working milestone:** 0.3, slice S1 — confirm current public capability, then implement missing pieces. S2–S12 planned, not started by this handoff.
+**Working milestone:** 0.3, slice S2 (batching and events).
 
-**0.3 status:** NOT STARTED by this handoff; do not mistake the prior research's feature-candidate labels for test evidence.
+**0.3 status:** IN PROGRESS — S1 done.
 
 **0.4 status:** NOT STARTED by this handoff.
 
@@ -18,11 +18,11 @@ Do not paste massive raw logs, long audit reports or all research feature record
 
 ## Implemented slices
 
-None by this handoff.
+- 2026-11-11 | (S1 commit) | **S1 DOM mutation and identities** | `crates/ui4me-document/src/parse/fragment.rs` (checked `insertAdjacentHTML`), `crates/ui4me-renderer/src/document.rs` (insert_html/remove_element/move_element/get_text/get_attribute(s)/has_element/query_ids), `crates/ui4me-core/src/{protocol,runtime,tests}.rs`, Python `app.py` + `test_app.py`, PowerShell `App.cs` + `smoke.ps1`, contract in `docs/PROJECT_STATUS.md` | `cargo test -p ui4me-core dom_mutation` (Linux), `cargo test -p ui4me-document` (Linux), `dev.py test --suite unit` python 26/26 + powershell 24/24 (Linux headless) | PASS | Identity = HTML `id` (existing 0.2 model); elements without an ID are counted by `query` but not addressable. Whole-document validation per insert is O(N) — revisit in S5 with 10k-line logs (MAX_NODES 16384 also caps log size). Windows not run for this slice (no native change). | S2
 
 ## Deferred non-blocking items
 
-None adjudicated yet. List only concrete observations, not every theoretical future CSS feature.
+- Host needed .NET SDK 10 (global.json) — installed user-locally at `~/.dotnet` (set `DOTNET_ROOT`/`PATH`).
 
 ## Hard blockers
 

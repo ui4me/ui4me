@@ -52,6 +52,9 @@ fn title() -> String {
 fn width() -> u32 {
     640
 }
+fn query_limit() -> usize {
+    1024
+}
 fn height() -> u32 {
     480
 }
@@ -131,6 +134,45 @@ pub enum Command {
         window: u64,
         element: String,
         html: String,
+    },
+    InsertHtml {
+        window: u64,
+        element: String,
+        position: String,
+        html: String,
+    },
+    RemoveElement {
+        window: u64,
+        element: String,
+    },
+    MoveElement {
+        window: u64,
+        element: String,
+        target: String,
+        position: String,
+    },
+    GetText {
+        window: u64,
+        element: String,
+    },
+    GetAttribute {
+        window: u64,
+        element: String,
+        name: String,
+    },
+    GetAttributes {
+        window: u64,
+        element: String,
+    },
+    HasElement {
+        window: u64,
+        element: String,
+    },
+    Query {
+        window: u64,
+        selector: String,
+        #[serde(default = "query_limit")]
+        limit: usize,
     },
     Diagnostics {
         window: u64,

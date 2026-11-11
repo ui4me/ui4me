@@ -391,6 +391,30 @@ public sealed class Window
     public void RemoveClass(string element, string name) { Check(); app.Command(new { op = "remove_class", window = Id, element, name }); }
     public void Focus(string element) { Check(); app.Command(new { op = "focus", window = Id, element }); }
     public void ReplaceChildrenHtml(string element, string html) { Check(); app.Command(new { op = "replace_children_html", window = Id, element, html }); }
+    public void InsertHtml(string element, string position, string html) { Check(); app.Command(new { op = "insert_html", window = Id, element, position, html }); }
+    public void AppendHtml(string element, string html) => InsertHtml(element, "beforeend", html);
+    public void PrependHtml(string element, string html) => InsertHtml(element, "afterbegin", html);
+    public void InsertHtmlBefore(string element, string html) => InsertHtml(element, "beforebegin", html);
+    public void InsertHtmlAfter(string element, string html) => InsertHtml(element, "afterend", html);
+    public void RemoveElement(string element) { Check(); app.Command(new { op = "remove_element", window = Id, element }); }
+    public void MoveElement(string element, string target, string position = "beforeend") { Check(); app.Command(new { op = "move_element", window = Id, element, target, position }); }
+    public string GetText(string element) { Check(); return app.Command(new { op = "get_text", window = Id, element }).GetProperty("text").GetString()!; }
+    public string? GetAttribute(string element, string name) { Check(); var v = app.Command(new { op = "get_attribute", window = Id, element, name }).GetProperty("value"); return v.ValueKind == System.Text.Json.JsonValueKind.Null ? null : v.GetString(); }
+    public System.Collections.Generic.Dictionary<string, string> GetAttributes(string element)
+    {
+        Check();
+        var result = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var p in app.Command(new { op = "get_attributes", window = Id, element }).GetProperty("attributes").EnumerateObject()) result[p.Name] = p.Value.GetString()!;
+        return result;
+    }
+    public bool HasElement(string element) { Check(); return app.Command(new { op = "has_element", window = Id, element }).GetProperty("exists").GetBoolean(); }
+    public string[] Query(string selector, int limit = 1024)
+    {
+        Check();
+        var list = new System.Collections.Generic.List<string>();
+        foreach (var e in app.Command(new { op = "query", window = Id, selector, limit }).GetProperty("elements").EnumerateArray()) list.Add(e.GetString()!);
+        return list.ToArray();
+    }
     public bool IsClosed => Closed;
     public void SetTitle(string title) { Check(); app.Command(new { op = "set_title", window = Id, title }); }
     public void Resize(int width, int height) { Check(); app.Command(new { op = "resize", window = Id, width, height }); }

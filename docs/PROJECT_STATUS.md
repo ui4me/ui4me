@@ -146,12 +146,27 @@ per work item. Keep long operations off UI callbacks.
 | Classes | `add_class` / `remove_class` | `AddClass` / `RemoveClass` |
 | Focus | `focus(id)` | `Focus(id)` |
 | Replace children | `replace_children_html(id, html)` | `ReplaceChildrenHtml(id, html)` |
+| Insert fragment (0.3) | `insert_html(id, position, html)`, `append_html`, `prepend_html`, `insert_html_before`, `insert_html_after` | `InsertHtml`, `AppendHtml`, `PrependHtml`, `InsertHtmlBefore`, `InsertHtmlAfter` |
+| Remove / move (0.3) | `remove_element(id)`, `move_element(id, target, position="beforeend")` | `RemoveElement`, `MoveElement` |
+| Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
 | App operations | `on`, `timer`, `post`, `stop`, `stats`, `run`, `close` | `On`, `Timer`, `Post`, `Work`, `Stop`, `StatsJson`, `Run`, `Dispose` |
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.
+0.3 DOM commands (wire ops `insert_html`, `remove_element`, `move_element`,
+`get_text`, `get_attribute`, `get_attributes`, `has_element`, `query`): positions
+are the `insertAdjacentHTML` names `beforebegin`, `afterbegin`, `beforeend`,
+`afterend`. The public identity is the HTML `id`; an unknown ID is error 1, and a
+removed element's ID may be reused by new content (queued events for the old node
+are dropped by the generational check). `insert_html` validates the whole fragment
+before insertion. `move_element` keeps the node, its control value/selection and
+focus inside the moved subtree (no focus events); moving into itself/a descendant
+and removing or inserting beside `html`/`head`/`body` are rejected. `query`
+returns the IDs of matching identified elements in tree order (at most `limit`,
+default 1024) and `count` of all matches. Only selectors supported by the style
+engine are accepted.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

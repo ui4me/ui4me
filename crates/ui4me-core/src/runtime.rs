@@ -774,6 +774,51 @@ impl Session {
                 element,
                 html,
             } => self.mutate(window, |d| d.replace_children_html(&element, &html))?,
+            Command::InsertHtml {
+                window,
+                element,
+                position,
+                html,
+            } => self.mutate(window, |d| d.insert_html(&element, &position, &html))?,
+            Command::RemoveElement { window, element } => {
+                self.mutate(window, |d| d.remove_element(&element))?
+            }
+            Command::MoveElement {
+                window,
+                element,
+                target,
+                position,
+            } => self.mutate(window, |d| d.move_element(&element, &target, &position))?,
+            Command::GetText { window, element } => self.with_window(window, |w| {
+                Ok(json!({"text": w.document.get_text(&element)?}))
+            })?,
+            Command::GetAttribute {
+                window,
+                element,
+                name,
+            } => self.with_window(window, |w| {
+                Ok(json!({"value": w.document.get_attribute(&element, &name)?}))
+            })?,
+            Command::GetAttributes { window, element } => self.with_window(window, |w| {
+                let attrs: serde_json::Map<String, Value> = w
+                    .document
+                    .get_attributes(&element)?
+                    .into_iter()
+                    .map(|(k, v)| (k, Value::String(v)))
+                    .collect();
+                Ok(json!({"attributes": attrs}))
+            })?,
+            Command::HasElement { window, element } => self.with_window(window, |w| {
+                Ok(json!({"exists": w.document.has_element(&element)}))
+            })?,
+            Command::Query {
+                window,
+                selector,
+                limit,
+            } => self.with_window(window, |w| {
+                let (ids, count) = w.document.query_ids(&selector, limit.min(16_384))?;
+                Ok(json!({"elements": ids, "count": count}))
+            })?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {

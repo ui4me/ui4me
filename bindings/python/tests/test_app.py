@@ -188,6 +188,32 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 window.set_text("first", "stale")
 
+    def test_dom_insert_remove_move_and_read(self):
+        with self.app() as app:
+            window = app.open('<ul id="list"><li id="b" data-k="v">B</li></ul><input id="edit" value="keep">')
+            window.prepend_html("list", '<li id="a">A</li>')
+            window.append_html("list", '<li id="d">D</li>')
+            window.insert_html_after("b", '<li id="c">Č</li>')
+            window.insert_html_before("list", '<p id="title">Title</p>')
+            self.assertEqual(window.query("#list > li"), ["a", "b", "c", "d"])
+            self.assertEqual(window.get_text("list"), "ABČD")
+            self.assertEqual(window.get_attribute("b", "data-k"), "v")
+            self.assertIsNone(window.get_attribute("b", "title"))
+            self.assertEqual(window.get_attributes("b"), {"id": "b", "data-k": "v"})
+            with self.assertRaises(Ui4meError):
+                window.append_html("list", '<li id="e">E</li><li id="a">dup</li>')
+            self.assertFalse(window.has_element("e"))
+            window.focus("edit")
+            window.move_element("edit", "c")
+            self.assertEqual(window.query("#c > input:focus"), ["edit"])
+            self.assertEqual(window.get_value("edit"), "keep")
+            with self.assertRaises(Ui4meError):
+                window.move_element("list", "c")
+            window.remove_element("c")
+            self.assertFalse(window.has_element("edit"))
+            with self.assertRaises(Ui4meError):
+                window.get_text("c")
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

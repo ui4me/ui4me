@@ -572,3 +572,121 @@ fn reentrant_replacement_retires_remaining_events_for_the_old_node() {
     assert_eq!(events.iter().filter(|e| e["type"] == "change").count(), 0);
     assert!(events.iter().all(|e| e.get("_target").is_none()));
 }
+
+#[test]
+fn dom_mutation_commands_insert_remove_move_and_read() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<main id='list'><p id='b' class='x y' data-k='v'>B</p></main><aside id='side'><input id='edit' value='keep'></aside>"})).unwrap()["window"].as_u64().unwrap();
+    let ids = |sel: &str| {
+        cmd(json!({"op":"query","window":id,"selector":sel})).unwrap()["elements"].clone()
+    };
+    for (pos, html) in [
+        ("afterbegin", "<p id='a'>A</p>"),
+        ("beforeend", "<p id='d'>D</p>"),
+        ("beforebegin", "<p id='a0'>Z</p>"),
+        ("afterend", "<p id='c'>C</p>"),
+    ] {
+        let target = if pos.ends_with("begin") && pos.starts_with("before") {
+            "a"
+        } else if pos == "afterend" {
+            "b"
+        } else {
+            "list"
+        };
+        cmd(json!({"op":"insert_html","window":id,"element":target,"position":pos,"html":html}))
+            .unwrap();
+    }
+    assert_eq!(ids("main > p"), json!(["a0", "a", "b", "c", "d"]));
+    // Rejections are atomic and typed.
+    let err = |v: Value| cmd(v).unwrap_err().code;
+    assert_eq!(
+        err(
+            json!({"op":"insert_html","window":id,"element":"list","position":"beforeend","html":"<p id='e'>E</p><p id='b'>dup</p>"})
+        ),
+        1
+    );
+    assert_eq!(
+        err(
+            json!({"op":"insert_html","window":id,"element":"list","position":"beforeend","html":"<script>x()</script>"})
+        ),
+        1
+    );
+    assert_eq!(
+        err(
+            json!({"op":"insert_html","window":id,"element":"list","position":"inside","html":"<p>x</p>"})
+        ),
+        1
+    );
+    assert_eq!(
+        cmd(json!({"op":"has_element","window":id,"element":"e"})).unwrap()["exists"],
+        false
+    );
+    assert_eq!(
+        err(json!({"op":"remove_element","window":id,"element":"missing"})),
+        1
+    );
+    // Reads.
+    assert_eq!(
+        cmd(json!({"op":"get_text","window":id,"element":"list"})).unwrap()["text"],
+        "ZABCD"
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_attribute","window":id,"element":"b","name":"data-k"})).unwrap()
+            ["value"],
+        "v"
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_attribute","window":id,"element":"b","name":"title"})).unwrap()
+            ["value"],
+        Value::Null
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_attributes","window":id,"element":"b"})).unwrap()["attributes"],
+        json!({"id":"b","class":"x y","data-k":"v"})
+    );
+    assert_eq!(err(json!({"op":"query","window":id,"selector":"p[["})), 1);
+    // Move keeps value, focus and identity; cycles and structural elements are rejected.
+    cmd(json!({"op":"set_value","window":id,"element":"edit","value":"typed"})).unwrap();
+    cmd(json!({"op":"focus","window":id,"element":"edit"})).unwrap();
+    cmd(json!({"op":"move_element","window":id,"element":"side","target":"b","position":"afterbegin"})).unwrap();
+    assert_eq!(ids("#b > aside > input"), json!(["edit"]));
+    assert_eq!(
+        cmd(json!({"op":"get_value","window":id,"element":"edit"})).unwrap()["value"],
+        "typed"
+    );
+    assert_eq!(ids(":focus"), json!(["edit"]));
+    assert_eq!(
+        err(
+            json!({"op":"move_element","window":id,"element":"b","target":"side","position":"beforeend"})
+        ),
+        1
+    );
+    cmd(json!({"op":"move_element","window":id,"element":"a","target":"list","position":"afterend"})).unwrap();
+    assert_eq!(ids("body > p"), json!(["a"]));
+    cmd(json!({"op":"move_element","window":id,"element":"a","target":"a0","position":"afterend"}))
+        .unwrap();
+    assert_eq!(
+        err(
+            json!({"op":"move_element","window":id,"element":"list","target":"a","position":"afterend"})
+        ),
+        1
+    );
+    let body_id = cmd(json!({"op":"query","window":id,"selector":"body"})).unwrap();
+    assert_eq!(body_id["elements"], json!([]));
+    assert_eq!(body_id["count"], 1);
+    // Remove retires the subtree, its focus and its IDs.
+    cmd(json!({"op":"remove_element","window":id,"element":"b"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"has_element","window":id,"element":"edit"})).unwrap()["exists"],
+        false
+    );
+    assert_eq!(ids(":focus"), json!([]));
+    assert_eq!(err(json!({"op":"get_text","window":id,"element":"b"})), 1);
+    // A replacement element may reuse a removed ID.
+    cmd(json!({"op":"insert_html","window":id,"element":"list","position":"beforeend","html":"<p id='b'>B2</p>"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_text","window":id,"element":"b"})).unwrap()["text"],
+        "B2"
+    );
+}

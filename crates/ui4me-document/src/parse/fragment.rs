@@ -131,6 +131,18 @@ impl Document {
         position: &str,
         html: &str,
     ) -> Result<(), Status> {
+        self.insert_adjacent_html_checked(el, position, html, |_, _| Ok(()))
+    }
+
+    /// [`Self::insert_adjacent_html`] with a host validation of the detached staging fragment
+    /// before anything is inserted; a rejection frees the fragment and leaves the tree unchanged.
+    pub fn insert_adjacent_html_checked(
+        &mut self,
+        el: NodeId,
+        position: &str,
+        html: &str,
+        validate: impl FnOnce(&Document, NodeId) -> Result<(), Status>,
+    ) -> Result<(), Status> {
         let Some((parent, reference)) = self.adjacent_target(el, position)? else {
             return Ok(());
         };
@@ -145,7 +157,12 @@ impl Document {
         if temp {
             self.arena.free_subtree(ctx);
         }
-        let kids = self.take_staging_children(parsed?);
+        let frag = parsed?;
+        if let Err(error) = validate(self, frag) {
+            self.arena.free_subtree(frag);
+            return Err(error);
+        }
+        let kids = self.take_staging_children(frag);
         if kids.is_empty() {
             return Ok(());
         }

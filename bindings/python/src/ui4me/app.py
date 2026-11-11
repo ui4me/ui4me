@@ -380,6 +380,50 @@ class Window:
         """Replace a subtree after validation; rejection leaves it unchanged."""
         self._command("replace_children_html", element=element, html=html)
 
+    def insert_html(self, element: str, position: str, html: str) -> None:
+        """Insert a validated fragment at an ``insertAdjacentHTML`` position.
+
+        ``position`` is ``beforebegin``, ``afterbegin``, ``beforeend`` or ``afterend``.
+        A rejected fragment (duplicate ID, active content, limits) changes nothing.
+        """
+        self._command("insert_html", element=element, position=position, html=html)
+
+    def append_html(self, element: str, html: str) -> None:
+        self.insert_html(element, "beforeend", html)
+
+    def prepend_html(self, element: str, html: str) -> None:
+        self.insert_html(element, "afterbegin", html)
+
+    def insert_html_before(self, element: str, html: str) -> None:
+        self.insert_html(element, "beforebegin", html)
+
+    def insert_html_after(self, element: str, html: str) -> None:
+        self.insert_html(element, "afterend", html)
+
+    def remove_element(self, element: str) -> None:
+        """Remove an element and its subtree; its ID becomes free for reuse."""
+        self._command("remove_element", element=element)
+
+    def move_element(self, element: str, target: str, position: str = "beforeend") -> None:
+        """Move an element relative to ``target``, keeping its values and focus."""
+        self._command("move_element", element=element, target=target, position=position)
+
+    def get_text(self, element: str) -> str:
+        return self._command("get_text", element=element)["text"]
+
+    def get_attribute(self, element: str, name: str) -> str | None:
+        return self._command("get_attribute", element=element, name=name)["value"]
+
+    def get_attributes(self, element: str) -> dict[str, str]:
+        return self._command("get_attributes", element=element)["attributes"]
+
+    def has_element(self, element: str) -> bool:
+        return self._command("has_element", element=element)["exists"]
+
+    def query(self, selector: str, *, limit: int = 1024) -> list[str]:
+        """IDs of identified elements matching a CSS selector, in document order."""
+        return self._command("query", selector=selector, limit=limit)["elements"]
+
     @property
     def closed(self) -> bool:
         return self._closed
