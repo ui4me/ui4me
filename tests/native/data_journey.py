@@ -616,7 +616,10 @@ class Journey:
             raise SystemExit(f"{self.args.python} cannot import the installed ui4me package: {probe.stderr.strip()}")
         path, version = (probe.stdout.splitlines() + [""])[:2]
         repo = HERE.parent.parent
-        if not self.args.allow_workspace and Path(path).resolve().is_relative_to(repo):
+        # The source package (bindings/python/src) is refused; an installed wheel in a venv that
+        # happens to live under the checkout (the gate's build/evidence directory) is not.
+        resolved = Path(path).resolve()
+        if not self.args.allow_workspace and resolved.is_relative_to(repo) and "site-packages" not in resolved.parts:
             raise SystemExit(f"ui4me resolves into the repository ({path}); install the wheel or pass --allow-workspace")
         return {"python": self.args.python, "package": path, "version": version, "app": str(self.args.app)}
 
@@ -636,6 +639,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ui4me-datajourney-") as work:
         journey = Journey(args, Path(work))
         result = journey.run()
+        log = Path(work) / "app.log"
+        if log.exists():  # the app's own output, kept next to the result
+            (args.out.parent / "app.log").write_text(log.read_text(encoding="utf-8", errors="replace")[-200000:], encoding="utf-8")
     args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     for c in result["cases"]:
         print(f"{c['status']:7} {c['id']}  {json.dumps(c.get('details'), ensure_ascii=False)[:200]}", flush=True)

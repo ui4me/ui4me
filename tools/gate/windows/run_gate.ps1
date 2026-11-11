@@ -61,11 +61,13 @@ if (($only -match 'data') -and (Test-Path "$root\data_journey.py")) {
   New-Item -ItemType Directory -Force "$out\data-app" | Out-Null
   & $py -I "$root\data_journey.py" --app "$root\examples\python\data_viewer.py" --out "$out\data-app\data.json" *> "$out\data-app\command.log"
 }
-if (($only -match 'lua') -and (Test-Path "$root\lua_probe.lua") -and (Test-Path "$root\luajit\luajit.exe")) {
+# LuaJIT: the binding's unit tests against the installed native library (the KWin probe
+# tests/native/lua_probe.lua drives Linux fake input and does not run here).
+if (($only -match 'lua') -and (Test-Path "$root\test_ui4me.lua") -and (Test-Path "$root\luajit\luajit.exe")) {
   New-Item -ItemType Directory -Force "$out\lua" | Out-Null
   $env:UI4ME_NATIVE_LIB = (Get-ChildItem -Recurse "$root\venv\Lib\site-packages\ui4me" -Filter ui4me_core.dll | Select-Object -First 1).FullName
   $env:LUA_PATH = "$root\lua\?.lua;;"
-  & "$root\luajit\luajit.exe" "$root\lua_probe.lua" --out "$out\lua\lua.json" *> "$out\lua\command.log"
+  & "$root\luajit\luajit.exe" "$root\test_ui4me.lua" *> "$out\lua\command.log"
   Remove-Item Env:UI4ME_NATIVE_LIB, Env:LUA_PATH -ErrorAction SilentlyContinue
 }
 $nvda = 'C:\Users\Public\ui4me-gui\nvda\portable\nvda.exe'  # a portable NVDA 2024.4.2 (nvaccess.org)

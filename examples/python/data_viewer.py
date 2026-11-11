@@ -21,6 +21,7 @@ import html
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from ui4me import App
@@ -177,7 +178,14 @@ def main(argv: list[str] | None = None) -> int:
             snapshot["focus"] = window.query(":focus")
             temporary = args.state.with_suffix(".tmp")
             temporary.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-            os.replace(temporary, args.state)
+            # Windows refuses to replace a file another process is reading (the test reads it);
+            # retry briefly, and skip this snapshot rather than fail the app.
+            for attempt in range(20):
+                try:
+                    os.replace(temporary, args.state)
+                    break
+                except PermissionError:
+                    time.sleep(0.01 * (attempt + 1))
 
         def _rect(element: str):
             try:

@@ -39,7 +39,8 @@ import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "bindings" / "python" / "src"))
+if os.environ.get("UI4ME_INSTALLED") != "1":  # UI4ME_INSTALLED=1: soak the installed package (a release candidate)
+    sys.path.insert(0, str(ROOT / "bindings" / "python" / "src"))
 
 PAGE = """<!DOCTYPE html><html><head><style>
 @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}

@@ -11,7 +11,7 @@
 # access for the upgrade matrix (PyPI, PowerShell Gallery).
 set -u
 R=$(cd "$(dirname "$0")/../.." && pwd)
-G=${1:?usage: linux_gate.sh OUT_DIR}
+G=$(realpath -m "${1:?usage: linux_gate.sh OUT_DIR}")
 V=$(tr -d '\r\n' < "$R/VERSION")
 OUT=$G/results; rm -rf "$G"; mkdir -p "$OUT"
 WHEEL=$(ls "$R"/dist/linux-x64/ui4me-"$V"-*.whl); STAGE=$(ls "$R"/dist/linux-x64/Ui4me-"$V"-linux-x64-stage.zip)

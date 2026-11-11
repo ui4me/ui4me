@@ -89,7 +89,11 @@ Invoke-Ui4meApp -Backend $Backend -ArgumentList @($pageHtml, $detailHtml, $Csv, 
         $snapshot.clipboard = try { $window.GetClipboardText() } catch { "<unavailable: $($_.Exception.Message)>" }
         $snapshot.focus = @($window.Query(':focus'))
         [IO.File]::WriteAllText("$statePath.tmp", ($snapshot | ConvertTo-Json -Depth 6 -Compress), [Text.UTF8Encoding]::new($false))
-        Move-Item -Force -LiteralPath "$statePath.tmp" -Destination $statePath
+        # Windows refuses to replace a file another process is reading: retry briefly, else skip.
+        foreach ($attempt in 1..20) {
+            try { Move-Item -Force -LiteralPath "$statePath.tmp" -Destination $statePath -ErrorAction Stop; break }
+            catch [System.IO.IOException], [System.UnauthorizedAccessException] { Start-Sleep -Milliseconds (10 * $attempt) }
+        }
     }.GetNewClosure()
     $status = { param($text) $window.SetText('status', $text) }.GetNewClosure()
     $cell = { param($v) if ($v -is [double]) { $v.ToString('F2', [Globalization.CultureInfo]::InvariantCulture) } else { [string]$v } }.GetNewClosure()
