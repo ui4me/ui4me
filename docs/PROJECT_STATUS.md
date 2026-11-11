@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.6.0 passed its gate on both hosts and is being released** (complete public document and HTML interface;
+**Core 0.6.0 is released (2026-11-11)** — [GitHub v0.6.0](https://github.com/ui4me/ui4me/releases/tag/v0.6.0), PyPI `ui4me==0.6.0` (`manylinux_2_35_x86_64`, `win_amd64`), PowerShell Gallery `Ui4me 0.6.0`, built from `3f9eaf7` (gated `f004dd6`; complete public document and HTML interface;
 [`core-roadmap/versions/0_6.md`](core-roadmap/versions/0_6.md), ledger
 [`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)): HTML serialization, author
 stylesheets with diagnostics, generation-safe node references, text geometry, computed

@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** GO, candidate 0.6.0 @ `f004dd6`, release authorized by the owner. **Next milestone:** 0.7 (`versions/0_7.md`).
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **Next milestone:** 0.7 (`versions/0_7.md`).
 
 ## Version ledger
 
@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.4 | OWNER-REPORTED RELEASED | `8138e78` release tag | repository-reported PASS | repository-reported PASS | repository-reported release jobs | Do not requalify unless relevant change/new defect |
 | 0.5 | RELEASED 0.5.0 (`089e7a8`) | `0b79117`, source sha256:ce114407… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 7/7, PowerShell 7/7 both hosts) | 8/8 items; see gate entry |
-| 0.6 | GO (candidate 0.6.0) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
+| 0.6 | RELEASED 0.6.0 (`3f9eaf7`) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
 | 0.7 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.8 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.9 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
