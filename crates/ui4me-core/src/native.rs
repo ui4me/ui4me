@@ -349,7 +349,10 @@ impl Desktop {
         Ok(())
     }
     fn close(&mut self, id: u64) {
-        self.windows.remove(&id);
+        // A touch in progress is canceled with its window (0.8 F0802).
+        if let Some((touch, _, last, _)) = self.windows.remove(&id).and_then(|n| n.touch) {
+            self.session.emit(json!({"type":"touch","window":id,"id":touch,"phase":"cancel","x":last.0,"y":last.1,"force":null}));
+        }
         self.session.closed(id);
     }
     /// Run an OS file dialog on a worker thread; the owner keeps painting and receives the
