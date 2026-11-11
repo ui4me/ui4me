@@ -1,4 +1,4 @@
-# UI4ME Core 0.7: implementation status and contract
+# UI4ME Core 0.8: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
@@ -6,6 +6,12 @@ are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
 Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
+
+**Core 0.8.0 is the current candidate** (advanced interaction and editing;
+[`core-roadmap/versions/0_8.md`](core-roadmap/versions/0_8.md)): plain-text `contenteditable`
+editing hosts, touch input, pointer events and pointer capture, smooth scrolling with
+`scroll-behavior`, scroll snapping and overscroll containment, refined range/number/progress/
+meter semantics, HTML popovers with a CSS anchor-positioning subset.
 
 **Core 0.7.0 is released** (PyPI, PowerShell Gallery, GitHub; native desktop services;
 [`core-roadmap/versions/0_7.md`](core-roadmap/versions/0_7.md)): system notifications,
@@ -202,6 +208,10 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Pointer (0.7) | `set_pointer_grab(mode, cursor_visible=)`; event `pointer_grab` | `SetPointerGrab` |
 | Instance (0.7) | `app.claim_instance(open_files)`; event `open_files` | `ClaimInstance` |
 | Drag and drop (0.7) | `draggable="true"`; events `dragstart`, `dragover`, `drop`, `dragend`; `file_drop` carries `element` | — |
+| Editing hosts (0.8) | `contenteditable` (plain text); events `beforeinput`, `input` with `input_type`, `data` | — |
+| Pointer (0.8) | events `pointerdown`/`pointerup`/`pointermove`/`pointercancel` (`pointer_id`, `pointer_type`, `is_primary`, `pressure`, `buttons`), `got`/`lostpointercapture`, `touch`; `set_pointer_capture(id, pointer_id=1)`, `release_pointer_capture`, `get_pointer_capture()`; every event reports `cancelable` | `SetPointerCapture`, `ReleasePointerCapture`, `GetPointerCapture` |
+| Scrolling (0.8) | `scroll_to`/`scroll_by`/`scroll_into_view(..., behavior="auto"\|"instant"\|"smooth")`; `get_scroll` reports `animating` | `ScrollTo`/`ScrollBy`/`ScrollIntoView(..., behavior)` |
+| Popovers (0.8) | `show_popover(id)`, `hide_popover`, `toggle_popover` → bool, `get_popover` → `{open, kind}`; events `beforetoggle`, `toggle` | `ShowPopover`, `HidePopover`, `TogglePopover`, `GetPopoverJson` |
 
 **0.5 contract.** `capabilities` (wire op, no window) returns `platform` (`wayland`,
 `x11`, `windows`, `headless`, or `pending` before `run()` starts the native backend),
@@ -278,6 +288,34 @@ unsupported on Wayland (winit 0.30). `claim_instance` makes the first process pe
 `app_id` the primary (a 0600 socket in `XDG_RUNTIME_DIR` or a local named pipe); later ones
 forward bounded path lists (data only) and get `primary: false`. Core installs no file
 associations.
+
+**0.8 contract.** An element with `contenteditable` (`""`, `true`, `plaintext-only`;
+`false` ends it) is a focusable plain-text editing host laid out `pre-wrap`: its content is
+one text node (the first edit flattens markup to text; typed and pasted content is never
+parsed as HTML). The document selection is its caret/selection; characters, Enter,
+Backspace/Delete (grapheme; Ctrl: word), arrows, Home/End (visual line), Up/Down, Ctrl+Home/
+End, Ctrl+A/C/X/V and Ctrl+Z/Y (100 steps; app writes are not undo steps) edit after an
+uncanceled `keydown`, each change firing a cancelable `beforeinput` and an `input`; IME
+preedit shows in the text and commits once; the caret is kept visible in scroll containers;
+hosts are multi-line text fields for assistive technology. Rich-text editing (formatting
+commands, `execCommand`) is outside the profile. Touch: every contact is a `touch` event; the
+primary contact taps (click) and drags to scroll; pens arrive as touch or mouse (winit 0.30
+has no distinct stylus API: stylus is not exercised). Pointer events precede the
+compatibility mouse events (a host rule canceling `pointerdown` suppresses `mousedown`);
+pointer capture applies from the pointer's next event while a button is pressed, ends at the
+release, and a removed capture target loses it at the Document (`lostpointercapture` with
+an empty `element`). Smooth scrolls animate on the document clock (200–400 ms, one per
+container, replaced by a new request, canceled by user scrolling; app reduced motion makes
+them instant); `scroll-snap-type`/`-align`/`-stop`, `scroll-padding`/`-margin` (no `calc()`)
+and `overscroll-behavior` apply to user scrolls, `scroll_to` and `scroll_by` (not to
+`scroll_into_view` or follow-end; vertical writing modes are not mapped). Popovers: `auto`
+(light dismiss, Escape in top-layer order with dialogs, nested by ancestry/invoker) and
+`manual`; invokers `popovertarget`/`popovertargetaction`; focus moves to `autofocus` and
+returns to the invoker; the invoker exposes `expanded`. Anchor positioning: `anchor-name`,
+`position-anchor` and `anchor()` in insets (shift-based; margins, `anchor-size()`,
+`position-area` and `position-try*` are not implemented and reported Off). Range ignores
+`readonly` (HTML), mirrors under `dir=rtl` and reports its sanitized value; a number is never
+changed by the wheel and parses only the HTML floating-point syntax.
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.

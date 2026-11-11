@@ -142,6 +142,18 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F18 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $w = $app.Open('<style>#sc{height:100px;overflow:auto;scroll-snap-type:y mandatory}#sc div{height:100px;scroll-snap-align:start}</style><div id=sc><div>1</div><div>2</div><div>3</div></div><div id=pop popover>P</div><input id=r type=range min=50 max=10 value=70>')
+                $w.ShowPopover('pop')
+                if (-not ($w.GetPopoverJson('pop') | ConvertFrom-Json).open) { throw 'popover' }
+                if ($w.ScrollTo('sc', $null, 140, 'instant').Y -ne 100) { throw 'snap' }
+                if ($w.SetPointerCapture('sc')) { throw 'capture without a press' }
+                if ($w.GetValue('r') -ne '50') { throw "range $($w.GetValue('r'))" }
+                $null = $app.On('started', { $app.Stop() })
+            }
+        } '0.8 Core contract: popover, scroll snapping, pointer capture needs a press, range sanitizing'
         Test-Case F17 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)

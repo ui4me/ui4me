@@ -263,11 +263,33 @@ def installed_cases():
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def core_08_contract():
+        html = ("<style>#sc{height:100px;overflow:auto;scroll-snap-type:y mandatory}#sc div{height:100px;scroll-snap-align:start}</style>"
+                "<div id=sc><div>1</div><div>2</div><div>3</div></div><div id=pop popover>P</div>"
+                "<div id=ed contenteditable aria-label=Notes>x</div><input id=r type=range min=50 max=10 value=70>")
+        with App(backend="headless", handle_sigint=False) as app:
+            w = app.open(html)
+            w.show_popover("pop")
+            assert w.get_popover("pop") == {"open": True, "kind": "auto"} and w.query(":popover-open") == ["pop"]
+            assert w.toggle_popover("pop") is False
+            assert w.scroll_to("sc", y=140, behavior="instant")["y"] == 100, "mandatory snap"
+            started = w.scroll_to("sc", y=200, behavior="smooth")
+            assert started["animating"] is True and started["y"] < 200
+            deadline = time.monotonic() + 3
+            while w.get_scroll("sc")["animating"] and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert w.get_scroll("sc")["y"] == 200
+            assert w.set_pointer_capture("ed") is False
+            assert w.get_value("r") == "50"
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
+    check("F18", core_08_contract, "0.8 Core contract: popover show/toggle, scroll snapping, smooth scroll animation, pointer capture needs a press, range sanitizing")
     check("F17", core_07_contract, "0.7 Core contract: desktop services refuse honestly without a desktop, menu accelerators, pointer grab status, rich clipboard sanitizing")
     check("F16", core_06_contract, "0.6 Core contract: HTML serialization, stylesheets, node traversal and stale references, text geometry, computed style, validity, file input, link policy")
     check("F15", core_05_contract, "0.5 Core contract: capability report with causes, media environment override, per-line accessible text with the caret")
