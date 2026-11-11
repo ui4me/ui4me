@@ -315,6 +315,20 @@ public sealed class App : IDisposable
             }
         }
     }
+    internal bool Accepting => Volatile.Read(ref state) <= 1 && !stopping;
+    private BackgroundHost? tasks;
+    /// <summary>Run a script on a bounded runspace pool (4 at a time, extra tasks queue) and deliver its
+    /// outcome once on the owner thread: onDone(value) or onError(exception). Owner thread only; see
+    /// <see cref="BackgroundTask"/>. Unfinished tasks become cancelled when the app stops and no callback
+    /// runs afterwards. A full native post queue delays delivery with backoff; nothing is dropped.</summary>
+    public BackgroundTask RunInBackground(ScriptBlock work, ScriptBlock? onDone, ScriptBlock? onError) =>
+        RunInBackground(work, onDone, onError, Array.Empty<object>());
+    public BackgroundTask RunInBackground(ScriptBlock work, ScriptBlock? onDone, ScriptBlock? onError, object[] arguments)
+    {
+        Active();
+        tasks ??= new BackgroundHost(this, owner, 4);
+        return tasks.Start(work, onDone, onError, arguments);
+    }
     public void Stop()
     {
         lock (gate)
@@ -346,6 +360,7 @@ public sealed class App : IDisposable
                 foreach (var (worker, _) in background.Values) { worker.Cancel(); worker.DiscardDelivery(); }
                 background.Clear();
             }
+            tasks?.Shutdown(false);
             timers.Clear();
             handlers.Clear();
             foreach (var window in windows.Values) window.Closed = true;
@@ -417,6 +432,7 @@ public sealed class App : IDisposable
     public void Dispose()
     {
         OwnerOnly();
+        if (state != 3 && !runActive) tasks?.Shutdown(true);
         lock (gate)
         {
             if (state == 3) return;

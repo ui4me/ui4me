@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import Future
+from collections import deque
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 import ctypes as C
 import itertools
 import json
@@ -59,15 +60,123 @@ class Timer:
             self._app._timers.pop(self.token, None)
 
 
+class Task:
+    """One background computation started by ``App.run_in_background``.
+
+    ``fn`` runs on a worker thread and never touches UI objects. Its outcome is delivered to
+    ``on_done`` / ``on_error`` (or ``on_cancel``) on the owner thread, in completion order, at
+    most once. States: pending, running, succeeded, failed, cancelled."""
+    def __init__(self, app: "App", fn, args, on_done, on_error, on_cancel, pass_task):
+        self._app, self._fn, self._args = app, fn, args
+        self._on_done, self._on_error, self._on_cancel = on_done, on_error, on_cancel
+        self._pass_task = pass_task
+        self._event = threading.Event()
+        self._cancel = threading.Event()
+        self._value = None
+        self._error: BaseException | None = None
+        self.state = "pending"
+        self.delivered = False
+        self.callback_error: BaseException | None = None
+
+    @property
+    def cancelled(self) -> bool:
+        """Cooperative flag: long-running work should poll this and return early."""
+        return self._cancel.is_set()
+
+    @property
+    def done(self) -> bool:
+        """The outcome is final (callbacks may still be queued; see ``delivered``)."""
+        return self._event.is_set()
+
+    def cancel(self) -> bool:
+        """Cancel a pending task at once; ask a running task to stop via ``cancelled``.
+        Returns False when the outcome is already final."""
+        settle = False
+        with self._app._task_lock:
+            if self._event.is_set():
+                return False
+            self._cancel.set()
+            if self.state == "pending":
+                self.state = "cancelled"
+                self._event.set()
+                settle = True
+        if settle:
+            self._app._enqueue_settlement(self)
+        return True
+
+    def result(self, timeout: float | None = None):
+        """Wait from a non-owner thread. Raises the task's exception or CancelledError."""
+        if threading.get_ident() == self._app._owner and not self._event.is_set():
+            raise RuntimeError("Do not wait for background work on the UI owner thread")
+        if not self._event.wait(timeout):
+            raise TimeoutError("Background task did not finish in time")
+        if self.state == "cancelled":
+            raise CancelledError()
+        if self.state == "failed":
+            raise self._error
+        return self._value
+
+    def _run(self) -> None:
+        with self._app._task_lock:
+            if self.state != "pending":
+                return
+            self.state = "running"
+        value = error = None
+        try:
+            value = self._fn(self, *self._args) if self._pass_task else self._fn(*self._args)
+        except BaseException as caught:
+            error = caught
+        with self._app._task_lock:
+            if self._cancel.is_set():
+                self.state = "cancelled"
+            elif error is not None:
+                self.state, self._error = "failed", error
+            else:
+                self.state, self._value = "succeeded", value
+            self._event.set()
+        self._app._enqueue_settlement(self)
+
+    def _deliver(self) -> None:
+        """Owner thread. Never raises: a failing callback is recorded, not allowed to kill the loop."""
+        app = self._app
+        with app._task_lock:
+            app._tasks.discard(self)
+        if app._stopping or app._tasks_closed:
+            return
+        self.delivered = True
+        state = self.state
+        handler, argument = ((self._on_done, self._value) if state == "succeeded"
+                             else (self._on_error, self._error) if state == "failed"
+                             else (self._on_cancel, None))
+        if handler is None:
+            return
+        try:
+            handler(argument) if state != "cancelled" else handler()
+        except BaseException as caught:
+            self.callback_error = caught
+
+
 class App:
     """Own one terminal application session. Create another App for the next session."""
-    def __init__(self, *, backend: str = "native", app_id: str = "org.ui4me.app", handle_sigint: bool = True):
+    def __init__(self, *, backend: str = "native", app_id: str = "org.ui4me.app", handle_sigint: bool = True,
+                 background_workers: int = 4, max_background_tasks: int = 1024):
         if backend not in ("native", "headless"):
             raise ValueError("backend must be native or headless")
         if backend == "native" and threading.current_thread() is not threading.main_thread():
             raise RuntimeError("Create and run native Python applications on the main thread")
+        if background_workers < 1 or max_background_tasks < 1:
+            raise ValueError("background_workers and max_background_tasks must be positive")
         self._owner = threading.get_ident()
         self._backend = backend
+        self._background_workers = background_workers
+        self._max_background_tasks = max_background_tasks
+        self._task_lock = threading.Lock()
+        self._tasks: set[Task] = set()
+        self._tasks_closed = False
+        self._executor: ThreadPoolExecutor | None = None
+        self._settle = threading.Condition(threading.Lock())
+        self._settle_queue: deque[Task] = deque()
+        self._settle_thread: threading.Thread | None = None
         self._handle_sigint = handle_sigint
         self._lock = threading.Lock()
         self._token_lock = threading.Lock()
@@ -170,6 +279,103 @@ class App:
         if failure is not None:
             future.set_exception(failure)
         return future
+
+    def run_in_background(self, fn, *args, on_done=None, on_error=None, on_cancel=None,
+                          pass_task: bool = False) -> Task:
+        """Run ``fn(*args)`` on a bounded worker pool (``background_workers``, default 4).
+
+        The outcome is delivered on the owner thread through ``post`` while ``run()`` is active:
+        ``on_done(result)`` or ``on_error(exception)``, or ``on_cancel()`` after ``Task.cancel()``.
+        Never more than one of them. Callable from any thread. With ``pass_task=True`` the worker
+        receives the Task first so it can poll ``task.cancelled``. When the native post queue is
+        full the delivery waits with backoff (never dropped); at most ``max_background_tasks``
+        unsettled tasks are accepted (Ui4meError otherwise). Tasks unfinished at ``stop()`` become
+        cancelled and no callback runs once the app is stopping."""
+        if not callable(fn):
+            raise TypeError("fn must be callable")
+        for handler in (on_done, on_error, on_cancel):
+            if handler is not None and not callable(handler):
+                raise TypeError("callbacks must be callable")
+        task = Task(self, fn, args, on_done, on_error, on_cancel, pass_task)
+        with self._task_lock:
+            if self._tasks_closed or self._stopping or self._state not in ("created", "running"):
+                raise RuntimeError("Application is no longer accepting work")
+            if len(self._tasks) >= self._max_background_tasks:
+                raise Ui4meError("Background task limit reached (%d)" % self._max_background_tasks)
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(self._background_workers, thread_name_prefix="ui4me-bg")
+            self._tasks.add(task)
+            self._executor.submit(task._run)
+        return task
+
+    def _enqueue_settlement(self, task: Task) -> None:
+        with self._settle:
+            if self._tasks_closed:
+                return
+            self._settle_queue.append(task)
+            if self._settle_thread is None:
+                self._settle_thread = threading.Thread(target=self._settle_loop, name="ui4me-settle", daemon=True)
+                self._settle_thread.start()
+            self._settle.notify()
+
+    def _settle_loop(self) -> None:
+        delay = 0.001
+        while True:
+            with self._settle:
+                while not self._settle_queue and not self._tasks_closed:
+                    self._settle.wait()
+                if self._tasks_closed:
+                    return
+                task = self._settle_queue[0]
+            future = self.post(task._deliver)
+            failure = future.exception() if future.done() and not future.cancelled() else None
+            if failure is not None:
+                if "full" in str(failure):
+                    # Queue pressure: keep order, back off, retry. Nothing is dropped.
+                    with self._settle:
+                        if not self._tasks_closed:
+                            self._settle.wait(delay)
+                    delay = min(delay * 2, 0.05)
+                    continue
+                # Not accepting work any more (stopping/terminal): outcomes stay observable
+                # on the Task, callbacks are discarded.
+                self._discard_settlements()
+                return
+            delay = 0.001
+            with self._settle:
+                if self._settle_queue and self._settle_queue[0] is task:
+                    self._settle_queue.popleft()
+
+    def _discard_settlements(self) -> None:
+        with self._settle:
+            queued = list(self._settle_queue)
+            self._settle_queue.clear()
+            self._settle_thread = None
+        with self._task_lock:
+            for task in queued:
+                self._tasks.discard(task)
+
+    def _shutdown_tasks(self, wait: bool) -> None:
+        """Cancel everything unfinished. Pending tasks never start; running ones see ``cancelled``."""
+        with self._task_lock:
+            self._tasks_closed = True
+            tasks = list(self._tasks)
+            executor = self._executor
+            for task in tasks:
+                if not task._event.is_set():
+                    task._cancel.set()
+                    if task.state == "pending":
+                        task.state = "cancelled"
+                        task._event.set()
+            self._tasks.clear()
+        with self._settle:
+            self._settle_queue.clear()
+            thread, self._settle_thread = self._settle_thread, None
+            self._settle.notify_all()
+        if executor is not None:
+            executor.shutdown(wait=wait, cancel_futures=True)
+        if wait and thread is not None and thread is not threading.current_thread():
+            thread.join()
 
     def stop(self) -> None:
         with self._lock:
@@ -286,6 +492,7 @@ class App:
             self._handlers.clear()
             for future, _ in pending:
                 future.cancel()
+            self._shutdown_tasks(wait=False)
 
     def monitors(self) -> list[dict]:
         """Monitors seen by the native backend (empty for headless): name, physical size,
@@ -366,11 +573,15 @@ class App:
 
     def close(self) -> None:
         self._owner_only()
+        if self._state == "closed":
+            return
+        if self._run_active:
+            raise RuntimeError("Call stop() during run(); close the App after run() returns")
+        # Join workers first: running tasks must observe task.cancelled to return promptly.
+        self._shutdown_tasks(wait=True)
         with self._lock:
             if self._state == "closed":
                 return
-            if self._run_active:
-                raise RuntimeError("Call stop() during run(); close the App after run() returns")
             self._native.check(self._native.session_destroy(self._session))
             self._state = "closed"
             self._stopping = True

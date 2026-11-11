@@ -524,5 +524,150 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+class BackgroundTaskTests(unittest.TestCase):
+    def app(self, **kw):
+        return App(backend="headless", handle_sigint=False, **kw)
+
+    def test_fifty_tasks_settle_on_owner_during_heavy_rendering(self):
+        owner = threading.get_ident()
+        finished, settled, threads, mutations = [], [], set(), [0]
+        lock = threading.Lock()
+        rows = "".join('<li id="r%d">row %d</li>' % (i, i) for i in range(1500))
+        with self.app() as app:
+            window = app.open("<ul>" + rows + "</ul>")
+
+            def work(n):
+                time.sleep(0.002 * (n % 7))
+                with lock:
+                    finished.append(n)
+                return n * n
+
+            def done(value):
+                threads.add(threading.get_ident())
+                settled.append(value)
+                if len(settled) == 50:
+                    app.stop()
+
+            def mutate(_):
+                mutations[0] += 1
+                window.set_text("r%d" % (mutations[0] % 1500), "changed %d" % mutations[0])
+
+            app.timer(1, mutate, repeat=True)
+            app.timer(5000, lambda _: app.stop())
+            tasks = [app.run_in_background(work, n, on_done=done) for n in range(50)]
+            app.run()
+        self.assertEqual(threads, {owner})
+        self.assertEqual(settled, [n * n for n in finished])  # completion order
+        self.assertEqual(sorted(settled), sorted(n * n for n in range(50)))
+        self.assertGreater(mutations[0], 0)
+        self.assertTrue(all(t.state == "succeeded" and t.delivered for t in tasks))
+
+    def test_exception_settles_via_on_error_once(self):
+        calls = []
+        with self.app() as app:
+            def boom():
+                raise ValueError("bad")
+            app.run_in_background(boom, on_done=lambda v: calls.append(("done", v)),
+                                 on_error=lambda e: (calls.append(("error", type(e).__name__)), app.stop()))
+            app.timer(5000, lambda _: app.stop())
+            app.run()
+        self.assertEqual(calls, [("error", "ValueError")])
+
+    def test_result_from_other_thread_and_owner_guard(self):
+        with self.app() as app:
+            gate = threading.Event()
+            task = app.run_in_background(lambda: gate.wait(5) and 7)
+            with self.assertRaises(RuntimeError):
+                task.result()
+            self.assertFalse(task.done)
+            gate.set()
+            out = []
+            thread = threading.Thread(target=lambda: out.append(task.result(5)))
+            thread.start()
+            thread.join(6)
+            self.assertEqual(out, [7])
+
+    def test_cancel_before_start_and_cooperative_cancel(self):
+        events = []
+        with self.app(background_workers=1) as app:
+            release = threading.Event()
+            running = threading.Event()
+
+            def long(task):
+                running.set()
+                while not task.cancelled:
+                    time.sleep(0.001)
+                return "ignored"
+
+            first = app.run_in_background(long, pass_task=True, on_done=lambda v: events.append("first-done"),
+                                          on_cancel=lambda: events.append("first-cancel"))
+            second = app.run_in_background(lambda: events.append("ran"), on_done=lambda v: events.append("done"),
+                                           on_cancel=lambda: events.append("cancel2"))
+            self.assertTrue(running.wait(5))
+            self.assertTrue(second.cancel())
+            self.assertEqual(second.state, "cancelled")
+            self.assertTrue(first.cancel())
+            with self.assertRaises(Exception) as caught:
+                second.result(1)
+            self.assertEqual(type(caught.exception).__name__, "CancelledError")
+            deadline = time.time() + 5
+            while not first.done and time.time() < deadline:
+                time.sleep(0.001)
+            self.assertEqual(first.state, "cancelled")
+            self.assertFalse(first.cancel())
+            app.timer(100, lambda _: app.stop())
+            app.run()
+        self.assertEqual(sorted(events), ["cancel2", "first-cancel"])
+
+    def test_stop_with_pending_tasks_cancels_and_restart_works(self):
+        seen = []
+        gate = threading.Event()
+        app = self.app(background_workers=1)
+        try:
+            blocker = app.run_in_background(lambda t: gate.wait(5), pass_task=True, on_done=seen.append)
+            queued = [app.run_in_background(lambda: seen.append("ran"), on_done=seen.append) for _ in range(5)]
+            app.timer(1, lambda _: app.stop())
+            app.run()
+            self.assertTrue(all(t.state == "cancelled" and t.done for t in queued))
+            self.assertTrue(blocker.cancelled)
+            with self.assertRaises(RuntimeError):
+                app.run_in_background(lambda: 1)
+            gate.set()
+        finally:
+            app.close()
+        self.assertEqual(seen, [])
+        self.assertEqual([t for t in threading.enumerate() if t.name.startswith(("ui4me-bg", "ui4me-settle"))], [])
+        with self.app() as again:
+            got = []
+            again.run_in_background(lambda: 5, on_done=lambda v: (got.append(v), again.stop()))
+            again.timer(5000, lambda _: again.stop())
+            again.run()
+        self.assertEqual(got, [5])
+
+    def test_queue_pressure_retries_without_dropping(self):
+        got = []
+        with self.app() as app:
+            total = 700
+            tasks = [app.run_in_background(lambda i=i: i, on_done=got.append) for i in range(total)]
+            for task in tasks:
+                task._event.wait(5)
+            time.sleep(0.1)  # settlement is blocked on the full native queue (512)
+            self.assertEqual(got, [])
+            app.timer(10, lambda _: app.stop() if len(got) == total else None, repeat=True)
+            app.timer(10000, lambda _: app.stop())
+            app.run()
+        self.assertEqual(sorted(got), list(range(total)))
+
+    def test_task_limit_is_bounded(self):
+        gate = threading.Event()
+        with self.app(max_background_tasks=3, background_workers=1) as app:
+            tasks = [app.run_in_background(gate.wait, 5) for _ in range(3)]
+            with self.assertRaises(Ui4meError):
+                app.run_in_background(lambda: 1)
+            gate.set()
+            for task in tasks:
+                self.assertTrue(task._event.wait(5))
+
+
 if __name__ == "__main__":
     unittest.main()
