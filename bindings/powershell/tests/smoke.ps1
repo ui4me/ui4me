@@ -336,6 +336,22 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21e_selection_clipboard' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<p id="a">Příliš žluťoučký</p><p id="b">кінь</p><input id="pw" type="password" value="secret">')
+            $window.SelectText('a')
+            if ($window.GetSelection() -ne 'Příliš žluťoučký') { throw 'Element selection is wrong' }
+            if ($window.CopySelection() -ne 'Příliš žluťoučký' -or $window.GetClipboardText() -ne 'Příliš žluťoučký') { throw 'Copy failed' }
+            $window.SelectText($null)
+            if ($window.GetSelection() -ne "Příliš žluťoučký`nкінь") { throw 'Select all is wrong or leaked a control value' }
+            $window.ClearSelection()
+            if ($window.GetSelection() -ne '') { throw 'Clear failed' }
+            $window.SetClipboardText('pasted ✓')
+            if ($window.GetClipboardText() -ne 'pasted ✓') { throw 'Clipboard round trip failed' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

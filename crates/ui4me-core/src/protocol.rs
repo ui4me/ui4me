@@ -243,6 +243,27 @@ pub enum Command {
         #[serde(default = "yes")]
         follow: bool,
     },
+    GetSelection {
+        window: u64,
+    },
+    ClearSelection {
+        window: u64,
+    },
+    SelectText {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+    },
+    CopySelection {
+        window: u64,
+    },
+    GetClipboardText {
+        window: u64,
+    },
+    SetClipboardText {
+        window: u64,
+        text: String,
+    },
     Diagnostics {
         window: u64,
     },

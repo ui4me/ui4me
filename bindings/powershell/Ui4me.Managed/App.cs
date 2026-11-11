@@ -450,7 +450,7 @@ public sealed class Window
     private System.Collections.Generic.Dictionary<string, object?> Request(string op, string? element)
     {
         var request = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = op, ["window"] = Id };
-        if (element is not null) request["element"] = element;
+        if (!string.IsNullOrEmpty(element)) request["element"] = element; // PowerShell passes $null as ""
         return request;
     }
     private static ScrollState Scroll(JsonElement e) => new(
@@ -483,6 +483,12 @@ public sealed class Window
         return r.ValueKind == JsonValueKind.Null ? null : new ElementRect(r.GetProperty("x").GetDouble(), r.GetProperty("y").GetDouble(), r.GetProperty("width").GetDouble(), r.GetProperty("height").GetDouble());
     }
     public void SetScrollFollow(string? element, bool follow = true) { Check(); var request = Request("set_scroll_follow", element); request["follow"] = follow; app.Command(request); }
+    public string GetSelection() { Check(); return app.Command(new { op = "get_selection", window = Id }).GetProperty("text").GetString()!; }
+    public void ClearSelection() { Check(); app.Command(new { op = "clear_selection", window = Id }); }
+    public void SelectText(string? element = null) { Check(); app.Command(Request("select_text", element)); }
+    public string CopySelection() { Check(); return app.Command(new { op = "copy_selection", window = Id }).GetProperty("text").GetString()!; }
+    public string? GetClipboardText() { Check(); var t = app.Command(new { op = "get_clipboard_text", window = Id }).GetProperty("text"); return t.ValueKind == JsonValueKind.Null ? null : t.GetString(); }
+    public void SetClipboardText(string text) { Check(); app.Command(new { op = "set_clipboard_text", window = Id, text }); }
     public bool IsClosed => Closed;
     public void SetTitle(string title) { Check(); app.Command(new { op = "set_title", window = Id, title }); }
     public void Resize(int width, int height) { Check(); app.Command(new { op = "resize", window = Id, width, height }); }

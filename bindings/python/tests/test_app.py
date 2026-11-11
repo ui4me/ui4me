@@ -251,6 +251,20 @@ class BindingTests(unittest.TestCase):
             window.append_html("log", '<div class="r"></div>')
             self.assertEqual(window.get_scroll("log")["y"], 80.0)
 
+    def test_selection_and_clipboard(self):
+        with self.app() as app:
+            window = app.open('<p id="a">Příliš žluťoučký</p><p id="b">кінь</p><input id="pw" type="password" value="secret">')
+            window.select_text("a")
+            self.assertEqual(window.get_selection(), "Příliš žluťoučký")
+            self.assertEqual(window.copy_selection(), "Příliš žluťoučký")
+            self.assertEqual(window.get_clipboard_text(), "Příliš žluťoučký")
+            window.select_text()
+            self.assertEqual(window.get_selection(), "Příliš žluťoučký\nкінь")
+            window.clear_selection()
+            self.assertEqual(window.get_selection(), "")
+            window.set_clipboard_text("pasted ✓")
+            self.assertEqual(window.get_clipboard_text(), "pasted ✓")
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

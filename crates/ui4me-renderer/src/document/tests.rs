@@ -454,3 +454,80 @@ fn unsupported_pickers_are_rejected_without_mutating_the_live_document() {
         assert_eq!(d.get_value("field").unwrap(), "kept");
     }
 }
+
+fn button(d: &mut Document, pressed: bool, x: f64, y: f64) {
+    d.handle_input(Input::PointerButton {
+        pressed,
+        button: 0,
+        x,
+        y,
+    })
+    .unwrap();
+}
+
+#[test]
+fn document_text_selection_drag_copy_and_controls() {
+    let mut d = Document::parse(
+        "<!doctype html><style>body{margin:0;font-size:20px} p{margin:0;height:40px}</style>\
+         <p id=a>Alpha beta</p><p id=b>Gamma delta</p><input id=pw type=password value=secret><p id=c>Omega</p>",
+    )
+    .unwrap();
+    d.render(640, 480, 1.0).unwrap();
+    let a = d.element_rect("a").unwrap().unwrap();
+    let b = d.element_rect("b").unwrap().unwrap();
+    // Drag from the start of "Alpha" to the end of the second paragraph's text.
+    button(&mut d, true, a.x + 1.0, a.y + 10.0);
+    d.handle_input(Input::PointerMoved {
+        x: b.x + 600.0,
+        y: b.y + 10.0,
+    })
+    .unwrap();
+    button(&mut d, false, b.x + 600.0, b.y + 10.0);
+    assert_eq!(d.selection_text().unwrap(), "Alpha beta\nGamma delta");
+    // The highlight paints only inside the selection.
+    let plain = {
+        let mut e = Document::parse("<!doctype html><style>body{margin:0;font-size:20px} p{margin:0;height:40px}</style><p id=a>Alpha beta</p><p id=b>Gamma delta</p><input id=pw type=password value=secret><p id=c>Omega</p>").unwrap();
+        e.render(640, 480, 1.0).unwrap()
+    };
+    let selected = d.render(640, 480, 1.0).unwrap();
+    let row = |y: f64| (y as usize) * 640;
+    assert!((0..40).any(|x| selected[row(a.y + 10.0) + x] != plain[row(a.y + 10.0) + x]));
+    assert_eq!(
+        selected[row(b.y + 30.0) + 630],
+        plain[row(b.y + 30.0) + 630],
+        "outside the text"
+    );
+    // Ctrl+C copies the document selection.
+    d.handle_input(key("c", true, false)).unwrap();
+    assert_eq!(
+        d.clipboard_text().unwrap().as_deref(),
+        Some("Alpha beta\nGamma delta")
+    );
+    // Mutating another paragraph keeps the selection.
+    d.set_text("c", "Changed").unwrap();
+    assert_eq!(d.selection_text().unwrap(), "Alpha beta\nGamma delta");
+    // Ctrl+A selects all document text, never the password value.
+    d.handle_input(key("a", true, false)).unwrap();
+    let all = d.selection_text().unwrap();
+    assert!(
+        all.starts_with("Alpha beta") && all.ends_with("Changed"),
+        "{all:?}"
+    );
+    assert!(!all.contains("secret"));
+    // Double-click selects a word; a press on a control clears the document selection.
+    let (x, y) = (a.x + 90.0, a.y + 10.0);
+    button(&mut d, true, x, y);
+    button(&mut d, false, x, y);
+    button(&mut d, true, x, y);
+    button(&mut d, false, x, y);
+    assert_eq!(d.selection_text().unwrap(), "beta");
+    let pw = d.element_rect("pw").unwrap().unwrap();
+    button(&mut d, true, pw.x + 5.0, pw.y + 5.0);
+    button(&mut d, false, pw.x + 5.0, pw.y + 5.0);
+    assert_eq!(d.selection_text().unwrap(), "");
+    // Removing the selected paragraph clears the selection.
+    d.select_text(Some("b")).unwrap();
+    assert_eq!(d.selection_text().unwrap(), "Gamma delta");
+    d.remove_element("b").unwrap();
+    assert_eq!(d.selection_text().unwrap(), "");
+}

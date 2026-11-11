@@ -899,7 +899,11 @@ fn scroll_geometry_into_view_and_follow_end() {
     cmd(json!({"op":"resize","window":id,"width":300,"height":300})).unwrap();
     assert_eq!(rect("full")["width"], 300.0);
     h.session.update_geometry(id, 800, 600, 2.0).unwrap();
-    assert_eq!(rect("full")["width"], 400.0, "geometry is in CSS px at any device scale");
+    assert_eq!(
+        rect("full")["width"],
+        400.0,
+        "geometry is in CSS px at any device scale"
+    );
     assert!(cmd(json!({"op":"get_rect","window":id,"element":"missing"})).is_err());
     cmd(json!({"op":"set_attribute","window":id,"element":"full","name":"style","value":"display:none"})).unwrap();
     assert_eq!(rect("full"), Value::Null);

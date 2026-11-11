@@ -479,6 +479,28 @@ class Window:
             args["element"] = element
         self._command("set_scroll_follow", **args)
 
+    def get_selection(self) -> str:
+        """The document text selection (paragraphs joined by a line feed); '' if none."""
+        return self._command("get_selection")["text"]
+
+    def clear_selection(self) -> None:
+        self._command("clear_selection")
+
+    def select_text(self, element: str | None = None) -> None:
+        """Select the document text inside ``element`` (all text for ``None``)."""
+        args = {} if element is None else {"element": element}
+        self._command("select_text", **args)
+
+    def copy_selection(self) -> str:
+        """Copy the document selection to the clipboard; returns the copied text."""
+        return self._command("copy_selection")["text"]
+
+    def get_clipboard_text(self) -> str | None:
+        return self._command("get_clipboard_text")["text"]
+
+    def set_clipboard_text(self, text: str) -> None:
+        self._command("set_clipboard_text", text=text)
+
     @property
     def closed(self) -> bool:
         return self._closed

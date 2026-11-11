@@ -182,6 +182,7 @@ pub struct Document {
     repaint: bool,
     prevent: Vec<StoredRule>,
     follow: Vec<Follow>,
+    selection: selection::DocSelection,
 }
 impl std::fmt::Debug for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -311,6 +312,7 @@ impl Document {
             repaint: true,
             prevent: Vec::new(),
             follow: Vec::new(),
+            selection: selection::DocSelection::default(),
         })
     }
     fn id(&self) -> DocumentId {
@@ -967,6 +969,7 @@ impl Document {
             pixels.push((channel(rgba[0]) << 16) | (channel(rgba[1]) << 8) | channel(rgba[2]));
         }
         frame.recycle();
+        self.paint_selection(&mut pixels, width, height, scale)?;
         self.repaint = false;
         Ok(pixels)
     }
@@ -1045,13 +1048,21 @@ impl Document {
         values
     }
     pub fn handle_input(&mut self, input: Input) -> Result<Vec<Value>> {
-        if !self.follow.is_empty() && !matches!(input, Input::Modifiers { .. }) {
-            self.apply_follow()?;
-            let result = self.handle_input_inner(input);
-            self.update_follow();
-            return result;
+        if matches!(input, Input::Modifiers { .. }) {
+            return self.handle_input_inner(input);
         }
-        self.handle_input_inner(input)
+        let follow = !self.follow.is_empty();
+        if follow {
+            self.apply_follow()?;
+        }
+        let probe = input.clone();
+        let result = self.handle_input_inner(input);
+        if follow {
+            self.update_follow();
+        }
+        let events = result?;
+        self.selection_input(&probe, &events)?;
+        Ok(events)
     }
     fn handle_input_inner(&mut self, input: Input) -> Result<Vec<Value>> {
         if let Input::Modifiers {
@@ -2031,5 +2042,6 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
     }
 }
 
+mod selection;
 #[cfg(test)]
 mod tests;

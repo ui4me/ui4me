@@ -152,6 +152,8 @@ per work item. Keep long operations off UI callbacks.
 | Default-action rule (0.3) | `set_default_action(id, event, prevent=True, key=, shift=, ctrl=, alt=, meta=)` | `SetDefaultAction(id, event, prevent, key, shift, ctrl, alt, meta)` |
 | Scroll (0.3) | `get_scroll(id=None)`, `scroll_to(id, x=, y=)`, `scroll_by(id, dx=, dy=)`, `scroll_into_view(id, block=, inline=)`, `set_scroll_follow(id=None, follow=True)` | `GetScroll`, `ScrollTo`, `ScrollBy`, `ScrollIntoView`, `SetScrollFollow` |
 | Geometry (0.3) | `get_rect(id)` | `GetRect` |
+| Selection (0.3) | `get_selection`, `select_text(id=None)`, `clear_selection`, `copy_selection` | `GetSelection`, `SelectText`, `ClearSelection`, `CopySelection` |
+| Clipboard (0.3) | `get_clipboard_text`, `set_clipboard_text(text)` | `GetClipboardText`, `SetClipboardText` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -198,6 +200,18 @@ Resize and scale changes apply to these queries immediately.
 `set_scroll_follow` keeps a log/chat container at its end while content grows, as
 long as it is at the end. A user or programmatic scroll away stops following until
 the reader returns to the end. Follow adjustments do not emit `scroll`.
+Document text is selectable with the mouse: drag, Shift+click to extend,
+double-click for a word, triple-click for a paragraph, Ctrl+A for all text and
+Ctrl+C/Ctrl+Insert to copy, when focus is not in a form control. The selection is
+anchored to its block elements. Mutating or appending other content keeps it;
+removing a selected block clears it. Copied text is the rendered text of each
+block, joined by line feeds. Form-control contents (including passwords), button
+labels and generated `::before`/`::after` text are never part of the document
+selection. Text controls keep their own selection and clipboard behavior. The
+highlight is a translucent overlay clipped to scroll containers. Bidi text is
+selected in logical order. Drag auto-scroll and selection-change events are not
+provided. `get_clipboard_text`/`set_clipboard_text` use the native OS clipboard (plain
+text, 16 MiB), or process memory in headless sessions.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

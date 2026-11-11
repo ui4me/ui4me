@@ -931,6 +931,25 @@ impl Session {
                 element,
                 follow,
             } => self.mutate(window, |d| d.set_scroll_follow(element.as_deref(), follow))?,
+            Command::GetSelection { window } => self.query(window, |d| {
+                d.selection_text().map(|text| json!({"text": text}))
+            })?,
+            Command::ClearSelection { window } => self.query(window, |d| {
+                d.clear_selection();
+                Ok(json!({}))
+            })?,
+            Command::SelectText { window, element } => self.query(window, |d| {
+                d.select_text(element.as_deref()).map(|()| json!({}))
+            })?,
+            Command::CopySelection { window } => self.query(window, |d| {
+                d.copy_selection().map(|text| json!({"text": text}))
+            })?,
+            Command::GetClipboardText { window } => self.query(window, |d| {
+                d.clipboard_text().map(|text| json!({"text": text}))
+            })?,
+            Command::SetClipboardText { window, text } => self.query(window, |d| {
+                d.set_clipboard_text(&text).map(|()| json!({}))
+            })?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {
