@@ -850,6 +850,49 @@ fn default_action_rule_cancels_enter_but_not_shift_enter() {
 }
 
 #[test]
+fn scroll_behavior_argument_smooth_instant_and_reduced_motion() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>body{margin:0}.r{height:100px}</style><div id='box' style='height:100px;overflow:auto'><div class='r'></div><div class='r'></div><div class='r'></div><div class='r'></div></div>"})).unwrap()["window"].as_u64().unwrap();
+    let scroll = || cmd(json!({"op":"get_scroll","window":id,"element":"box"})).unwrap();
+    // Omitted and `instant` move at once; `animating` is reported.
+    let s = cmd(json!({"op":"scroll_to","window":id,"element":"box","y":100})).unwrap();
+    assert_eq!(
+        (s["y"].as_f64(), s["animating"].as_bool()),
+        (Some(100.0), Some(false))
+    );
+    let s = cmd(json!({"op":"scroll_by","window":id,"element":"box","dy":50,"behavior":"instant"}))
+        .unwrap();
+    assert_eq!(s["y"], 150.0);
+    // `smooth` animates on the owner clock and ends on the target.
+    let s = cmd(json!({"op":"scroll_to","window":id,"element":"box","y":0,"behavior":"smooth"}))
+        .unwrap();
+    assert_eq!(
+        (s["y"].as_f64(), s["animating"].as_bool()),
+        (Some(150.0), Some(true))
+    );
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let s = scroll();
+    assert_eq!(
+        (s["y"].as_f64(), s["animating"].as_bool()),
+        (Some(0.0), Some(false))
+    );
+    // Reduced motion turns smooth into instant.
+    cmd(json!({"op":"set_environment","window":id,"reduced_motion":"reduce"})).unwrap();
+    let s = cmd(json!({"op":"scroll_to","window":id,"element":"box","y":200,"behavior":"smooth"}))
+        .unwrap();
+    assert_eq!(
+        (s["y"].as_f64(), s["animating"].as_bool()),
+        (Some(200.0), Some(false))
+    );
+    let s = cmd(json!({"op":"scroll_into_view","window":id,"element":"box","behavior":"smooth"}));
+    assert!(s.is_ok());
+    assert!(
+        cmd(json!({"op":"scroll_to","window":id,"element":"box","y":1,"behavior":"slow"})).is_err()
+    );
+}
+
+#[test]
 fn scroll_geometry_into_view_and_follow_end() {
     let h = Harness::new(0);
     let cmd = |v: Value| h.session.command(v);

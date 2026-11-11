@@ -324,6 +324,9 @@ pub enum Command {
         x: Option<f64>,
         #[serde(default)]
         y: Option<f64>,
+        /// `auto` (the element's `scroll-behavior`), `instant` or `smooth` (0.8 F0803).
+        #[serde(default)]
+        behavior: Option<String>,
     },
     ScrollBy {
         window: u64,
@@ -333,6 +336,8 @@ pub enum Command {
         dx: f64,
         #[serde(default)]
         dy: f64,
+        #[serde(default)]
+        behavior: Option<String>,
     },
     ScrollIntoView {
         window: u64,
@@ -341,6 +346,8 @@ pub enum Command {
         block: String,
         #[serde(default = "nearest")]
         inline: String,
+        #[serde(default)]
+        behavior: Option<String>,
     },
     GetRect {
         window: u64,

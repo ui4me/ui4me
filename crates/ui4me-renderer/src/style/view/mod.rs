@@ -14,6 +14,7 @@ pub mod generated;
 pub mod groups;
 pub mod layout_groups;
 pub mod paint_groups;
+pub mod scroll_props;
 
 use groups::*;
 use paint_groups::overflow;
@@ -390,6 +391,10 @@ impl<'s> ComputedStyleView<'s> {
     }
     pub fn overflow(&self) -> Overflow {
         overflow(self.values)
+    }
+    /// Scroll behavior, overscroll, snap, scroll-padding and scroll-margin (0.8 F0803/F0804).
+    pub fn scroll_props(&self) -> scroll_props::ScrollProps {
+        scroll_props::scroll_props(self.values)
     }
 
     /// Layout consumes typed computed facts. CSSOM serialization remains for

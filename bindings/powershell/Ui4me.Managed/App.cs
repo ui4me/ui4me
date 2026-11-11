@@ -527,26 +527,30 @@ public sealed class Window
         e.GetProperty("min_x").GetDouble(), e.GetProperty("min_y").GetDouble(),
         e.GetProperty("max_x").GetDouble(), e.GetProperty("max_y").GetDouble(),
         e.GetProperty("width").GetDouble(), e.GetProperty("height").GetDouble(),
-        e.GetProperty("scrollable").GetBoolean());
+        e.GetProperty("scrollable").GetBoolean(),
+        e.TryGetProperty("animating", out var animating) && animating.GetBoolean());
     public string GetValidityJson(string element) { Check(); return app.Command(Request("get_validity", element)).GetRawText(); }
     public string CheckValidityJson(string element) { Check(); return app.Command(Request("check_validity", element)).GetRawText(); }
     public ScrollState GetScroll(string? element = null) { Check(); return Scroll(app.Command(Request("get_scroll", element))); }
-    public ScrollState ScrollTo(string? element, double? x, double? y)
+    /// <summary>behavior: auto (the CSS scroll-behavior), instant or smooth; null means auto.</summary>
+    public ScrollState ScrollTo(string? element, double? x, double? y, string? behavior = null)
     {
         Check();
         var request = Request("scroll_to", element);
         if (x is not null) request["x"] = x;
         if (y is not null) request["y"] = y;
+        if (!string.IsNullOrEmpty(behavior)) request["behavior"] = behavior;
         return Scroll(app.Command(request));
     }
-    public ScrollState ScrollBy(string? element, double dx, double dy)
+    public ScrollState ScrollBy(string? element, double dx, double dy, string? behavior = null)
     {
         Check();
         var request = Request("scroll_by", element);
         request["dx"] = dx; request["dy"] = dy;
+        if (!string.IsNullOrEmpty(behavior)) request["behavior"] = behavior;
         return Scroll(app.Command(request));
     }
-    public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest") { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline }); }
+    public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest", string? behavior = null) { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline, behavior = NullIfEmpty(behavior) }); }
     static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
     /// <summary>Set (menu array of item hashtables) or clear ($null) the window menu; JSON status.</summary>
     public string SetMenu(object? menu) { Check(); return app.Command(new { op = "set_menu", window = Id, menu }).GetRawText(); }
@@ -672,7 +676,7 @@ public sealed class Window
     public void Close() { Check(); app.Command(new { op = "close", window = Id }); }
 }
 
-public sealed record ScrollState(double X, double Y, double MinX, double MinY, double MaxX, double MaxY, double Width, double Height, bool Scrollable);
+public sealed record ScrollState(double X, double Y, double MinX, double MinY, double MaxX, double MaxY, double Width, double Height, bool Scrollable, bool Animating = false);
 public sealed record WindowActionResult(bool Applied, string? Unsupported, string Platform);
 public sealed record DialogState(bool Open, bool Modal, string ReturnValue);
 public sealed record SelectOption(string Value, string Label, bool Selected, bool Disabled);

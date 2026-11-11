@@ -213,6 +213,8 @@ pub struct Document {
     repaint: bool,
     prevent: Vec<StoredRule>,
     follow: Vec<Follow>,
+    /// Smooth scrolls in progress and the owner clock that drives them (0.8 F0803).
+    scroll_anims: scroll_anim::ScrollAnims,
     selection: selection::DocSelection,
 }
 impl std::fmt::Debug for Document {
@@ -353,6 +355,7 @@ impl Document {
             repaint: true,
             prevent: Vec::new(),
             follow: Vec::new(),
+            scroll_anims: Default::default(),
             selection: selection::DocSelection::default(),
         })
     }
@@ -743,6 +746,7 @@ impl Document {
     /// viewport when `element` is `None`. A non-scroll-container reports `scrollable: false`.
     pub fn scroll_state(&mut self, element: Option<&str>) -> Result<ScrollState> {
         let target = self.scroll_node(element)?;
+        self.tick_scroll()?;
         self.apply_follow()?;
         self.pipeline.flush()?;
         Ok(self.state_of(target))
@@ -759,91 +763,25 @@ impl Document {
                 width: e.scrollport.0,
                 height: e.scrollport.1,
                 scrollable: true,
+                animating: self.scroll_anims.running(target),
             },
             None => ScrollState::default(),
         }
     }
-    /// Instant, clamped `scrollTo`; an omitted axis keeps its offset. Emits `scroll` when the
-    /// offset changes. Updates the follow-end state of the target.
+    /// `scrollTo` with the element's `scroll-behavior` (`auto`); see [`Self::scroll_to_behavior`].
     pub fn scroll_to(
         &mut self,
         element: Option<&str>,
         x: Option<f64>,
         y: Option<f64>,
     ) -> Result<ScrollState> {
-        if x.is_some_and(|v| !v.is_finite()) || y.is_some_and(|v| !v.is_finite()) {
-            return Err(arg("Scroll offsets must be finite"));
-        }
-        let current = self.scroll_state(element)?;
-        let target = self.scroll_node(element)?;
-        let id = self.id();
-        crate::interaction::scroll::scroll_to(
-            self,
-            id,
-            target,
-            x.unwrap_or(current.x),
-            y.unwrap_or(current.y),
-        )?;
-        self.update_follow();
-        self.pipeline.flush()?;
-        Ok(self.state_of(target))
+        self.scroll_to_behavior(element, x, y, "auto")
     }
     pub fn scroll_by(&mut self, element: Option<&str>, dx: f64, dy: f64) -> Result<ScrollState> {
-        if !dx.is_finite() || !dy.is_finite() {
-            return Err(arg("Scroll deltas must be finite"));
-        }
-        let current = self.scroll_state(element)?;
-        self.scroll_to(element, Some(current.x + dx), Some(current.y + dy))
+        self.scroll_by_behavior(element, dx, dy, "auto")
     }
-    /// Scroll every scroll container of `element`, innermost first, so the element is visible.
-    /// `block`/`inline` are `start`, `center`, `end` or `nearest` (CSSOM View).
     pub fn scroll_into_view(&mut self, element: &str, block: &str, inline: &str) -> Result<()> {
-        let n = self.node(element)?;
-        let modes = ["start", "center", "end", "nearest"];
-        if !modes.contains(&block) || !modes.contains(&inline) {
-            return Err(arg(
-                "block and inline must be start, center, end or nearest",
-            ));
-        }
-        self.apply_follow()?;
-        self.pipeline.flush()?;
-        let chain: Vec<ScrollTarget> = self
-            .pipeline
-            .scroll_chain(n)
-            .into_iter()
-            .map(|e| e.target)
-            .filter(|&t| t != ScrollTarget::Node(n))
-            .collect();
-        let id = self.id();
-        for target in chain {
-            self.pipeline.flush()?;
-            let Some(r) = self.viewport_rect(n) else {
-                return Ok(());
-            };
-            let Some(port) = self.scrollport_rect(target) else {
-                continue;
-            };
-            let Some(e) = self.pipeline.scroll_entry(target) else {
-                continue;
-            };
-            let dx = align(inline, r.0, r.2, port.0, port.2);
-            let dy = align(block, r.1, r.3, port.1, port.3);
-            if dx != 0.0 || dy != 0.0 {
-                let t = match target {
-                    ScrollTarget::Viewport => None,
-                    ScrollTarget::Node(c) => Some(c),
-                };
-                crate::interaction::scroll::scroll_to(
-                    self,
-                    id,
-                    t,
-                    e.offset.0 + dx,
-                    e.offset.1 + dy,
-                )?;
-            }
-        }
-        self.update_follow();
-        Ok(())
+        self.scroll_into_view_behavior(element, block, inline, "auto")
     }
     /// The accessibility tree of the committed document state (roles, names, states, values and
     /// viewport bounds); flushes the pipeline first.
@@ -988,7 +926,7 @@ impl Document {
         let targets: Vec<Option<NodeId>> = self
             .follow
             .iter()
-            .filter(|f| f.pinned)
+            .filter(|f| f.pinned && !self.scroll_anims.running(f.target))
             .map(|f| f.target)
             .collect();
         for t in targets {
@@ -1372,10 +1310,11 @@ impl Document {
             .as_ref()
             .filter(|_| self.window_focused)
             .map(|b| b.deadline.saturating_duration_since(Instant::now()));
-        match (resources, blink) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
+        let anim = self
+            .scroll_anims
+            .active()
+            .then_some(Duration::from_millis(16));
+        [resources, blink, anim].into_iter().flatten().min()
     }
     pub fn poll_resources(&mut self) -> Result<bool> {
         let id = self.id();
@@ -1406,6 +1345,7 @@ impl Document {
                 .set_caret_state(b.visible, b.upstream, b.node)?;
             changed = true;
         }
+        changed |= self.tick_scroll()?;
         self.repaint |= changed;
         Ok(changed)
     }
@@ -2031,7 +1971,7 @@ impl DispatchHost for Document {
             .pipeline
             .scroll_chain(from)
             .iter()
-            .map(scroll_info)
+            .map(|e| self.scroll_info_of(e))
             .collect())
     }
     fn scroll_info(
@@ -2044,7 +1984,31 @@ impl DispatchHost for Document {
             .pipeline
             .scroll_entry(scroll_target(target))
             .as_ref()
-            .map(scroll_info))
+            .map(|e| self.scroll_info_of(e)))
+    }
+    fn scroll_user_by(
+        &mut self,
+        _id: DocumentId,
+        target: Option<NodeId>,
+        dx: f64,
+        dy: f64,
+    ) -> std::result::Result<ScrollApplied, Status> {
+        self.scroll_user_move(target, dx, dy)
+    }
+    fn scroll_cancel(
+        &mut self,
+        _id: DocumentId,
+        target: Option<NodeId>,
+    ) -> std::result::Result<(), Status> {
+        self.scroll_anims.cancel(target);
+        Ok(())
+    }
+    fn scroll_user_settle(
+        &mut self,
+        _id: DocumentId,
+        target: Option<NodeId>,
+    ) -> std::result::Result<bool, Status> {
+        self.scroll_user_settle_at(target)
     }
     fn scroll_set(
         &mut self,
@@ -2210,6 +2174,8 @@ pub struct ScrollState {
     pub width: f64,
     pub height: f64,
     pub scrollable: bool,
+    /// A smooth scroll of the container is in progress.
+    pub animating: bool,
 }
 /// A rectangle in viewport CSS px.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2565,6 +2531,8 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
         scrollport: e.scrollport,
         user_x: e.user_x,
         user_y: e.user_y,
+        contain_x: false,
+        contain_y: false,
     }
 }
 
@@ -2579,6 +2547,9 @@ pub mod file_input;
 mod focus_pointer_tests;
 pub mod public_dom;
 pub mod rich_clipboard;
+mod scroll_anim;
+#[cfg(test)]
+mod scroll_tests;
 mod selection;
 #[cfg(test)]
 mod tests;

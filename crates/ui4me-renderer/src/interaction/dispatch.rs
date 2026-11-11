@@ -272,6 +272,35 @@ pub trait DispatchHost {
             clamped: false,
         })
     }
+    /// A user scroll (wheel, keys, track paging) of `target` by `(dx, dy)`: cancels a smooth
+    /// scroll of the target and applies snapping. Default: a plain `scroll_set` of the sum.
+    fn scroll_user_by(
+        &mut self,
+        doc: DocumentId,
+        target: Option<NodeId>,
+        dx: f64,
+        dy: f64,
+    ) -> Result<crate::interaction::scroll::ScrollApplied, Status> {
+        let (x, y) = self
+            .scroll_info(doc, target)?
+            .map_or((0.0, 0.0), |i| i.offset);
+        self.scroll_set(doc, target, x + dx, y + dy)
+    }
+    /// A user drag of the scrollbar takes over `target`: cancels its smooth scroll. Default: none.
+    fn scroll_cancel(&mut self, doc: DocumentId, target: Option<NodeId>) -> Result<(), Status> {
+        let _ = (doc, target);
+        Ok(())
+    }
+    /// The user released the scrollbar thumb: settle on a snap position. `true` when the offset
+    /// changed at once. Default: nothing.
+    fn scroll_user_settle(
+        &mut self,
+        doc: DocumentId,
+        target: Option<NodeId>,
+    ) -> Result<bool, Status> {
+        let _ = (doc, target);
+        Ok(false)
+    }
 }
 
 /// Per-document interaction state.

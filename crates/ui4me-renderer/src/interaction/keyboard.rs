@@ -15,7 +15,7 @@ use crate::interaction::dispatch::{DispatchHost, eng, run_dispatch};
 use crate::interaction::focus::{FocusSource, focus_update, is_focusable};
 use crate::interaction::frame::{EventInit, EventInterface, Modifiers};
 use crate::interaction::input_queue::KeyData;
-use crate::interaction::scroll::{ARROW_STEP_PX, PAGE_FRACTION, pick, scroll_container_by};
+use crate::interaction::scroll::{ARROW_STEP_PX, PAGE_FRACTION, pick, scroll_container_user};
 use ui4me_document::document::Document;
 use ui4me_engine_types::diag::DispatchOrigin;
 use ui4me_engine_types::ids::{DocumentId, NodeId};
@@ -283,7 +283,7 @@ fn scroll_key(
             (if dir_y > 0.0 { info.max.1 } else { info.min.1 }) - info.offset.1,
         ),
     };
-    scroll_container_by(host, doc, &info, dx, dy, true)?;
+    scroll_container_user(host, doc, &info, dx, dy, true)?;
     Ok(())
 }
 

@@ -102,8 +102,9 @@ bool_prefs! {
     "layout.css.white-space-collapse.preserve-spaces.enabled" = false,
     "layout.css.text-indent-keywords.enabled" = false,
     "layout.css.display-grid-lanes.enabled" = false,
-    "layout.css.scroll-behavior.enabled" = false,
-    "layout.css.overscroll-behavior.enabled" = false,
+    "layout.css.scroll-behavior.enabled" = true, // 1.22.0: On (smooth scrolling; 0.8 F0803)
+    "layout.css.scroll-snap.enabled" = true, // 1.22.0: On (scroll-snap-*, scroll-padding, scroll-margin; carried patch P-006-16; 0.8 F0804)
+    "layout.css.overscroll-behavior.enabled" = true, // 1.22.0: On (0.8 F0804)
     "layout.css.scrollbar-styling.enabled" = true,
     "layout.css.font-variations.enabled" = true, // 1.10.0: On (font-variation-settings, font-optical-sizing; 015 TXT-2)
     "layout.css.font-size-adjust.enabled" = false,
@@ -273,15 +274,15 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.initial-letter", Off), // 1.14.0: stays Off, reported (015 TXT-5: `::first-letter` is laid out without the sunken initial)
     ("css.property.line-clamp", On),
     ("css.property.mask", On),
-    ("css.property.overscroll-behavior", Off),
+    ("css.property.overscroll-behavior", On),
     ("css.property.page", Off),
     ("css.property.position-anchor", Unavailable),
     ("css.property.print-color-adjust", Unavailable),
     ("css.property.resize", Unavailable),
-    ("css.property.scroll-behavior", Off),
-    ("css.property.scroll-margin", Unavailable),
-    ("css.property.scroll-padding", Unavailable),
-    ("css.property.scroll-snap", Unavailable),
+    ("css.property.scroll-behavior", On),
+    ("css.property.scroll-margin", On),
+    ("css.property.scroll-padding", On),
+    ("css.property.scroll-snap", On),
     ("css.property.scrollbar-color", On),
     ("css.property.scrollbar-gutter", On),
     ("css.property.scrollbar-width", On),
@@ -432,7 +433,6 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
     ("print-color-adjust", "css.property.print-color-adjust"),
     ("initial-letter", "css.property.initial-letter"),
     ("resize", "css.property.resize"),
-    ("scroll-behavior", "css.property.scroll-behavior"),
     ("shape-outside", "css.property.shape-outside"),
     (
         "text-decoration-skip-ink",
@@ -451,10 +451,6 @@ const PROPERTY_PREFIX_FEATURES: &[(&str, &str)] = &[
     ("-webkit-text-stroke", "css.property.-webkit-text-stroke"),
     ("animation-", "css.property.animation"),
     ("corner-", "css.property.corner-shape"),
-    ("overscroll-behavior", "css.property.overscroll-behavior"),
-    ("scroll-margin", "css.property.scroll-margin"),
-    ("scroll-padding", "css.property.scroll-padding"),
-    ("scroll-snap-", "css.property.scroll-snap"),
     ("transition-", "css.property.transition"),
     ("view-transition-", "css.property.view-transition"),
 ];
