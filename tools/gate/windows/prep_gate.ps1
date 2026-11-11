@@ -1,0 +1,39 @@
+# Stage the Windows gate (Core 1.0, F1107): install the candidate wheel into a fresh venv and
+# expand the candidate module stage under $Root, copy the harnesses, examples and probes, and
+# write the PowerShell wrappers that import the installed module. Run as the administrator after
+# `dev.py package` built the candidate in $Src\dist\win-x64.
+param(
+    [string] $Src = 'C:\Users\Administrator\ui4me-dev',
+    [string] $Root = 'C:\Users\Public\ui4me-gui\gate',
+    [string] $Python = 'C:\Users\Public\ui4me-gui\python\python.exe',
+    [string] $PyDeps = 'C:\Users\Public\ui4me-gui\r05in\pydeps'
+)
+$ErrorActionPreference = 'Stop'
+$version = (Get-Content "$Src\VERSION").Trim()
+Remove-Item -Recurse -Force $Root -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $Root, "$Root\results", "$Root\mod" | Out-Null
+& $Python -m venv "$Root\venv"
+& "$Root\venv\Scripts\python.exe" -m pip install -q (Get-ChildItem "$Src\dist\win-x64\ui4me-$version-*.whl").FullName
+Expand-Archive "$Src\dist\win-x64\Ui4me-$version-win-x64-stage.zip" -DestinationPath "$Root\mod"
+Copy-Item -Recurse "$Src\examples" "$Root\examples"
+Get-ChildItem "$Src\tests\native\windows" -File | Copy-Item -Destination $Root
+Copy-Item "$Src\tests\native\*" $Root -Include *.py, *.ps1, *.lua
+Copy-Item -Recurse "$Src\tests\packaging" "$Root\packaging"
+Copy-Item "$Src\docs\core-roadmap\data\PLATFORM_CAPABILITIES_V1.json" "$Root\PLATFORM_CAPABILITIES_V1.json"
+if (Test-Path $PyDeps) { Copy-Item -Recurse $PyDeps "$Root\pydeps" }
+# The LuaJIT binding (pure Lua) and a LuaJIT built by bindings\lua\tools\build_luajit.cmd, when present.
+Copy-Item -Recurse "$Src\bindings\lua" "$Root\lua" -ErrorAction SilentlyContinue
+if (Test-Path "$Src\build\luajit\src\luajit.exe") {
+    New-Item -ItemType Directory -Force "$Root\luajit" | Out-Null
+    Copy-Item "$Src\build\luajit\src\luajit.exe", "$Src\build\luajit\src\lua51.dll" "$Root\luajit"
+}
+$mod = "$Root\mod\Ui4me\Ui4me.psd1"
+@{
+    'run-chat-ps.ps1'  = "param([string] `$StatePath) Import-Module '$mod' -ErrorAction Stop; & '$Root\examples\powershell\chat_log.ps1' -StatePath `$StatePath"
+    'run-files-ps.ps1' = "param([string] `$Start, [string] `$StatePath) Import-Module '$mod' -ErrorAction Stop; & '$Root\examples\powershell\file_utility.ps1' -Start `$Start -StatePath `$StatePath"
+    'run-input-ps.ps1' = "param([string] `$StatePath, [string] `$CommandsPath) Import-Module '$mod' -ErrorAction Stop; & '$Root\input_probe.ps1' -StatePath `$StatePath -CommandsPath `$CommandsPath"
+}.GetEnumerator() | ForEach-Object { Set-Content -Path (Join-Path $Root $_.Key) -Value $_.Value -Encoding UTF8 }
+icacls $Root /grant 'ui4me_test:(OI)(CI)M' /T /Q | Out-Null
+(Get-FileHash (Get-ChildItem "$Src\dist\win-x64\ui4me-$version-*.whl").FullName).Hash
+& "$Root\venv\Scripts\python.exe" -c "import ui4me; print(ui4me.__file__, ui4me.__version__)"
+git -C $Src log --oneline -1
