@@ -3010,10 +3010,8 @@ fn support_profile() -> Value {
     events.sort();
     events.dedup();
     let (css_version, rows) = ui4me_renderer::css_profile();
-    let platform: Value = serde_json::from_str(&read(
-        "docs/core-roadmap/data/PLATFORM_CAPABILITIES_V1.json",
-    ))
-    .unwrap();
+    let platform: Value =
+        serde_json::from_str(&read("docs/reference/PLATFORM_CAPABILITIES_V1.json")).unwrap();
     json!({
         "schema": 1,
         "core_version": env!("CARGO_PKG_VERSION"),
@@ -3024,10 +3022,9 @@ fn support_profile() -> Value {
         "events": events,
         "platform": platform,
         "documents": {
-            "svg": "docs/core-roadmap/data/SVG_PROFILE_V0_9.md",
-            "framework_fixtures": "docs/core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md",
-            "diagnostics": "docs/core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md",
-            "contract": "docs/PROJECT_STATUS.md"
+            "svg": "docs/reference/SVG_PROFILE.md",
+            "diagnostics": "docs/reference/DIAGNOSTICS_SCHEMA_V1.md",
+            "contract": "docs/API.md"
         }
     })
 }

@@ -17,7 +17,7 @@
             Tags = @('ui4me', 'GUI', 'Windows', 'Linux')
             LicenseUri = 'https://github.com/ui4me/ui4me/blob/main/LICENSE'
             ProjectUri = 'https://ui4me.github.io/'
-            ReleaseNotes = 'Core 0.4.0: programmable document, native desktop services and an AccessKit screen-reader bridge. Platform results and limits: docs/PROJECT_STATUS.md.'
+            ReleaseNotes = 'Core 1.0: the stable UI4ME Core. Release notes: https://github.com/ui4me/ui4me/blob/main/CHANGELOG.md'
         }
     }
 }

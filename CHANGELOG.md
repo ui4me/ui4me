@@ -2,9 +2,9 @@
 
 Each release ships one version of the Python wheel (`ui4me` on PyPI), the PowerShell module
 (`Ui4me` on the PowerShell Gallery) and the native SDK and LuaJIT binding (GitHub release
-assets), all built from one commit. Qualification evidence for every release is in
-[`docs/core-roadmap/PROGRESS.md`](docs/core-roadmap/PROGRESS.md), and the contract is in
-[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+assets), all built from one commit. The project overview is
+[`docs/PROJECT_SUMMARY.md`](docs/PROJECT_SUMMARY.md), and the contract is in
+[`docs/API.md`](docs/API.md).
 
 ## 1.0.0
 

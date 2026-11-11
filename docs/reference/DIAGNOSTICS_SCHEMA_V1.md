@@ -1,4 +1,4 @@
-# Developer diagnostics schema 1 (F1008)
+# Developer diagnostics schema 1
 
 Public commands `get_diagnostics` and `explain` (Core 0.10). Both are window commands, owner thread only, and
 never expose engine pointers, arena indices or node handles. The older `diagnostics` command keeps its

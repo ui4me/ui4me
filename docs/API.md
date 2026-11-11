@@ -1,132 +1,11 @@
-# UI4ME Core 1.0: implementation status and contract
+# UI4ME Core public API
 
-This is the authoritative engineering status of UI4ME Core. The public native
-boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
-are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
-Python (`bindings/python`), PowerShell (`bindings/powershell`) and LuaJIT (`bindings/lua`).
-
-## Current status
-
-**Core 1.0.0 is released and is the stable Core** ([GitHub v1.0.0](https://github.com/ui4me/ui4me/releases/tag/v1.0.0), PyPI `ui4me==1.0.0`, PowerShell Gallery `Ui4me 1.0.0`, built from `1bb90e9`, gated `b58399f`; 0.10 and 1.0 scope plus a
-LuaJIT binding; [`core-roadmap/versions/0_10.md`](core-roadmap/versions/0_10.md),
-[`core-roadmap/versions/1_0.md`](core-roadmap/versions/1_0.md)): paged media, PDF export and
-native printing, rich `contenteditable`, background work in the bindings, versioned developer
-diagnostics and `explain`, long-document scalability, a soak driver, fuzz harnesses, a
-LuaJIT FFI binding, screen-reader journeys with NVDA and Orca, and an upgrade/rollback matrix
-from 0.4.0. Compatibility from here on is governed by [`COMPATIBILITY.md`](COMPATIBILITY.md);
-the supported surface is the generated [`SUPPORT_PROFILE_V1.json`](SUPPORT_PROFILE_V1.json).
-CSS profile 1.27.0. Deferred by the owner: the GPU backend (F1005), macOS (F1201) and ARM64
-(F1202).
-
-**Core 0.9.0 is released** (PyPI, PowerShell Gallery, GitHub; advanced CSS, SVG and typography;
-[`core-roadmap/versions/0_9.md`](core-roadmap/versions/0_9.md)): CSS transitions and keyframe
-animations on the document clock with `@starting-style`, `content-visibility`,
-`contain-intrinsic-size`, `field-sizing`, `resize`, inline SVG with per-shape hit testing and
-a fixed static SVG profile, more hyphenation languages, `backdrop-filter` and `light-dark()`
-images, and conformance fixtures for layout, typography and framework-style markup. CSS profile
-1.26.0.
-
-**Core 0.8.0 is released** (PyPI, PowerShell Gallery, GitHub; advanced interaction and editing;
-[`core-roadmap/versions/0_8.md`](core-roadmap/versions/0_8.md)): plain-text `contenteditable`
-editing hosts, touch input, pointer events and pointer capture, smooth scrolling with
-`scroll-behavior`, scroll snapping and overscroll containment, refined range/number/progress/
-meter semantics, HTML popovers with a CSS anchor-positioning subset.
-
-**Core 0.7.0 is released** (PyPI, PowerShell Gallery, GitHub; native desktop services;
-[`core-roadmap/versions/0_7.md`](core-roadmap/versions/0_7.md)): system notifications,
-tray/status icon with menu, window menu bars and context menus (Windows; accelerators on every
-platform), global shortcuts, the OS dark/high-contrast preference, rich clipboard HTML,
-element drag and drop, pointer confinement/lock, startup activation and single-instance
-open-with delivery.
-
-**Core 0.6.0 is released (2026-11-11)** — [GitHub v0.6.0](https://github.com/ui4me/ui4me/releases/tag/v0.6.0), PyPI `ui4me==0.6.0` (`manylinux_2_35_x86_64`, `win_amd64`), PowerShell Gallery `Ui4me 0.6.0`, built from `3f9eaf7` (gated `f004dd6`; complete public document and HTML interface;
-[`core-roadmap/versions/0_6.md`](core-roadmap/versions/0_6.md), ledger
-[`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)): HTML serialization, author
-stylesheets with diagnostics, generation-safe node references, text geometry, computed
-style, constraint validation and validated submission, `<input type=file>` with the native
-picker, and an app opt-in external link policy.
-
-**Core 0.5.0 is released (2026-11-11):** [GitHub v0.5.0](https://github.com/ui4me/ui4me/releases/tag/v0.5.0), PyPI `ui4me==0.5.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.5.0`, built by the release workflow from `089e7a8` (the gated `0b79117` plus docs and workflow-only changes). It qualified keyboard layouts, dead keys, AltGr and IME composition on KDE/KWin Wayland and Windows, exposes text-field caret/selection/geometry to screen readers, and adds the capability report and live media-environment changes.
-
-**Core 0.4.0 is released (2026-11-11):** [GitHub v0.4.0](https://github.com/ui4me/ui4me/releases/tag/v0.4.0), PyPI `ui4me==0.4.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.4.0`, built by the release workflow from `8138e78`. Clean public installs were verified on Linux (Python and PowerShell) and on Windows (Python). Core 0.3
-(programmable document, scroll and selection) and Core 0.4 (HTML controls, native
-desktop services, screen-reader bridge) are implemented. The installed Python,
-PowerShell and C consumers and automated real-input desktop journeys passed on
-Linux x64 (KDE/KWin Wayland) and Windows x64. Evidence and per-slice results are
-in [`core-foundation/PROGRESS.md`](core-foundation/PROGRESS.md).
-A result belongs to the recorded source/artifact identity, never automatically
-to a later edit.
-
-## Product scope
-
-Core is the base for responsive local desktop utilities and multi-window apps.
-It has one fixed, compiled renderer profile. Python and PowerShell call the same
-C ABI and own application logic; there is no embedded JavaScript engine, browser,
-HTTP resource loader, out-of-process UI broker or plugin system.
-
-| Area | Core 0.5 | Practical boundary |
-| --- | --- | --- |
-| Documents | Nested HTML, unique public IDs, local file base; insert/remove/move, text/attribute reads, selector queries, atomic batches, streaming text | Script, iframe/object/embed and inline handlers are rejected. Up to 65,536 nodes per document; the whole document is re-laid-out per change, so keep long logs bounded |
-| CSS and layout | Cascade/selectors, custom properties, block/inline/flex/grid, positioning incl. sticky, media queries, overflow/ellipsis | An application subset, not browser conformance |
-| Painting | Backgrounds, borders, clipping, shaped text, raster images, scrollbars | Advanced effects/SVG breadth, animations and printing are not promised |
-| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face`; IME composition (qualified: KWin text-input-v3 with a scripted input method; Microsoft Japanese and Korean IMEs); keyboard layouts, dead keys, AltGr, repeat (qualified: us, cz, us-intl, de on both hosts); bidi-aware caret, hit testing and highlight | Selection is logical (copy is logical, highlight visual); visual arrow movement may skip a direction-boundary offset; no surrounding text to the input method (winit 0.30); system font changes are not live; a Chinese IME was exercised only through the scripted Linux input method |
-| Controls | Text/password/textarea, buttons, checkbox/radio, labels, `select` (drop-down/listbox), `dialog`, `details` | No custom-element or rich-text editing component |
-| Interaction | Keyboard/focus/Tab order, document selection + copy + `selectionchange`, declarative default-action rules, scroll API, follow-end | Binding callbacks run after dispatch (use rules to cancel) |
-| Windows | Multiple windows; show/hide, focus, min/max/fullscreen, constraints, icon, state, monitors; `capabilities()` report; OS colour scheme and app media overrides (`set_environment`) | Wayland forbids focus/activation, show/hide, client icons, un-minimize; these report `unsupported`; OS theme changes are reported by winit on Windows only |
-| OS services | Native clipboard; open/save/folder dialogs; file drops (Windows/X11) | Linux dialogs need xdg-desktop-portal; Wayland drops are not delivered (winit 0.30) |
-| Accessibility | AccessKit bridge: AT-SPI (Linux) and UI Automation (Windows); keyboard operation; text fields as per-line text runs with character geometry, caret/selection, set-selection and replace-selection actions | No WCAG claim; Orca/Narrator speech was not run (automated AT-SPI/UIA clients only); `prefers-contrast`/`forced-colors` are not evaluated |
-| Delivery | One version authority, native-inclusive Python wheel (`manylinux_2_35` in release builds), PowerShell module, native SDK, sdist | Only both-platform release builds with installed/native evidence qualify publication |
-
-## Architecture and ownership
-
-| Location | Owns |
-| --- | --- |
-| `crates/ui4me-core` | C ABI, typed protocol, application/session lifecycle, windows, bounded host queues, timers and winit/softbuffer integration |
-| `crates/ui4me-document` | Canonical DOM, generational identities, parsing, control state and atomic mutations |
-| `crates/ui4me-renderer` | One document facade; private style, text, layout, scene, raster, interaction and pipeline modules |
-| `crates/ui4me-assets` | Local resource policy, decoding/font sources, cache accounting, finite admission and process-owned asset workers |
-| `crates/ui4me-engine-types` | Internal identifiers, status codes and value types shared by the engine; no second public host API |
-| `bindings/python` | ctypes loader, Python facade, package backend and tests |
-| `bindings/powershell` | PowerShell module, .NET bridge, retained owner thread and isolated background runspaces |
-| `patches` | Exact carried Stylo/Taffy source and corrections; required for reproducible source builds |
-| `tools`, `scripts`, `.github` | Existing build/package/evidence/publication structure, strengthened for the larger source graph |
-| `examples/foundation` | One shared HTML/CSS app fixture used by both language examples |
-
-Rendering stages do not become public crates or public ABI objects. The host
-sees a document interface, input messages, immutable rendered pixels and plain
-event records. Native event processing and resource completions update the
-canonical document; hit testing uses committed layout/scene geometry.
-
-Mutable windows, documents and timers live on the owner thread. The shared
-session handle contains control queues and lifecycle state, not a mutex around
-the renderer. The owner releases its document borrow before calling Python or
-PowerShell. A callback can safely issue another supported command. Rendering,
-snapshots and decoding do not hold the shared post/stop queue lock.
-
-Run and callback leases are tracked independently of the lifecycle phase.
-Destroy is rejected until run and every callback have returned, including a
-`stopped` callback. Foreign callbacks never unwind across the ABI. A Rust panic
-is contained, the active session is stopped/poisoned and new sessions are refused
-until the host process restarts. Ordinary argument, asset and callback failures
-have distinct errors and do not imply a successful operation.
-
-### Asset lifetime
-
-The process has two fixed asset worker threads. A new application registers an
-interest in that service; it does not create a fresh pool. Shutdown stops intake,
-cancels interests, closes delivery atomically and returns without joining a
-codec on the UI owner. A cancelled job remains owned by the process service
-until it returns; later sessions cannot create extra worker threads around it.
-
-Admission remains charged while a job is queued, executing or awaiting delivery.
-A rejected job becomes a structured resource failure. Mailbox closure and
-publication use the same lock. Late image completions release their cache pins.
-Removing a DOM generation retires its image/style/font interests. An evicted
-raster still held by a frame remains charged until that frame releases it.
-These are operational budgets, not a claim that all process RSS or third-party
-codec temporary allocations are exactly bounded by one counter.
-
-## Public contract
+This is the reference for the public contract of UI4ME Core 1.0. The native boundary is
+[`include/ui4me.h`](../include/ui4me.h) (ABI 1); every operation is a typed JSON command
+defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). The Python, PowerShell and
+LuaJIT bindings wrap those commands. Compatibility rules are in
+[`COMPATIBILITY.md`](COMPATIBILITY.md), and the machine-readable list of every operation, event,
+CSS feature and platform capability is [`SUPPORT_PROFILE_V1.json`](SUPPORT_PROFILE_V1.json).
 
 ### Session and threads
 
@@ -150,33 +29,6 @@ Cancellation is cooperative. An executing arbitrary user script retains its
 process worker slot until it actually exits; stopping the UI does not kill it.
 The process permits four such workers, with at most 256 captured output entries
 per work item. Keep long operations off UI callbacks.
-
-### Core 0.4 status (2026-11-11): Foundation Complete (local)
-
-Candidate 0.4.0 (`ce201c7`, source `sha256:69001e95…`) passed the 0.4 gate on Linux x64 and Windows x64:
-- installed C, Python and PowerShell consumers;
-- the Core-only file utility (`examples/*/file_utility.*`) and chat/log demo (`examples/*/chat_log.*`), driven by automated real input with native OS file dialogs;
-- the native window probe.
-
-It is not published. Known limits:
-- no screen-reader bridge;
-- full relayout per change (keep logs bounded);
-- Wayland cannot focus, hide, set icons or receive file drops;
-- the Linux wheel tag is `manylinux_2_39` until it is rebuilt in a manylinux container.
-
-Ledger: `docs/core-foundation/PROGRESS.md`.
-
-Quick start from a local build: `python dev.py build --binding all --profile release`, then `python dev.py package --binding all --profile release`.
-- **Python:** install `dist/<platform>/ui4me-0.4.0-*.whl` into a virtual environment, then run `python examples/python/file_utility.py`.
-- **PowerShell:** extract `dist/<platform>/Ui4me-0.4.0-<platform>-stage.zip`, `Import-Module <dir>/Ui4me/Ui4me.psd1`, then run `examples/powershell/file_utility.ps1`.
-
-### Core 0.3 status (2026-11-11)
-
-Candidate 0.3.0 (`8b536fe`, source `sha256:30cab4db…`) passed the local 0.3 gate on Linux x64 and Windows x64:
-- installed C, Python and PowerShell consumers;
-- the Core-only chat/log demo (`examples/*/chat_log.*`) driven by automated real input (KWin fake_input on a virtual KWin; SendInput in an interactive Windows session).
-
-It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 
 ### Binding methods
 
@@ -231,8 +83,15 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Pointer (0.8) | events `pointerdown`/`pointerup`/`pointermove`/`pointercancel` (`pointer_id`, `pointer_type`, `is_primary`, `pressure`, `buttons`), `got`/`lostpointercapture`, `touch`; `set_pointer_capture(id, pointer_id=1)`, `release_pointer_capture`, `get_pointer_capture()`; every event reports `cancelable` | `SetPointerCapture`, `ReleasePointerCapture`, `GetPointerCapture` |
 | Scrolling (0.8) | `scroll_to`/`scroll_by`/`scroll_into_view(..., behavior="auto"\|"instant"\|"smooth")`; `get_scroll` reports `animating` | `ScrollTo`/`ScrollBy`/`ScrollIntoView(..., behavior)` |
 | Popovers (0.8) | `show_popover(id)`, `hide_popover`, `toggle_popover` → bool, `get_popover` → `{open, kind}`; events `beforetoggle`, `toggle` | `ShowPopover`, `HidePopover`, `TogglePopover`, `GetPopoverJson` |
+| Pagination (1.0) | `paginate(size=None, width=, height=, margins=, print_media=True)`, `get_page_rects(id)`, `render_page(page, path, dpi=96)` | `PaginateJson`, `GetPageRectsJson`, `RenderPage` |
+| PDF and printing (1.0) | `export_pdf(path, size=None, ..., dpi=150, title=)`, `print_document(size=None, ..., dpi=300, title=)`; event `print` | `ExportPdf`, `PrintDocument` |
+| Rich editing (1.0) | `exec_edit(id, command, value=None)`, `get_edit_state(id)` | `ExecEdit`, `GetEditStateJson` |
+| Background work (1.0) | `app.run_in_background(fn, *args, on_done=, on_error=, on_cancel=, pass_task=False)` → `Task` | `$app.RunInBackground(work, onDone, onError[, arguments])` → `BackgroundTask` |
+| Developer diagnostics (1.0) | `get_diagnostics(redact=True, since=None, kinds=None)`, `explain(id, property=None)` | `GetDiagnosticsJson`, `ExplainJson` |
 
-**0.5 contract.** `capabilities` (wire op, no window) returns `platform` (`wayland`,
+### Capabilities and media environment (0.5)
+
+`capabilities` (wire op, no window) returns `platform` (`wayland`,
 `x11`, `windows`, `headless`, or `pending` before `run()` starts the native backend),
 `backend` and `features`: each feature is `{"status", "reason"}` with status
 `supported`, `unsupported` (the platform or Core does not offer it), `denied` (refused
@@ -253,7 +112,9 @@ scheme in force. `get_accessibility_tree` now reports a text field's `selection`
 line with its UTF-16 `offsets`. A close requested for a window ends delivery of its
 events at once; input to a closing window is refused.
 
-**0.6 contract.** `get_html` serializes an element (`element`), a node reference (`node`)
+### Document interface (0.6)
+
+`get_html` serializes an element (`element`), a node reference (`node`)
 or the whole document (neither); `outer` includes the node; control values typed by the
 user are not markup; output is capped at 4 MiB (code 5). Author stylesheets attach after
 the document's own sheets (at most 64, 1 MiB each) and return a `sheet` id and parse
@@ -283,7 +144,9 @@ never navigates; only `https`, `http` and `mailto` can be allowed (optionally pe
 OS handler without a shell. Declarative default-action rules also cancel link activation,
 submission, dialog Escape (`cancel`), selection drags and `select` popups (`mousedown`).
 
-**0.7 contract.** Desktop services answer `{"status": ..., "reason"?}` with `sent`/`ok`/
+### Desktop services (0.7)
+
+Desktop services answer `{"status": ..., "reason"?}` with `sent`/`ok`/
 `registered`/`supported`, or `unsupported`, `unavailable`, `denied`, `conflict` and the exact
 cause; nothing is simulated, and headless sessions report `unavailable`. Linux uses D-Bus
 (`org.freedesktop.Notifications`; StatusNotifierItem + dbusmenu with the
@@ -308,7 +171,9 @@ unsupported on Wayland (winit 0.30). `claim_instance` makes the first process pe
 forward bounded path lists (data only) and get `primary: false`. Core installs no file
 associations.
 
-**0.8 contract.** (Since 1.0 this applies to `contenteditable="plaintext-only"`; `""` and `true`
+### Plain-text editing, pointer, scrolling and popovers (0.8)
+
+(Since 1.0 this applies to `contenteditable="plaintext-only"`; `""` and `true`
 are rich hosts, see the 1.0 contract.) An element with `contenteditable` (`false` ends it) is a
 focusable plain-text editing host laid out `pre-wrap`: its content is
 one text node (the first edit flattens markup to text; typed and pasted content is never
@@ -337,7 +202,9 @@ returns to the invoker; the invoker exposes `expanded`. Anchor positioning: `anc
 `readonly` (HTML), mirrors under `dir=rtl` and reports its sanitized value; a number is never
 changed by the wheel and parses only the HTML floating-point syntax.
 
-**0.9 contract.** CSS profile 1.26.0 (carried Stylo patches P-006-18, P-006-19). Transitions
+### Animations, advanced CSS and SVG (0.9)
+
+CSS profile 1.26.0 (carried Stylo patches P-006-18, P-006-19). Transitions
 and `@keyframes` animations run on the document clock shared with smooth scrolling: a window
 requests frames (about 60 Hz) only while one runs, `display: none` cancels them, removal drops
 them, and the `transition*`/`animation*` events reach hosts with `property_name`/
@@ -352,17 +219,20 @@ and textareas to their value; `resize` lets a corner drag set the inline `width`
 Inline `<svg>` renders through the bounded vector raster path with document CSS for SVG
 presentation properties; a click on a shape reports the shape's id; `pointer-events`,
 `role="img"`/`aria-label`/`<title>` are honoured; limits and the supported subset are in
-[`core-roadmap/data/SVG_PROFILE_V0_9.md`](core-roadmap/data/SVG_PROFILE_V0_9.md) (SVG `<text>`,
+[`reference/SVG_PROFILE.md`](reference/SVG_PROFILE.md) (SVG `<text>`,
 `foreignObject`, scripting, animation and external references are not supported, and
 reported). Hyphenation covers en-US, de, fr, es, pt, nl, sk, pl and uk (Czech patterns are
 GPL-only and not shipped). `backdrop-filter` is On (its `url()` forms stay reported); a
 `border-radius` box no longer hits outside its rounded border; blur deviations are bounded.
-Framework-style markup is covered by fixtures with documented exceptions
-([`core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md`](core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md)).
+Framework-style markup (utility-class and component-library HTML) is covered by fixtures in
+`document/framework_fixtures_tests.rs`; framework JavaScript and build-time CSS directives are
+out of scope.
 Ruby layout, `shape-outside`, `clip-path`/`filter` `url()` references, `cross-fade()`,
 `shape()` and `corner-shape` are not implemented.
 
-**1.0 contract.** CSS profile 1.27.0 (`@page` and `page` On). `paginate` lays the document
+### Paged media, printing, rich editing, background work and diagnostics (1.0)
+
+CSS profile 1.27.0 (`@page` and `page` On). `paginate` lays the document
 out into pages (`size` a named size or `width`/`height` in CSS px, `margins`, `print` media;
 an `@page` size wins) and returns `{count, pages:[{width, height, content}], revision}`;
 `get_page_rects` maps an element to its page boxes, `render_page` writes one page as PNG at
@@ -379,11 +249,13 @@ reports the active formats. Element ids inside a rich host are not stable across
 `run_in_background` (Python) / `RunInBackground` (PowerShell) run a function on a bounded worker
 pool and settle exactly once on the owner thread (done, error or cancelled); unfinished tasks
 are cancelled at stop. `get_diagnostics` returns schema 1 (redacted by default, `since` cursor,
-`kinds` filter; [`core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md`](core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md))
+`kinds` filter; [`reference/DIAGNOSTICS_SCHEMA_V1.md`](reference/DIAGNOSTICS_SCHEMA_V1.md))
 and `explain` answers why an element looks or behaves as it does (matched rules, box, hit and
 focus state) without exposing engine handles. The LuaJIT binding (`bindings/lua/ui4me.lua`,
 release asset `ui4me-lua-1.0.0.zip`) is a pure FFI binding over ABI 1 with the same owner-thread
-model; it finds the native library through `UI4ME_NATIVE_LIB` or the system loader path.
+model; it loads the native library named by `UI4ME_NATIVE_LIB` (an absolute path) or the one next to `ui4me.lua` (or in a `native/` directory beside it).
+
+### Documents, scrolling, selection, controls and windows (0.3–0.4)
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.
@@ -444,11 +316,11 @@ small trailing text node or starts a new one, so each append costs only the chun
 size; `set_text` replaces all text and is limited to 16 KiB. `trim_children` (also a
 batch op) keeps at most `keep` element children, removing the oldest (`start`) or
 newest (`end`). Removed nodes are collected at the next commit. A document holds up
-to 65,536 nodes. Layout is recomputed for the whole document on each change, so
-frame cost grows with the retained DOM: on the reference Linux host (release
-build), about 10 ms per frame at 300 log lines, 33 ms at 1,000 and 250 ms at 6,000.
-Keep long logs bounded with `batch([insert_html, trim_children])`; a few hundred to
-1,000 lines keep updates smooth.
+to 65,536 nodes. Layout reuses unchanged block rows where it can prove the result is the
+same and otherwise lays out the whole document, so frame cost still grows with the retained DOM:
+on the reference Linux host (release build), typical updates take about 10–50 ms at 1,000 log
+rows and 80–600 ms at 3,000–10,000. Keep long logs bounded with
+`batch([insert_html, trim_children])`.
 HTML semantics (0.4): a modal `<dialog>` enters the top layer and makes the rest of
 the document inert (not hit-testable, not focusable). It focuses its autofocus or first
 focusable element, keeps Tab inside, and Escape requests a close: a cancelable `cancel`,
@@ -475,7 +347,7 @@ Native file dialogs (0.4) never block the UI.
 - **File drops:** dropped files arrive as `file_drop` events (`paths`), and hover as `file_hover`/`file_hover_cancelled`, where winit supports them (Windows and X11). On Wayland, winit 0.30 delivers no drops.
 Accessibility (0.4, measured scope):
 - **Keyboard:** ordinary interactions are keyboard-operable. Tab/Shift+Tab follow document and `tabindex` order, skip disabled and inert content, and wrap; keyboard focus matches `:focus-visible`. Enter/Space activate buttons and links, Space toggles checkboxes, arrows move through radio groups and selects, Escape closes modal dialogs, and a modal dialog traps focus.
-- **Screen readers:** each native window exposes its document through AccessKit (accesskit 0.25 / accesskit_winit 0.34): AT-SPI on Linux, UI Automation on Windows. The tree is built only while an assistive technology is attached. It has roles from HTML and ARIA, accessible names (label, `aria-label`/`labelledby`, content, `title`, `placeholder`), states (checked, disabled, expanded, selected, focused, modal), control values, bounds and focus, and excludes `display:none`, `visibility:hidden` and `aria-hidden` content. Assistive actions (focus, click/default action, set value, increment/decrement) run as trusted user input. Text fields (0.5) are one text run per laid-out line with grapheme characters, positions/widths, word starts, direction and hard line breaks, plus the field's caret/selection; set-selection and replace-selection actions edit through the editing engine. Measured: a Linux AT-SPI client read heading, button, labelled entry, checkbox state and link names and invoked a button; read field text and lines, moved the caret, read character extents, selected and replaced text, and reconnected; a Windows UIA client did the TextPattern/ValuePattern equivalents, and the native COM client read a selection back. `accessibility_tree()` / `AccessibilityTreeJson()` return the same tree for tests. Not claimed: WCAG conformance or Orca/Narrator speech journeys (the clients were automated). The managed System.Windows.Automation client crashes reading text from a `GetSelection()` range under PowerShell 7; the native COM client is not affected. On Linux, `aria-expanded`/`aria-invalid` states come from a carried patch to accesskit_atspi_common 0.21.1 (`patches/accesskit_atspi_common/verify.sh`).
+- **Screen readers:** each native window exposes its document through AccessKit (accesskit 0.25 / accesskit_winit 0.34): AT-SPI on Linux, UI Automation on Windows. The tree is built only while an assistive technology is attached. It has roles from HTML and ARIA, accessible names (label, `aria-label`/`labelledby`, content, `title`, `placeholder`), states (checked, disabled, expanded, selected, focused, modal), control values, bounds and focus, and excludes `display:none`, `visibility:hidden` and `aria-hidden` content. Assistive actions (focus, click/default action, set value, increment/decrement) run as trusted user input. Text fields (0.5) are one text run per laid-out line with grapheme characters, positions/widths, word starts, direction and hard line breaks, plus the field's caret/selection; set-selection and replace-selection actions edit through the editing engine. Measured: a Linux AT-SPI client read heading, button, labelled entry, checkbox state and link names and invoked a button; read field text and lines, moved the caret, read character extents, selected and replaced text, and reconnected; a Windows UIA client did the TextPattern/ValuePattern equivalents, and the native COM client read a selection back. `accessibility_tree()` / `AccessibilityTreeJson()` return the same tree for tests. Since 1.0, automated journeys also check what Orca (its braille presentation) and NVDA (its speech log) present. Not claimed: WCAG conformance; Narrator was not run. The managed System.Windows.Automation client crashes reading text from a `GetSelection()` range under PowerShell 7; the native COM client is not affected. On Linux, `aria-expanded`/`aria-invalid` states come from a carried patch to accesskit_atspi_common 0.21.1 (`patches/accesskit_atspi_common/verify.sh`).
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated
@@ -572,208 +444,3 @@ Arcs remain charged after eviction in both caches. There can be 4,096
 current requesters per resource document. Text/layout/decorations and diagnostics
 also have bounded caches/history. Exceeding a bound is an explicit error; avoid
 submitting hundreds of distinct assets in a single burst.
-
-## Development
-
-Use Python 3.11+, Rust **1.99.1** (selected by `rust-toolchain.toml`), .NET SDK
-**10** (`global.json`) and PowerShell **7.4+**. The managed bridge targets .NET 8
-and the PowerShell 7.4 API floor. Windows PowerShell 5.1 and ARM/macOS are not
-supported targets. Python 3.11–3.14 is the metadata range; testing one interpreter
-does not establish the whole range.
-
-Linux needs a native compiler, `pkg-config`, X11/Wayland/xkbcommon development
-libraries and a working desktop for native acceptance. On Debian/Ubuntu the
-convenience bootstrap supports `scripts/bootstrap.sh --install-system` after
-reviewing its system-install option. Windows needs Visual Studio Build Tools
-with the C++ x64 toolset and Windows SDK; use its x64 developer shell. The
-PowerShell packaging path needs PSResourceGet 1.1+. `scripts/bootstrap.ps1`
-provides optional WinGet installation and Python-environment setup.
-
-```sh
-python -m venv .venv
-# Linux: source .venv/bin/activate
-# PowerShell: .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
-python dev.py doctor
-python dev.py version --check
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-python dev.py build --binding all --profile dev
-python dev.py test --binding all --suite unit --profile dev
-```
-
-`VERSION` is authoritative. `python dev.py version --check` checks derived Rust,
-Python, PowerShell and managed metadata; `python dev.py version --set X.Y.Z` updates it
-intentionally. Keep Cargo/NuGet locks. `python dev.py lock` is for a planned
-reviewed dependency update, not a routine cure for a failed build.
-
-The Stylo/Taffy source patches are part of the build input. Do not remove them
-from a source ZIP or sdist. The build backend computes the local dependency/patch
-closure, rejects paths outside the source root and stages that complete closure.
-Packages retain native dependency notices and bundled font licenses.
-
-### Run the development example
-
-After the development build, Linux Python can run the checkout directly:
-
-```sh
-export UI4ME_NATIVE_LIB="$PWD/build/cargo/linux-x64/x86_64-unknown-linux-gnu/debug/libui4me_core.so"
-export PYTHONPATH="$PWD/bindings/python/src"
-python examples/python/hello.py
-```
-
-On Windows use the absolute DLL at
-`build/cargo/win-x64/x86_64-pc-windows-msvc/debug/ui4me_core.dll` and set
-`PYTHONPATH` to `bindings/python/src`. To run PowerShell without manual bridge staging, first run
-`python dev.py package --binding all --profile dev`, then start a fresh PowerShell
-process and run:
-
-```powershell
-Import-Module ./build/package/linux-x64/Ui4me/Ui4me.psd1
-./examples/powershell/hello.ps1
-```
-
-Use `win-x64` on Windows. A regular installed package can run the examples with
-no native override. Both examples use the same fixture and public APIs.
-
-### Build packages and test installed consumers
-
-Freeze/commit a source checkpoint first. Build receipts include exact normalized
-source identity, compiler/configuration and hashes of native, managed and
-managed-dependency outputs. Packaging refuses a stale receipt or changed output.
-
-```sh
-python dev.py build --binding all --profile release
-python dev.py test --binding all --suite unit --profile release
-python dev.py package --binding all --profile release
-python .github/scripts/check-sdist.py
-python dev.py test --binding all --suite installed --manifest dist/linux-x64/manifest.json
-python dev.py upgrade-check --binding python --manifest dist/linux-x64/manifest.json
-```
-
-Substitute `win-x64` on Windows. The source-distribution check builds from an
-archive outside the checkout, installs its own resulting wheel and checks that
-consumer. It needs a native compiler and pinned Rust; it does not claim a wheel
-can be built on arbitrary systems without build tools. Upgrade checks install
-public 0.1.0 in isolation, exercise it, install the exact candidate and exercise
-it in a fresh process. An exact-candidate reinstall is a separate check.
-
-Build both hosts from the same committed source, collect the two platform
-artifact directories and assemble:
-
-```sh
-python dev.py assemble --manifest dist/linux-x64/manifest.json --manifest dist/win-x64/manifest.json --out dist/release
-python dev.py test --binding all --suite installed --manifest dist/release/manifest.json
-python dev.py upgrade-check --binding powershell --manifest dist/release/manifest.json
-```
-
-Repeat installed checks on the other OS against that same combined directory.
-The PowerShell module contains both native payloads. Its upgrade check requires
-this assembled `.nupkg`; a host staging ZIP is not the registry package. Wheels
-remain per platform.
-The external C consumer needs a C compiler (MSVC developer environment on Windows).
-The Linux wheel tag is determined by auditwheel and actual build dependencies;
-do not infer compatibility from an earlier release's tag.
-
-### Native acceptance and publication
-
-Use installed candidate bytes on the actual target desktops:
-
-```sh
-python dev.py test --binding python --suite native --manifest dist/release/manifest.json --interactive
-python dev.py test --binding powershell --suite native --manifest dist/release/manifest.json --interactive
-python dev.py report --manifest dist/release/manifest.json
-```
-
-The F01–F12 catalog is in `quality/scenarios.json`. Run the shared foundation
-app as well as the native lifecycle harness when observing F03; the harness alone
-does not contain every 0.2 control. Native checks must include
-first paint, title, keyboard/pointer input, selection/clipboard/undo, Czech and
-combining text, checkbox/radio labels, resize/fractional DPI, scrolling, two
-independent windows, close veto, background completion under queue pressure,
-stop/reuse and explicit failure reporting. Record the actual compositor,
-PowerShell/Python versions and ordinary desktop user. A framebuffer PNG is not
-a desktop capture. Basic IME plumbing is implemented, but do not claim full IME
-support from synthetic composition events.
-
-Automated results and native observations are distinct. `attest` records an
-observed scenario; the default `qualify` policy requires all native scenarios.
-The manually triggered **Release and publish** GitHub Actions workflow builds
-both platforms, assembles the packages, publishes the Python wheels and
-PowerShell module, and creates a GitHub release. It does not run tests or claim
-desktop acceptance. Run it on the default branch only when publication is wanted:
-
-```sh
-gh workflow run publish.yml --ref main
-```
-
-The earlier qualification-based workflow is preserved at
-`.github/workflow-backups/publish-qualified.yml`. CI and the optional local
-qualification commands remain available when a more thorough check is wanted.
-
-Publication remains explicit in the existing manual workflows. Source changes
-after a candidate build invalidate its receipts. Rebuild/repackage the affected
-candidate before further release checks, and verify the public downloaded
-bytes only after an authorized upload. No 0.2 publication has been performed by
-the ZIP delivery.
-
-## Instructions for the local AI agent
-
-Copy the following prompt into the agent operating on the replacement checkout.
-The implementation is present; the task is local establishment and defect repair.
-
-```text
-Establish and verify the UI4ME 0.2 implementation in this checkout on branch
-implementation/v0.2. Read AGENTS.md, README.md and docs/PROJECT_STATUS.md first,
-plus build/delivery/verification.json if present. Keep the new repository layout
-and VERSION=0.2.0. The source ZIP is the implementation, not a migration plan.
-
-Inspect git status and the replacement diff. Preserve .git and user changes.
-Install/use the pinned toolchains and committed Cargo/NuGet locks. Run the version,
-format and clippy checks, then build both bindings and run the workspace/core,
-Python, PowerShell and tooling suites through dev.py. Fix concrete failures in
-source, add only focused regressions for those defects, and rerun affected checks.
-Do not hide failures with skips, broad lint suppression, fabricated receipts or
-an unreviewed dependency upgrade.
-
-Run the shared foundation application on my actual Linux KDE desktop and Windows
-ordinary-user desktop, from both bindings. Verify the new rendering/editing and
-local asset behavior, targeted updates preserving other input state, independent
-windows, close/veto/stop, background completion, thread ownership and repeated
-sessions. Check real clipboard, Czech/dead-key/AltGr input, composition and
-fractional scaling. Report unsupported or unverified behavior accurately.
-Use the available Windows connection if configured; request access only if that
-host really cannot be reached. SSH-only headless success is not desktop evidence.
-
-Once fixes are complete, commit a coherent source checkpoint on this branch.
-Build release artifacts from that same source on Linux x64 and Windows x64.
-Run the standalone sdist build, isolated installed consumers, real 0.1.0-to-0.2.0
-upgrade checks and PowerShell 7.4 compatibility check. Assemble the two host
-outputs, then test the exact combined candidate on both hosts. Keep receipts,
-logs and screenshots under ignored build/ or dist/ and bind them to the actual
-source and artifact hashes. If source changes, repeat the affected build/package
-checks before claiming candidate results.
-
-Finish with the changes made, commands actually run, exact pass/fail/not-run
-results, working example launch commands and remaining release blockers.
-Do not publish, tag a release, merge or push without my instruction. Keep the
-scope to a dependable 0.2 foundation; defer new widgets and broad feature work.
-```
-
-## Source provenance
-
-The replacement starts from the supplied `ui4me/ui4me` snapshot, preserving its
-host/package layout. Rendering and interaction algorithms were reviewed and
-consolidated from the supplied older repository, with ownership, protocol,
-resource lifetime and public-facade changes for this implementation. The old
-migration plan is advisory, not an implementation authority.
-
-| Supplied source | Archive label | Archive SHA-256 |
-| --- | --- | --- |
-| New UI4ME repository | `69ab68732e1697ae858bfc06ac55cee0fe589fa1` | `823c285eb676abb6042d3d0eabda2c93aa12df1f9d1e5c72e17dabdd30673590` |
-| Older repository | `ac1ddb3c3b3bc4952aa546077ede6a5da16dace2` | `5008aae9c8e3f460938667589c0a358b97e2f23558854925257a923925accdbc` |
-
-These labels identify the supplied archives, not a claim of a newly fetched
-remote HEAD. The archive delivered to the user is a complete source replacement;
-it intentionally omits compiler caches, binary packages, virtual environments
-and private Git metadata.

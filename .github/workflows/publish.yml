@@ -163,7 +163,7 @@ jobs:
           (cd dist/release && sha256sum -- * | grep -v ' SHA256SUMS$' > SHA256SUMS)
           notes="docs/release-notes/v$version.md"
           if [ -f "$notes" ]; then
-            { cat "$notes"; printf '\n\nBuilt from commit %s. Qualification evidence is recorded in docs/core-roadmap/PROGRESS.md; this workflow builds and publishes, it does not run the native gate.\n' "$GITHUB_SHA"; } > release-notes.md
+            { cat "$notes"; printf '\n\nBuilt from commit %s. The native release gate is described in docs/DEVELOPMENT.md; this workflow builds and publishes, it does not run the native gate.\n' "$GITHUB_SHA"; } > release-notes.md
           else
             printf 'Built from commit %s. This release workflow does not run tests.\n' "$GITHUB_SHA" > release-notes.md
           fi

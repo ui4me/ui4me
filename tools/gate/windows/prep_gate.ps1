@@ -20,7 +20,7 @@ Copy-Item -Recurse "$Src\examples" "$Root\examples"
 Copy-Item "$Src\tests\native\*" $Root -Include *.py, *.ps1, *.lua
 Get-ChildItem "$Src\tests\native\windows" -File | Copy-Item -Destination $Root
 Copy-Item -Recurse "$Src\tests\packaging" "$Root\packaging"
-Copy-Item "$Src\docs\core-roadmap\data\PLATFORM_CAPABILITIES_V1.json" "$Root\PLATFORM_CAPABILITIES_V1.json"
+Copy-Item "$Src\docs\reference\PLATFORM_CAPABILITIES_V1.json" "$Root\PLATFORM_CAPABILITIES_V1.json"
 if (Test-Path $PyDeps) { Copy-Item -Recurse $PyDeps "$Root\pydeps" }
 # The LuaJIT binding (pure Lua) and a LuaJIT built by bindings\lua\tools\build_luajit.cmd, when present.
 Copy-Item -Recurse "$Src\bindings\lua" "$Root\lua" -ErrorAction SilentlyContinue

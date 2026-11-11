@@ -361,7 +361,7 @@ fn accessible_names_for_inline_svg() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// F0908: the static presentation corpus (docs/core-roadmap/data/SVG_PROFILE_V0_9.md). Each case
+// F0908: the static presentation corpus (docs/reference/SVG_PROFILE.md). Each case
 // is a self-contained `<svg>` at 100 x 100 CSS px (viewBox 0 0 100 100); the assertions sample key
 // pixels, never full goldens.
 // ---------------------------------------------------------------------------------------------

@@ -1,11 +1,11 @@
-# SVG static presentation profile (Core 0.9, F0907 / F0908)
+# SVG static presentation profile
 
 Fixed profile of what UI4ME Core draws for static SVG. It covers two entry points that share one
 rasteriser (usvg 0.49 parse + resvg/tiny-skia render, no `text` feature, no system fonts):
 
 * **External SVG** (`<img src=*.svg>`, CSS `url(*.svg)`): `crates/ui4me-assets/src/svg*`. Unchanged by
   0.9.
-* **Inline `<svg>`** in HTML (F0907): `crates/ui4me-renderer/src/pipeline/inline_svg.rs`. The subtree
+* **Inline `<svg>`** in HTML: `crates/ui4me-renderer/src/pipeline/inline_svg.rs`. The subtree
   is serialised into a standalone document (profile elements only, CSS resolved, references limited
   to the same document) and goes through the external path as a `data:image/svg+xml` image; the
   `<svg>` is a replaced box (CSS `width`/`height`, the `width`/`height` attributes, `viewBox` ratio,

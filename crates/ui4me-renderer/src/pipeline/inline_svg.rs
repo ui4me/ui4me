@@ -4,7 +4,7 @@
 //! the ordinary bounded vector-image path (007: prescan, usvg/resvg, per-size raster cache), exactly
 //! as `<img src="data:image/svg+xml,...">` would be. The serialisation is where the CSS meets SVG:
 //!
-//! * only the static elements of `docs/core-roadmap/data/SVG_PROFILE_V0_9.md` are written;
+//! * only the static elements of `docs/reference/SVG_PROFILE.md` are written;
 //!   `foreignObject`, animation elements, scripts and event attributes never reach the rasteriser;
 //! * `href`/`url()` references are limited to same-document fragments (and `data:` images), so an
 //!   inline SVG can never trigger a fetch;

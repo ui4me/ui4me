@@ -308,7 +308,7 @@ fn sticky_is_bounded_by_its_containing_block() {
 fn pseudo_elements_first_line_first_letter_generated_and_counters() {
     let mut d = doc("<style>#fl::first-line{font-size:40px;line-height:50px}\
          #fl,#plain{width:200px;margin:0}\
-         #p2{margin:0;width:300px}#p2::first-letter{font-size:48px;float:left;line-height:48px}\
+         #p2{margin:0;width:300px;display:flow-root}#p2::first-letter{font-size:48px;float:left;line-height:48px}\
          #bf::before{content:'';display:block;height:15px}\
          #bf::after{content:'';display:block;height:25px}\
          #bf{margin:0}\

@@ -1165,10 +1165,9 @@
     "profile_version": "1.27.0"
   },
   "documents": {
-    "contract": "docs/PROJECT_STATUS.md",
-    "diagnostics": "docs/core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md",
-    "framework_fixtures": "docs/core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md",
-    "svg": "docs/core-roadmap/data/SVG_PROFILE_V0_9.md"
+    "contract": "docs/API.md",
+    "diagnostics": "docs/reference/DIAGNOSTICS_SCHEMA_V1.md",
+    "svg": "docs/reference/SVG_PROFILE.md"
   },
   "events": [
     "animationcancel",

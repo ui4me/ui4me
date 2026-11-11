@@ -4,7 +4,7 @@ KWin on Linux, the interactive session on Windows):
     python capabilities_probe.py --out caps.json [--update]
 
 Reads `app.capabilities()` once the native backend runs and compares every feature status with
-`docs/core-roadmap/data/PLATFORM_CAPABILITIES_V1.json` for this platform (`--update` records it
+`docs/reference/PLATFORM_CAPABILITIES_V1.json` for this platform (`--update` records it
 instead; reasons are informational, statuses are the contract). Automated; not a person.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ui4me import App
 
-PROFILE = Path(__file__).resolve().parents[2] / "docs" / "core-roadmap" / "data" / "PLATFORM_CAPABILITIES_V1.json"
+PROFILE = Path(__file__).resolve().parents[2] / "docs" / "reference" / "PLATFORM_CAPABILITIES_V1.json"
 
 
 def main() -> int:

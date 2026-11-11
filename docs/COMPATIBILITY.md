@@ -1,6 +1,6 @@
 # UI4ME Core 1.0 compatibility contract
 
-This file is the stability promise of Core 1.0 (F1101). It covers the native ABI
+This file is the stability promise of Core 1.0. It covers the native ABI
 ([`include/ui4me.h`](../include/ui4me.h)), the JSON wire protocol
 ([`crates/ui4me-core/src/protocol.rs`](../crates/ui4me-core/src/protocol.rs)), and the Python,
 PowerShell and Lua bindings. The supported feature surface is the canonical profile
@@ -70,11 +70,11 @@ PowerShell and Lua bindings. The supported feature surface is the canonical prof
 
 | Client | Against | Evidence |
 | --- | --- | --- |
-| v0.4.0 installed contract test (`bindings/python/tests/installed.py` and `installed.ps1` at tag `v0.4.0`) | 1.0.0 packages | Run in the 1.0 gate on Linux and Windows (`PROGRESS.md`) |
+| v0.4.0 installed contract test (`bindings/python/tests/installed.py` and `installed.ps1` at tag `v0.4.0`) | 1.0.0 packages | Run in the 1.0 gate on Linux and Windows (`tests/packaging/upgrade_matrix.py`) |
 | Current installed contract tests F01–F19 | 1.0.0 packages | Release gate |
 | C consumer (installed native SDK) | 1.0.0 | Installed C test on both hosts |
 | LuaJIT consumer over the C ABI | 1.0.0 | `tests/lua`, the native Lua probe |
-| Upgrade from 0.4.0 (pip upgrade, `Update-Module`-style replacement) and rollback | 1.0.0 | Packaging matrix, F1106 |
+| Upgrade from 0.4.0 (pip upgrade, `Update-Module`-style replacement) and rollback | 1.0.0 | `tests/packaging/upgrade_matrix.py` |
 
 ## Not covered
 

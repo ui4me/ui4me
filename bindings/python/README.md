@@ -14,9 +14,11 @@ with App() as app:
     app.run()
 ```
 
-Version 0.4 provides HTML documents, CSS layout (flex, grid, positioning, media
-queries), shaped Unicode text, local stylesheets and images, editable inputs,
-`select`, `dialog` and `details`, and independent windows. Use
+Version 1.0 provides HTML documents, CSS layout (flex, grid, multicolumn, positioning, media
+queries), transitions and animations, inline SVG, shaped Unicode text, local stylesheets,
+images and fonts, form controls and rich `contenteditable`, independent windows, desktop
+services (dialogs, notifications, tray, menus, shortcuts), printing and PDF export, and a
+screen-reader bridge. Use
 `app.open_file("ui/index.html")` to keep the document directory for relative
 assets, or pass `base_path` to `app.open()`. JavaScript, network resources and
 embedded browsers are not part of ui4me.
@@ -47,5 +49,6 @@ the context manager. An App runs once; create a fresh App for the next session.
 
 Run `python -m ui4me demo` for the packaged foundation application, which
 demonstrates these APIs with local HTML/CSS, a second window and background work.
-Current support limits and the native lifecycle contract are maintained at
-[github.com/ui4me/ui4me](https://github.com/ui4me/ui4me).
+Background work runs with `app.run_in_background(fn, on_done=...)`; its result is delivered on
+the UI owner thread. The full API, platform support and limits are documented at
+[github.com/ui4me/ui4me](https://github.com/ui4me/ui4me/blob/main/docs/API.md).
