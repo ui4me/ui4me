@@ -2638,3 +2638,271 @@ fn pagination_page_png_pdf_export_and_headless_print() {
     assert_eq!(r["status"], "unavailable");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn diag_window(h: &Harness, html: &str) -> u64 {
+    h.session.command(json!({"op":"open","html":html})).unwrap()["window"]
+        .as_u64()
+        .unwrap()
+}
+
+#[test]
+fn get_diagnostics_schema_is_stable() {
+    // 0.10 F1008.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = diag_window(
+        &h,
+        "<style>#a{view-transition-name:x;color:red}</style><div id=a>x</div>",
+    );
+    cmd(json!({"op":"set_text","window":id,"element":"missing","text":"t"})).unwrap_err();
+    let report = cmd(json!({"op":"get_diagnostics","window":id})).unwrap();
+    let mut keys: Vec<_> = report.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["dropped", "items", "schema"]);
+    assert_eq!(report["schema"], 1);
+    assert_eq!(report["dropped"], 0);
+    let items = report["items"].as_array().unwrap();
+    assert!(!items.is_empty(), "{report}");
+    for item in items {
+        let mut k: Vec<_> = item
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        k.sort();
+        let base = ["code", "count", "kind", "message", "seq", "stage"];
+        assert!(
+            base.iter().all(|b| k.contains(b))
+                && k.iter()
+                    .all(|x| base.contains(x) || ["element", "feature"].contains(x)),
+            "unstable keys {k:?}"
+        );
+        assert!([
+            "css_unsupported",
+            "stale_reference",
+            "layout",
+            "paint",
+            "resource",
+            "text",
+            "command"
+        ]
+        .contains(&item["kind"].as_str().unwrap()));
+    }
+    let stale = items
+        .iter()
+        .find(|i| i["kind"] == "stale_reference")
+        .expect("stale item");
+    assert_eq!(
+        (stale["code"].as_str(), stale["element"].as_str()),
+        (Some("UNKNOWN_ELEMENT"), Some("missing"))
+    );
+    assert!(stale["message"].as_str().unwrap().starts_with("set_text:"));
+    let css = items
+        .iter()
+        .find(|i| i["kind"] == "css_unsupported")
+        .unwrap_or_else(|| panic!("{report}"));
+    assert!(css["feature"].as_str().unwrap().starts_with("css."));
+    // Same failure again: count grows, seq does not.
+    cmd(json!({"op":"set_text","window":id,"element":"missing","text":"t"})).unwrap_err();
+    let again = cmd(json!({"op":"get_diagnostics","window":id})).unwrap();
+    let again_stale = again["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["kind"] == "stale_reference")
+        .unwrap();
+    assert_eq!(
+        (again_stale["seq"].clone(), again_stale["count"].as_u64()),
+        (stale["seq"].clone(), Some(2))
+    );
+    // The diagnostics commands themselves are never logged.
+    cmd(json!({"op":"explain","window":id,"element":"nope"})).unwrap();
+    assert_eq!(
+        again["items"].as_array().unwrap().len(),
+        cmd(json!({"op":"get_diagnostics","window":id})).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len()
+    );
+    // Unknown kind names are refused.
+    assert_eq!(
+        cmd(json!({"op":"get_diagnostics","window":id,"kinds":["bogus"]}))
+            .unwrap_err()
+            .code,
+        1
+    );
+}
+
+#[test]
+fn get_diagnostics_since_and_kinds() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = diag_window(&h, "<div id=a>x</div>");
+    cmd(json!({"op":"set_text","window":id,"element":"one","text":"t"})).unwrap_err();
+    let first = cmd(json!({"op":"get_diagnostics","window":id})).unwrap();
+    let cursor = first["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["seq"].as_u64().unwrap())
+        .max()
+        .unwrap();
+    let none = cmd(json!({"op":"get_diagnostics","window":id,"since":cursor})).unwrap();
+    assert!(none["items"].as_array().unwrap().is_empty());
+    cmd(json!({"op":"set_text","window":id,"element":"two","text":"t"})).unwrap_err();
+    let next = cmd(json!({"op":"get_diagnostics","window":id,"since":cursor})).unwrap();
+    let items = next["items"].as_array().unwrap();
+    assert!(items.iter().all(|i| i["seq"].as_u64().unwrap() > cursor));
+    assert!(items.iter().any(|i| i["element"] == "two"));
+    let only = cmd(json!({"op":"get_diagnostics","window":id,"kinds":["layout"]})).unwrap();
+    assert!(only["items"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn get_diagnostics_is_bounded() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = diag_window(&h, "<div id=a>x</div>");
+    for i in 0..300 {
+        cmd(json!({"op":"set_text","window":id,"element":format!("missing{i}"),"text":"t"}))
+            .unwrap_err();
+    }
+    let report = cmd(json!({"op":"get_diagnostics","window":id})).unwrap();
+    assert_eq!(
+        report["items"].as_array().unwrap().len(),
+        128,
+        "one call returns at most 128 items"
+    );
+    assert_eq!(
+        report["dropped"].as_u64(),
+        Some(44),
+        "evicted entries are counted"
+    );
+    let tail = cmd(json!({"op":"get_diagnostics","window":id,"since":report["items"][127]["seq"]}))
+        .unwrap();
+    assert!(
+        !tail["items"].as_array().unwrap().is_empty(),
+        "the cursor pages through the rest"
+    );
+}
+
+#[test]
+fn get_diagnostics_redacts_paths_and_urls_by_default() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = diag_window(&h, "<div id=a>x</div>");
+    let element = "/home/someone/secret/file.css https://example.test/a.png?token=SECRET#frag";
+    cmd(json!({"op":"set_text","window":id,"element":element,"text":"t"})).unwrap_err();
+    let redacted = cmd(json!({"op":"get_diagnostics","window":id})).unwrap();
+    let msg = redacted["items"][0]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("<path>")
+            && msg.contains("https://example.test/a.png")
+            && !msg.contains("token"),
+        "{msg}"
+    );
+    assert!(!msg.contains("/home/someone"), "{msg}");
+    let open = cmd(json!({"op":"get_diagnostics","window":id,"redact":false})).unwrap();
+    let msg = open["items"][0]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("/home/someone/secret/file.css") && msg.contains("token=SECRET"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn explain_answers_each_status() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = diag_window(
+        &h,
+        "<style>#hidden{display:none} #cv{content-visibility:hidden} #sp{display:inline} #w{width:50px}</style>\
+         <div id=w>w</div><span id=sp>s</span><div id=hidden><p id=child>c</p></div>\
+         <div id=cv><p id=inner>i</p></div><div id=fl style=\"float:left;position:absolute;display:inline\">f</div>\
+         <div id=plain style=\"display:flex;color:red\"><i id=item></i></div><div id=stat style=\"top:3px\"></div>",
+    );
+    let ex = |element: &str, property: Option<&str>| {
+        let mut c = json!({"op":"explain","window":id,"element":element});
+        if let Some(p) = property {
+            c["property"] = json!(p);
+        }
+        cmd(c).unwrap()
+    };
+    let applied = ex("w", Some("width"));
+    assert_eq!(
+        (
+            applied["status"].as_str(),
+            applied["value"].as_str(),
+            applied["schema"].as_u64()
+        ),
+        (Some("applied"), Some("50px"), Some(1))
+    );
+    let mut keys: Vec<_> = applied.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        ["element", "property", "reason", "schema", "status", "value"]
+    );
+    let unsupported = ex("w", Some("view-transition-name"));
+    assert_eq!(unsupported["status"], "unsupported");
+    assert!(
+        unsupported["feature"].as_str().unwrap().starts_with("css."),
+        "{unsupported}"
+    );
+    assert_eq!(
+        ex("w", Some("no-such-property"))["status"],
+        "unknown_property"
+    );
+    let inline = ex("sp", Some("width"));
+    assert_eq!(inline["status"], "not_applicable");
+    assert!(inline["reason"].as_str().unwrap().contains("inline"));
+    let none = ex("child", Some("color"));
+    assert_eq!(none["status"], "not_applicable");
+    assert!(
+        none["reason"].as_str().unwrap().contains("#hidden"),
+        "{none}"
+    );
+    assert_eq!(ex("hidden", Some("display"))["status"], "applied");
+    let cv = ex("inner", Some("color"));
+    assert_eq!(cv["status"], "not_applicable");
+    assert!(
+        cv["reason"]
+            .as_str()
+            .unwrap()
+            .contains("content-visibility"),
+        "{cv}"
+    );
+    let offsets = ex("stat", Some("top"));
+    assert_eq!(offsets["status"], "not_applicable");
+    assert!(offsets["reason"].as_str().unwrap().contains("static"));
+    assert_eq!(ex("item", Some("flex-grow"))["status"], "applied");
+    assert_eq!(ex("w", Some("flex-grow"))["status"], "not_applicable");
+    let overridden = ex("fl", Some("display"));
+    assert_eq!(overridden["status"], "overridden", "{overridden}");
+    // No property: element state plus the inline declarations.
+    let summary = ex("plain", None);
+    assert_eq!(summary["status"], "applied");
+    let props: Vec<_> = summary["properties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["property"].as_str().unwrap())
+        .collect();
+    assert_eq!(props, ["display", "color"]);
+    assert_eq!(ex("hidden", None)["status"], "not_applicable");
+    // Stale or unknown ids are a structured answer, not an error.
+    let stale = ex("gone", Some("color"));
+    assert_eq!(
+        (
+            stale["status"].as_str(),
+            stale["element"].as_str(),
+            stale["property"].as_str()
+        ),
+        (Some("stale_reference"), Some("gone"), Some("color"))
+    );
+    cmd(json!({"op":"remove_element","window":id,"element":"w"})).unwrap();
+    assert_eq!(ex("w", None)["status"], "stale_reference");
+    let node = cmd(json!({"op":"explain","window":id,"element":"node:99999:1"})).unwrap();
+    assert_eq!(node["status"], "stale_reference");
+}

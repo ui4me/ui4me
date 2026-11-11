@@ -559,6 +559,96 @@ try {
         if (-not $failed) { throw 'Cancelled Work.GetResult did not throw' }
     }
 
+    Test-Case 'PSDG1_diagnostics_and_explain' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $w = $app.Open('<style>#a{view-transition-name:x}</style><div id="a">x</div><span id="s">s</span>')
+            try { $w.SetText('/home/someone/missing.css?token=SECRET', 't') } catch { }
+            $r = $w.GetDiagnosticsJson() | ConvertFrom-Json
+            if ($r.schema -ne 1 -or $r.items.Count -lt 1) { throw 'No diagnostics' }
+            $raw = $w.GetDiagnosticsJson()
+            if ($raw -match 'SECRET' -or $raw -match '/home/someone') { throw 'Diagnostics were not redacted' }
+            if ($w.GetDiagnosticsJson($false) -notmatch 'SECRET') { throw 'redact=false lost the content' }
+            $cursor = ($r.items | Measure-Object -Property seq -Maximum).Maximum
+            if (@(($w.GetDiagnosticsJson($true, [uint64]$cursor) | ConvertFrom-Json).items).Count -ne 0) { throw 'since cursor ignored' }
+            if (($w.ExplainJson('s', 'width') | ConvertFrom-Json).status -ne 'not_applicable') { throw 'inline width' }
+            if (($w.ExplainJson('a', 'view-transition-name') | ConvertFrom-Json).status -ne 'unsupported') { throw 'unsupported' }
+            if (($w.ExplainJson('gone', 'color') | ConvertFrom-Json).status -ne 'stale_reference') { throw 'stale' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
+    Test-Case 'PSBG1_fifty_background_tasks_settle_on_owner' {
+        $r = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $rows = (0..1499 | ForEach-Object { "<li id=`"r$_`">row $_</li>" }) -join ''
+            $window = New-Ui4meWindow "<ul>$rows</ul>"
+            $state = @{ settled = [System.Collections.Generic.List[int]]::new(); threads = @{}; mutations = 0; tasks = [System.Collections.Generic.List[object]]::new() }
+            $owner = [Environment]::CurrentManagedThreadId
+            $null = $app.Timer(1, { $state.mutations++; $window.SetText("r$($state.mutations % 1500)", "changed $($state.mutations)") }, $true)
+            $null = $app.Timer(10000, { $app.Stop() }, $false)
+            foreach ($n in 0..49) {
+                $state.tasks.Add($app.RunInBackground({ param($n) Start-Sleep -Milliseconds (2 * ($n % 7)); $n * $n },
+                    { param($value)
+                        $state.threads[[Environment]::CurrentManagedThreadId] = $true
+                        $state.settled.Add([int]$value)
+                        if ($state.settled.Count -eq 50) { $app.Stop() } },
+                    { param($e) throw "unexpected error $e" }, @($n)))
+            }
+            $null = $app.On('stopped', {
+                if ($state.settled.Count -ne 50) { throw "settled $($state.settled.Count)" }
+                if ($state.threads.Count -ne 1 -or -not $state.threads.ContainsKey($owner)) { throw 'Settled off the owner thread' }
+                $seq = @($state.settled | ForEach-Object { $state.tasks[[int][math]::Sqrt($_)].CompletionSequence })
+                for ($i = 1; $i -lt $seq.Count; $i++) { if ($seq[$i] -le $seq[$i - 1]) { throw 'Not in completion order' } }
+                if ((($state.settled | Sort-Object) -join ',') -ne (((0..49 | ForEach-Object { $_ * $_ }) | Sort-Object) -join ',')) { throw 'Wrong values' }
+                if ($state.mutations -lt 1) { throw 'Owner did not render' }
+            })
+        }
+    }
+    Test-Case 'PSBG2_background_exception_cancel_and_stop' {
+        # error path, cancel before start, stop with pending tasks
+        $task = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $gate = [System.Threading.ManualResetEventSlim]::new($false)
+            $state = @{ log = [System.Collections.Generic.List[string]]::new() }
+            $null = $app.RunInBackground({ throw 'boom' }, { param($v) $state.log.Add('done') }, { param($e) $state.log.Add('error:' + $e.Message); $app.Stop() })
+            $blockers = foreach ($i in 1..4) { $app.RunInBackground({ param($g) $null = $g.Wait(5000); 1 }, { param($v) $state.log.Add('blocker') }, $null, @($gate)) }
+            $queued = $app.RunInBackground({ 2 }, { param($v) $state.log.Add('queued') }, $null)
+            if (-not $queued.Cancel() -or $queued.Status -ne 'cancelled') { throw 'Pending task was not cancelled' }
+            $failed = $false; try { $null = $queued.GetResult() } catch { $failed = $true }
+            if (-not $failed) { throw 'Cancelled GetResult did not throw' }
+            $null = $app.On('stopped', {
+                $gate.Set()
+                if ($state.log.Count -ne 1 -or $state.log[0] -ne 'error:boom') { throw ('log: ' + ($state.log -join ',')) }
+            })
+            $null = $app.Timer(5000, { $app.Stop() }, $false)
+            Write-Output -NoEnumerate $blockers
+        }
+        foreach ($t in $task) {
+            if ($t.Status -notin 'cancelled', 'succeeded') { throw "Pending task left in $($t.Status)" }
+            if ($t.Delivered) { throw 'Callback delivered after stop' }
+        }
+        # a fresh App after the stop works
+        $value = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{ v = $null }
+            $null = $app.RunInBackground({ 40 + 2 }, { param($v) $state.v = $v; $app.Stop() }, { param($e) throw $e })
+            $null = $app.Timer(5000, { $app.Stop() }, $false)
+            Write-Output -NoEnumerate $state
+        }
+        if ($value.v -ne 42) { throw "Restart result $($value.v)" }
+    }
+    Test-Case 'PSBG3_background_survives_post_queue_pressure' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            foreach ($i in 1..512) { $null = $app.Post({}) }
+            $state = @{ got = 0 }
+            foreach ($n in 1..20) {
+                $null = $app.RunInBackground({ param($n) $n }, { param($v) $state.got++; if ($state.got -eq 20) { $app.Stop() } }, { param($e) throw $e }, @($n))
+            }
+            $null = $app.Timer(10000, { $app.Stop() }, $false)
+            $null = $app.On('stopped', { if ($state.got -ne 20) { throw "Only $($state.got) of 20 settled" } })
+        }
+    }
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {

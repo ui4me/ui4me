@@ -156,6 +156,7 @@ struct WindowState {
     info: WindowInfo,
     document: Document,
     last_error: Option<(i32, String)>,
+    diag: crate::diagnostics::DiagLog,
     ops: VecDeque<WindowOp>,
     observed: Observed,
     constraints: Constraints,
@@ -1435,6 +1436,34 @@ impl Session {
         self.finish()
     }
     pub fn command(&self, value: Value) -> Result<Value> {
+        // F1008: a failed window command is kept in that window's diagnostics log.
+        let probe = value.get("window").and_then(Value::as_u64).map(|w| {
+            (
+                w,
+                value
+                    .get("op")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned(),
+                value
+                    .get("element")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            )
+        });
+        let result = self.command_inner(value);
+        if let (Err(error), Some((window, op, element))) = (&result, probe) {
+            if !matches!(op.as_str(), "get_diagnostics" | "explain" | "diagnostics") {
+                let _ = self.with_window(window, |w| {
+                    w.diag
+                        .observe_command(&op, element.as_deref(), error.code, &error.message);
+                    Ok(())
+                });
+            }
+        }
+        result
+    }
+    fn command_inner(&self, value: Value) -> Result<Value> {
         self.assert_owner()?;
         let command = Command::parse(value)?;
         if matches!(command, Command::Stats) {
@@ -2268,6 +2297,49 @@ impl Session {
                 }
                 Ok(json!({"diagnostics":diagnostics}))
             })?,
+            Command::GetDiagnostics {
+                window,
+                redact,
+                since,
+                kinds,
+            } => self.with_window(window, |w| {
+                if let Some(bad) = kinds
+                    .iter()
+                    .flatten()
+                    .find(|k| !crate::diagnostics::KINDS.contains(&k.as_str()))
+                {
+                    return Err(Error::arg(format!("unknown diagnostics kind: {bad}")));
+                }
+                w.document.refresh_for_diagnostics();
+                for item in w.document.diagnostics() {
+                    w.diag.observe_snapshot(&item);
+                }
+                if let Some((code, message)) = w.last_error.clone() {
+                    w.diag.observe_error(code, &message, "layout");
+                }
+                Ok(w.diag.report(redact, since, kinds.as_deref()))
+            })?,
+            Command::Explain {
+                window,
+                element,
+                property,
+                redact,
+            } => self.with_window(window, |w| {
+                let by_ref = element.starts_with("node:");
+                let mut answer = w.document.explain(
+                    (!by_ref).then_some(element.as_str()),
+                    by_ref.then_some(element.as_str()),
+                    property.as_deref(),
+                )?;
+                if redact {
+                    for key in ["reason", "value"] {
+                        if let Some(text) = answer[key].as_str() {
+                            answer[key] = json!(crate::diagnostics::redact_text(text));
+                        }
+                    }
+                }
+                Ok(answer)
+            })?,
             Command::Close { window } => self.with_window(window, |w| {
                 w.info.closing = true;
                 Ok(json!({}))
@@ -2413,6 +2485,7 @@ impl Session {
                 WindowState {
                     document,
                     last_error: None,
+                    diag: Default::default(),
                     ops: VecDeque::new(),
                     observed: Observed {
                         visible: Some(!self.native),

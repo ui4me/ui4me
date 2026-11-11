@@ -9,6 +9,8 @@
 use super::*;
 use ui4me_document::node::NodeKind;
 
+mod explain;
+
 /// Serialized output above this size is refused (limit, code 5).
 const MAX_SERIALIZED: usize = 4 * 1024 * 1024;
 /// Attached author sheets per document.

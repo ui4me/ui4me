@@ -315,6 +315,20 @@ public sealed class App : IDisposable
             }
         }
     }
+    internal bool Accepting => Volatile.Read(ref state) <= 1 && !stopping;
+    private BackgroundHost? tasks;
+    /// <summary>Run a script on a bounded runspace pool (4 at a time, extra tasks queue) and deliver its
+    /// outcome once on the owner thread: onDone(value) or onError(exception). Owner thread only; see
+    /// <see cref="BackgroundTask"/>. Unfinished tasks become cancelled when the app stops and no callback
+    /// runs afterwards. A full native post queue delays delivery with backoff; nothing is dropped.</summary>
+    public BackgroundTask RunInBackground(ScriptBlock work, ScriptBlock? onDone, ScriptBlock? onError) =>
+        RunInBackground(work, onDone, onError, Array.Empty<object>());
+    public BackgroundTask RunInBackground(ScriptBlock work, ScriptBlock? onDone, ScriptBlock? onError, object[] arguments)
+    {
+        Active();
+        tasks ??= new BackgroundHost(this, owner, 4);
+        return tasks.Start(work, onDone, onError, arguments);
+    }
     public void Stop()
     {
         lock (gate)
@@ -346,6 +360,7 @@ public sealed class App : IDisposable
                 foreach (var (worker, _) in background.Values) { worker.Cancel(); worker.DiscardDelivery(); }
                 background.Clear();
             }
+            tasks?.Shutdown(false);
             timers.Clear();
             handlers.Clear();
             foreach (var window in windows.Values) window.Closed = true;
@@ -417,6 +432,7 @@ public sealed class App : IDisposable
     public void Dispose()
     {
         OwnerOnly();
+        if (state != 3 && !runActive) tasks?.Shutdown(true);
         lock (gate)
         {
             if (state == 3) return;
@@ -569,6 +585,13 @@ public sealed class Window
     /// <summary>The text under a viewport point as JSON (null when there is none).</summary>
     public string TextAtPointJson(double x, double y) { Check(); return app.Command(new { op = "text_at_point", window = Id, x, y }).GetProperty("hit").GetRawText(); }
     /// <summary>Computed values (schema 1) of properties of an element, as JSON.</summary>
+    /// <summary>Developer diagnostics, schema 1 (see DIAGNOSTICS_SCHEMA_V1.md): JSON {schema, items, dropped}.
+    /// Paths and URL queries are redacted unless <paramref name="redact"/> is false; <paramref name="since"/> is the
+    /// highest seq already seen (0 = all); <paramref name="kinds"/> filters by kind.</summary>
+    public string GetDiagnosticsJson(bool redact = true, ulong since = 0, string[]? kinds = null) { Check(); return app.Command(new Dictionary<string, object?> { ["op"] = "get_diagnostics", ["window"] = Id, ["redact"] = redact, ["since"] = since == 0 ? null : since, ["kinds"] = kinds is { Length: > 0 } ? kinds : null }).GetRawText(); }
+    /// <summary>Why a CSS property has no effect on an element: JSON {schema, status, reason, ...}; a removed or unknown
+    /// element answers status "stale_reference".</summary>
+    public string ExplainJson(string element, string? property = null, bool redact = true) { Check(); return app.Command(new Dictionary<string, object?> { ["op"] = "explain", ["window"] = Id, ["element"] = element, ["property"] = property, ["redact"] = redact }).GetRawText(); }
     public string ComputedStyleJson(string element, params string[] properties) { Check(); return app.Command(new { op = "get_computed_style", window = Id, element, properties }).GetRawText(); }
     /// <summary>The paths the user chose in a file input.</summary>
     public string[] GetFiles(string element) { Check(); return app.Command(new { op = "get_files", window = Id, element }).GetProperty("files").EnumerateArray().Select(e => e.GetString()!).ToArray(); }

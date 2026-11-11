@@ -1,4 +1,5 @@
 //! ui4me ABI 1. Foreign callers must obey the pointer and callback lifetime contract.
+mod diagnostics;
 mod document;
 mod instance;
 #[cfg(feature = "native")]

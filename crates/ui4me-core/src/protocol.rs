@@ -689,6 +689,25 @@ pub enum Command {
     CancelCompletion {
         token: u64,
     },
+    /// Developer diagnostics, schema 1 (0.10 F1008).
+    GetDiagnostics {
+        window: u64,
+        #[serde(default = "yes")]
+        redact: bool,
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        kinds: Option<Vec<String>>,
+    },
+    /// Why a CSS property has no effect on an element (0.10 F1008).
+    Explain {
+        window: u64,
+        element: String,
+        #[serde(default)]
+        property: Option<String>,
+        #[serde(default = "yes")]
+        redact: bool,
+    },
     Stats,
 }
 /// A file dialog filter: a label and extensions without dots (`["png", "jpg"]`).

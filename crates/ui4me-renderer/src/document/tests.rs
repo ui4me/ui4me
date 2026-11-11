@@ -243,7 +243,7 @@ fn nested_button_content_keeps_its_subscription_path_and_identity() {
 }
 
 #[test]
-fn paging_is_reported_and_motion_is_promoted() {
+fn paging_and_motion_are_promoted() {
     let mut d = Document::parse(r#"<!doctype html><style>
         @page invoice { size:20px 20px; }
         @keyframes fade { from{opacity:0}to{opacity:1} }
@@ -260,8 +260,9 @@ fn paging_is_reported_and_motion_is_promoted() {
             .iter()
             .any(|e| e["feature"] == "css.property.transition")
     );
+    // `page` is supported since 1.0 F1001 (named pages in pagination).
     assert!(
-        d.diagnostics()
+        !d.diagnostics()
             .iter()
             .any(|e| e["feature"] == "css.property.page")
     );
