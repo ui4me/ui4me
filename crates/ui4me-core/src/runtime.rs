@@ -73,6 +73,8 @@ pub enum WindowOp {
     },
     Icon(Option<(Vec<u8>, u32, u32)>),
 }
+/// Minimum size, maximum size and resizability (logical px).
+type Constraints = (Option<(u32, u32)>, Option<(u32, u32)>, bool);
 /// Window state as last observed from the platform (`None`: the platform does not report it).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Observed {
@@ -89,7 +91,7 @@ struct WindowState {
     last_error: Option<(i32, String)>,
     ops: VecDeque<WindowOp>,
     observed: Observed,
-    constraints: (Option<(u32, u32)>, Option<(u32, u32)>, bool),
+    constraints: Constraints,
 }
 struct Timer {
     due: Instant,
