@@ -1,62 +1,41 @@
-# UI4ME 0.2: implementation and verification handoff
+# UI4ME Core 0.4: implementation status and contract
 
-This is the authoritative engineering handoff for the 0.2 source delivery.
-The public native boundary is [`include/ui4me.h`](../include/ui4me.h); the
-wire requests are defined in
-[`protocol.rs`](../crates/ui4me-core/src/protocol.rs).
+This is the authoritative engineering status of UI4ME Core. The public native
+boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
+are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
+Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**0.2.0 is implemented as a source candidate. It is not yet a qualified public
-release.** The implementation replaces the 0.1 fixed form painter with the
-consolidated HTML/CSS document engine while retaining the new repository's
-native window host, package separation and release workflow.
-
-The delivery work executed Linux compilation, Rust regression checks, Python
-and PowerShell binding checks, the C ABI consumer and isolated package checks.
-The source archive includes `build/delivery/verification.json` and selected
-logs/receipts with the exact results, source identity and limitations. Those
-files are ignored build evidence, not application source. A result belongs to
-the recorded source/artifact identity, never automatically to a later edit.
-
-**Still required locally:** link and run the final candidate on Windows;
-exercise native input, window management, clipboard, DPI and IME on the target
-KDE/Wayland and Windows desktops; test the assembled two-platform packages.
-The Windows MSVC target passed a Rust cross-check on Linux, which checks
-conditional code and dependency types but does not link or run a Windows binary.
-The implementation environment had no usable native display, and no Windows
-host was reachable. Renderer images and headless input tests do not satisfy
-those desktop checks. The previous 0.1 release's evidence does not qualify 0.2.
-
-No registry upload, remote Git push or public release is part of this delivery.
-The branch name used for the source work is `implementation/v0.2`. The ZIP has
-repository files at its root, includes no `.git` directory, and is intended to
-replace a clean checkout's files while preserving that checkout's `.git`.
+**Core 0.4.0 is Foundation Complete as a locally qualified candidate.** Core 0.3
+(programmable document, scroll and selection) and Core 0.4 (HTML controls, native
+desktop services, screen-reader bridge) are implemented. The installed Python,
+PowerShell and C consumers and automated real-input desktop journeys passed on
+Linux x64 (KDE/KWin Wayland) and Windows x64. Evidence and per-slice results are
+in [`core-foundation/PROGRESS.md`](core-foundation/PROGRESS.md).
+**Publication to PyPI/PowerShell Gallery is a separate, explicit release step.**
+A result belongs to the recorded source/artifact identity, never automatically
+to a later edit.
 
 ## Product scope
 
-0.2 is the base for useful local desktop forms and small multi-window apps.
-It has one fixed, compiled renderer profile. Python and PowerShell call the
-same C ABI and own application logic; there is no embedded JavaScript engine,
-browser, HTTP resource loader, out-of-process UI broker or plugin system.
-Authentication and application-specific user records belong to the application.
+Core is the base for responsive local desktop utilities and multi-window apps.
+It has one fixed, compiled renderer profile. Python and PowerShell call the same
+C ABI and own application logic; there is no embedded JavaScript engine, browser,
+HTTP resource loader, out-of-process UI broker or plugin system.
 
-| Area | Promoted 0.2 foundation | Practical boundary |
+| Area | Core 0.4 | Practical boundary |
 | --- | --- | --- |
-| Documents | Nested HTML, text/entities, unique public IDs, local file source base | Active script, iframe/object/embed, inline event-handler attributes and unimplemented native picker input types are rejected; malformed HTML still follows the HTML parser's recovery rules |
-| CSS and layout | Author/inline CSS, local linked sheets and imports, cascade/selectors, classes, custom properties, block/inline/flex, ordinary sizing/spacing, basic positioning | This is a defined application subset, not general browser compatibility; grid/table/advanced positioning remain unpromoted |
-| Painting | Backgrounds, borders, clipping, shaped text, raster images, ordinary overflow/scroll | Advanced effects and SVG breadth are not release promises; animations/transitions and paged-media rules are outside this profile |
-| Text | Unicode shaping and wrapping, font fallback, system font snapshot, local `@font-face` TTF/OTF/WOFF/WOFF2 | System font/theme changes are not live-reloaded; platform font availability affects output |
-| Controls | Text/password input, textarea, button, checkbox/radio, labels, disabled/readonly/placeholder, Tab/focus | Select/complex widgets and browser form navigation are not promoted |
-| Editing | Selection, cursor movement, deletion, plain-text copy/cut/paste, undo/redo, composition plumbing | Real KDE/Windows IME, dead-key and AltGr acceptance remains pending; no HTML clipboard or touch/pen/drag-and-drop claim |
-| Updates | Text/value/checked, attributes/classes, focus and atomic child replacement | Existing unrelated controls retain state; replaced controls are new identities |
-| Windows | Independent documents, resize, close veto, forced stop, timers, owner dispatch, repeated sessions | One active application session per process; subsequent native sessions reuse the first native owner thread |
-| Assets | Local CSS/images/fonts, explicit file roots, data URLs, bounded asynchronous loading | Remote URLs denied; large/over-capacity inputs return diagnostics instead of silently growing work |
-| Delivery | One version authority, native-inclusive Python wheel, PowerShell module, native SDK, portable sdist | Only both-platform release builds plus actual installed/native evidence can qualify publication |
-
-Retained backend code is deliberately private. Grid, select, printing/paging,
-advanced SVG/effects and accessibility may be developed later, but their source
-presence is not an assertion that they work through this 0.2 public facade.
+| Documents | Nested HTML, unique public IDs, local file base; insert/remove/move, text/attribute reads, selector queries, atomic batches, streaming text | Script, iframe/object/embed and inline handlers are rejected. Up to 65,536 nodes per document; the whole document is re-laid-out per change, so keep long logs bounded |
+| CSS and layout | Cascade/selectors, custom properties, block/inline/flex/grid, positioning incl. sticky, media queries, overflow/ellipsis | An application subset, not browser conformance |
+| Painting | Backgrounds, borders, clipping, shaped text, raster images, scrollbars | Advanced effects/SVG breadth, animations and printing are not promised |
+| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face` | Bidi selection is logical-order; system font changes are not live |
+| Controls | Text/password/textarea, buttons, checkbox/radio, labels, `select` (drop-down/listbox), `dialog`, `details` | No custom-element or rich-text editing component |
+| Interaction | Keyboard/focus/Tab order, document selection + copy + `selectionchange`, declarative default-action rules, scroll API, follow-end | Binding callbacks run after dispatch (use rules to cancel) |
+| Windows | Multiple windows; show/hide, focus, min/max/fullscreen, constraints, icon, state, monitors | Wayland forbids focus/activation, show/hide, client icons, un-minimize; these report `unsupported` |
+| OS services | Native clipboard; open/save/folder dialogs; file drops (Windows/X11) | Linux dialogs need xdg-desktop-portal; Wayland drops are not delivered (winit 0.30) |
+| Accessibility | AccessKit bridge: AT-SPI (Linux) and UI Automation (Windows); keyboard operation | No WCAG claim; caret/range navigation in fields beyond value is not exposed |
+| Delivery | One version authority, native-inclusive Python wheel (`manylinux_2_35` in release builds), PowerShell module, native SDK, sdist | Only both-platform release builds with installed/native evidence qualify publication |
 
 ## Architecture and ownership
 

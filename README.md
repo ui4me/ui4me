@@ -4,35 +4,46 @@ UI4ME is a native desktop UI runtime for applications written in **Python or
 PowerShell**. Applications supply HTML and CSS; Rust owns layout, text shaping,
 painting, input and native windows. Application logic stays in the host language.
 
-This checkout implements **0.2.0**, the application foundation. It targets
+This checkout implements **0.4.0**, the Core foundation. It targets
 **Linux x86-64 (Wayland/X11)** and **Windows x64**, with **Python 3.11–3.14** or
 **PowerShell 7.4+**. It uses a software renderer, not a browser or JavaScript
 runtime. Consumers of packaged wheels/modules do not need Rust or a .NET SDK.
+See [PROJECT_STATUS](docs/PROJECT_STATUS.md) for the full contract, the measured
+platform results and the limits.
 
-**This is a source delivery for local verification.** Compilation, automated
-checks and installed-package checks are recorded separately from real desktop
-acceptance. This ZIP is not a published or fully qualified public release.
-See [PROJECT_STATUS](docs/PROJECT_STATUS.md) for the current contract, remaining
-platform checks and the ready-to-use verification prompt.
+## What Core provides
 
-## What 0.2 adds
+- **Documents:** nested HTML, local stylesheets/images/fonts, selectors and cascade;
+  block/inline, flex, grid, positioned and sticky layout, media queries; shaped
+  Unicode text with fallback.
+- **Forms and HTML controls:** text/password inputs, textarea (selection,
+  clipboard, undo/redo, IME), buttons, checkboxes, radio groups, labels;
+  `<select>` (drop-down and listbox), `<dialog>` (modal focus trap, Escape,
+  return value), `<details>`/`<summary>`.
+- **Programmable document (0.3):** insert/remove/move elements, read text and
+  attributes, CSS selector queries, atomic batches with one invalidation,
+  streaming `append_text`, bounded logs (`trim_children`), declarative
+  default-action rules (e.g. Enter sends, Shift+Enter breaks a line).
+- **Scroll, geometry and selection:** programmatic scrolling, scroll-into-view,
+  element rectangles, "follow the end" for logs that respects a reader who
+  scrolled away; mouse/keyboard document text selection with copy and
+  `selectionchange`; native clipboard read/write.
+- **Desktop services (0.4):** multiple windows; show/hide, focus, minimize,
+  maximize, fullscreen, size constraints and icon (unsupported actions report
+  why, e.g. on Wayland); window state and monitor information; non-blocking
+  native open/save/folder dialogs; file-drop events (Windows/X11).
+- **Accessibility:** keyboard operation of all controls, and an AccessKit
+  screen-reader bridge (AT-SPI on Linux, UI Automation on Windows) with roles,
+  names, states, values and assistive actions. No WCAG conformance is claimed.
+- **Runtime:** owner-thread dispatch, timers, background work, bounded queues and
+  assets, generational element identity (stale events are dropped).
 
-- Nested HTML, local stylesheets, inline CSS, selectors and cascade.
-- Block/inline and flex layouts, wrapping, spacing, borders, backgrounds,
-  clipping and scrolling.
-- Shaped Unicode text, font fallback, system fonts and local `@font-face`.
-- Text/password inputs, textarea, buttons, checkboxes, radio groups and labels;
-  selection, plain-text clipboard, undo/redo and keyboard focus.
-- Targeted text/value/checked/attribute/class updates and atomic replacement of
-  one element's children, with unrelated input state preserved.
-- Independent documents in multiple native windows, close interception,
-  timers, owner-thread dispatch and background work.
-- A bounded asset service shared across sessions, local asset roots, stale-node
-  retirement and explicit error outcomes when capacity is exhausted.
+Core-only examples: `examples/python/chat_log.py` and `examples/python/file_utility.py`
+(and the PowerShell equivalents in `examples/powershell/`).
 
-Grid, select widgets, table layout, advanced rendering, accessibility and full
-platform IME qualification are outside the promoted 0.2 feature set. Some backend
-algorithms are retained internally; their presence is not a support claim.
+Known limits: the whole document is re-laid-out on each change (keep long logs
+bounded); no JavaScript, network resources, embedded browser, printing or
+general SVG/video engine.
 
 ## Python
 

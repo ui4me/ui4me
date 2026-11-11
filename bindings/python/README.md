@@ -14,19 +14,30 @@ with App() as app:
     app.run()
 ```
 
-Version 0.2 provides HTML documents, CSS layout, shaped Unicode text, local
-stylesheets and images, editable inputs, checkboxes/radio groups and independent
-windows. Use `app.open_file("ui/index.html")` to preserve the document directory
-for relative assets, or pass `base_path` to `app.open()`. JavaScript, network
-resources, embedded browsers and operating-system account management are outside
-this foundation.
+Version 0.4 provides HTML documents, CSS layout (flex, grid, positioning, media
+queries), shaped Unicode text, local stylesheets and images, editable inputs,
+`select`, `dialog` and `details`, and independent windows. Use
+`app.open_file("ui/index.html")` to keep the document directory for relative
+assets, or pass `base_path` to `app.open()`. JavaScript, network resources and
+embedded browsers are not part of ui4me.
 
-Update a document through `set_text`, `set_value`, `set_checked`, attributes,
-classes and `replace_children_html`. Programmatic changes preserve unrelated
-form state and do not synthesize input events. Register `click`, `input`,
-`change`, `focus` or `blur` handlers with an element ID; ancestor IDs in an
-event's `path` also match, so a button handler receives clicks on its contents.
-`window.diagnostics()` reports bounded resource and renderer diagnostics.
+Update a document with `set_text`, `set_value`, `set_checked`, attributes and
+classes. Element methods include `insert_html` and its shortcuts,
+`remove_element`, `move_element`, atomic `batch([...])`, streaming `append_text`
+and `trim_children`. Read with `get_text`, `get_attribute` and
+`query(selector)`. Scrolling uses `scroll_to`, `scroll_into_view`, `get_rect`
+and `set_scroll_follow`. The selection and clipboard use `get_selection` and
+`copy_selection`. The window is controlled with `maximize`, `set_constraints`
+and `state()`. Native dialogs: `open_file_dialog`, `save_file_dialog` and
+`folder_dialog`. Programmatic changes keep unrelated form state and do not
+synthesize input events.
+
+Register handlers such as `click`, `input`, `commit`, `keydown`, `toggle`,
+`close`, `selectionchange`, `file_dialog` or `window_state` with an element ID
+where relevant. Ancestor IDs in an event's `path` also match. Default actions
+such as Enter in a textarea are cancelled declaratively with
+`set_default_action`, because handlers run after dispatch.
+`window.accessibility_tree()` shows the tree that screen readers see.
 
 Create and run native applications on the main thread. Only `app.post()` and
 `app.stop()` are safe from worker threads. A posted callback runs on the UI owner
