@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "created_at": "2026-11-11",
+  "artifact_kind": "architecture-roadmap-research",
+  "original_archive_sha256": "5008aae9c8e3f460938667589c0a358b97e2f23558854925257a923925accdbc",
+  "files": [
+    {
+      "path": "ARCHITECTURE_CHARTER.md",
+      "sha256": "f0a4957926c9b950f3a515d64e12ce49edda66baa9e7be8811827cf2eea06118",
+      "size": 9418
+    },
+    {
+      "path": "CRITICAL_REVIEW.md",
+      "sha256": "7fa46b2d84cfef022264623d96a845ed3cd8ab91d3125b14c4f1c7d4a8119de0",
+      "size": 11444
+    },
+    {
+      "path": "FEATURE_CATALOG.md",
+      "sha256": "f0f2b765080ec0f71537c839c78bac9b99d45e6de822cb0aac249512c4d9d52a",
+      "size": 156721
+    },
+    {
+      "path": "INDEX.html",
+      "sha256": "559d1d835ed8821eb06b5809318d16c75afaf29972d24281a2302c3cf38b7efa",
+      "size": 233729
+    },
+    {
+      "path": "OLD_SOURCE_TRACEABILITY.md",
+      "sha256": "3131a73ce9ae21f9de53622096117d55ae6c1fbacffe58c0c205a61a9dc55f09",
+      "size": 6905
+    },
+    {
+      "path": "QUICK_REFERENCE.md",
+      "sha256": "8b49892735cefd91569f382e7798269a6a929919a10a18932d4b19d1b31513a9",
+      "size": 2821
+    },
+    {
+      "path": "README.md",
+      "sha256": "0aa45d1d70a163f659fab33f010b7ab3593784e9f6ff3287965b3272b11573b8",
+      "size": 6517
+    },
+    {
+      "path": "RELEASE_ENGINEERING.md",
+      "sha256": "3f2d50aafec7fc29e6c4a8ed118b1f9f2a2d56cf064913b193125958f3462be3",
+      "size": 9737
+    },
+    {
+      "path": "RESEARCH_COMPARISON.md",
+      "sha256": "4e065272e65e208e19323ff57ff47f7601dbce30a62d0e44f2d0f50c48123251",
+      "size": 12218
+    },
+    {
+      "path": "ROADMAP.md",
+      "sha256": "e1333717dc9812b67eff957fb157fac9abd21db4a904fb502afa116c0fbeecad",
+      "size": 11475
+    },
+    {
+      "path": "agents/PLANNING_PROMPT.md",
+      "sha256": "64ef9ff65eb5862e7245c2d39cedcef455358049e6ae08b58053c45a81bee175",
+      "size": 5647
+    },
+    {
+      "path": "agents/RECONCILIATION_CHECKLIST.md",
+      "sha256": "3365aa2bedfc148973b14b79fafcc4e3b65cca15baf2dbca5614ece7322bdeaa",
+      "size": 2051
+    },
+    {
+      "path": "data/catalog-summary.json",
+      "sha256": "2ac360fe2c702940a3c9e605a67a1303ecc202408c2c652efce25eb24ec3e6ab",
+      "size": 958
+    },
+    {
+      "path": "data/dependency-graph.json",
+      "sha256": "67de3f8e108d3fdaa3ecf5f90d114c8c89151ba49658177e34ba0bb8025e12b1",
+      "size": 1406
+    },
+    {
+      "path": "data/features.csv",
+      "sha256": "5f784b52849384cd6bd53c6643fc39b9b955d4a2d1f8ec86cdf565e15d47bee4",
+      "size": 94178
+    },
+    {
+      "path": "data/features.json",
+      "sha256": "1ffad9b500ec7430e4c5c47044f3b4642a633c14564cdaad61c228dcc515a7e2",
+      "size": 275172
+    },
+    {
+      "path": "data/old-source-references.csv",
+      "sha256": "5e8a713beb7cddd593992d587a69a63c461cc61f99a9e5f08a51613124c7284a",
+      "size": 31377
+    },
+    {
+      "path": "data/old-source-references.json",
+      "sha256": "66769a114e7a7e7c2456aaa732174ee1c44e7c6a01ba76c18aa8c1142b651cd8",
+      "size": 83887
+    },
+    {
+      "path": "data/old-symbol-index.csv",
+      "sha256": "dfb0ba28ebc5833ddab7eb7c84015a9d7c403921e74b0492682d29d2376c3e70",
+      "size": 1729428
+    },
+    {
+      "path": "data/old-test-index.csv",
+      "sha256": "3a8564ded2d4974286ba5c4011bdbe36a055f67901c055a461f9fdbe14e8a095",
+      "size": 375822
+    },
+    {
+      "path": "data/old-test-leads.csv",
+      "sha256": "f6790d046803c23513a3c427f5ebb5c6223a995dc2644c47fac0650fb571ab79",
+      "size": 6085
+    },
+    {
+      "path": "data/old-test-leads.json",
+      "sha256": "01e41d55d44ae9b9b57965cece5bf83965d021a4c987b763ecbf284be0b00773",
+      "size": 11217
+    },
+    {
+      "path": "decisions/ADR_INDEX.md",
+      "sha256": "4ae0c2e441e163e95d2eb8da56f8766332ec0489be72d4888c404789ea298d39",
+      "size": 3273
+    },
+    {
+      "path": "research/SOURCES.md",
+      "sha256": "76788f4899a8f2b005c43fee1e3846a69923972d432b06e09a24908c9d339916",
+      "size": 6356
+    },
+    {
+      "path": "scripts/build_html_index.py",
+      "sha256": "b41830099485edebebc1d8978c6f635da2063b96a9ca0385a25632c2b52f597e",
+      "size": 5656
+    },
+    {
+      "path": "scripts/validate_catalog.py",
+      "sha256": "fa14910311b2eef2fbe487cac7bb9679a6d094a7104bb4b847c4c7663a057cc0",
+      "size": 3070
+    }
+  ]
+}

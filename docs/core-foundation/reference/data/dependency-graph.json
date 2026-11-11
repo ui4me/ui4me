@@ -1,0 +1,110 @@
+{
+  "DOM-004": [
+    "DOM-003",
+    "CSS-002"
+  ],
+  "DOM-007": [
+    "DOM-002",
+    "DOM-006"
+  ],
+  "DOM-008": [
+    "DOM-002"
+  ],
+  "DOM-009": [
+    "DOM-007",
+    "DOM-008"
+  ],
+  "DOM-017": [
+    "CSS-012"
+  ],
+  "DOM-018": [
+    "DOM-002"
+  ],
+  "CSS-007": [
+    "CSS-006"
+  ],
+  "TEXT-007": [
+    "TEXT-006",
+    "INTERACTION-001"
+  ],
+  "TEXT-008": [
+    "HOST-021"
+  ],
+  "INTERACTION-006": [
+    "CSS-012"
+  ],
+  "INTERACTION-007": [
+    "INTERACTION-006",
+    "DOM-017"
+  ],
+  "INTERACTION-013": [
+    "INTERACTION-003",
+    "INTERACTION-021"
+  ],
+  "INTERACTION-017": [
+    "DOM-002",
+    "INTERACTION-003"
+  ],
+  "INTERACTION-018": [
+    "INTERACTION-017"
+  ],
+  "HOST-012": [
+    "HOST-021"
+  ],
+  "HOST-013": [
+    "HOST-012"
+  ],
+  "UI-005": [
+    "UI-002"
+  ],
+  "UI-008": [
+    "UI-005",
+    "DOM-009"
+  ],
+  "UI-011": [
+    "DOM-006"
+  ],
+  "UI-012": [
+    "UI-011"
+  ],
+  "UI-013": [
+    "UI-014",
+    "UI-011"
+  ],
+  "UI-014": [
+    "DOM-007",
+    "DOM-009",
+    "INTERACTION-006"
+  ],
+  "UI-015": [
+    "DOM-007",
+    "INTERACTION-006"
+  ],
+  "UI-017": [
+    "INTERACTION-013"
+  ],
+  "UI-018": [
+    "DOM-017"
+  ],
+  "UI-019": [
+    "UI-018"
+  ],
+  "UI-026": [
+    "HOST-012"
+  ],
+  "UI-029": [
+    "UI-028"
+  ],
+  "UI-031": [
+    "INTERACTION-006",
+    "DOM-017",
+    "DOM-007"
+  ],
+  "UI-043": [
+    "INTERACTION-003",
+    "INTERACTION-017"
+  ],
+  "QA-013": [
+    "BIND-001"
+  ]
+}

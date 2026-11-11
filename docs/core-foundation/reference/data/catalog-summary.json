@@ -1,0 +1,36 @@
+{
+  "snapshot": "2026-11-11",
+  "current_core_branch": "main",
+  "current_core_commit": "cbb8a5efa50505e262b1747c55e38be5838e6b8d",
+  "old_archive_sha256": "5008aae9c8e3f460938667589c0a358b97e2f23558854925257a923925accdbc",
+  "migration_plan_sha256": "247d5fdc2c3bf35449408a685255d9305da54be08c19f33e58d0726a986b1b21",
+  "feature_count": 224,
+  "old_anchored_features": 144,
+  "old_source_reference_count": 144,
+  "related_test_leads": 46,
+  "old_symbol_index_entries": 13264,
+  "old_test_index_entries": 3284,
+  "target_counts": {
+    "0.2-harden": 60,
+    "0.3": 28,
+    "0.4": 40,
+    "0.5-core": 14,
+    "later": 10,
+    "ui-0.2": 27,
+    "ui-0.1": 24,
+    "extension-backlog": 9,
+    "app-owned": 12
+  },
+  "layer_counts": {
+    "Core": 138,
+    "Optional UI": 47,
+    "Extension": 10,
+    "Application": 12,
+    "Delivery": 17
+  },
+  "old_evidence_counts": {
+    "implementation-source-present": 129,
+    "partial-or-related": 15,
+    "none": 80
+  }
+}
