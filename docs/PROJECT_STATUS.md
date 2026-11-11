@@ -1,4 +1,4 @@
-# UI4ME Core 0.5: implementation status and contract
+# UI4ME Core 0.6: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
@@ -7,16 +7,14 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.5.0 is a local candidate that passed its gate on both hosts, not published** (candidate `0b79117`; input, international text and
-accessibility hardening; roadmap [`core-roadmap/versions/0_5.md`](core-roadmap/versions/0_5.md),
-ledger [`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)). It qualifies real
-keyboard layouts, dead keys, AltGr and IME composition on KDE/KWin Wayland and
-Windows, exposes text-field caret/selection/geometry to screen readers, adds a
-capability report and live media-environment changes, and fixes the defects these
-journeys found (IME double commit on a focus move, a stale preedit after a host write,
-canceled compositions, RTL click mapping, wrapped-line Home, presses surviving window
-focus loss, stale hover after removal, events after a requested close).
-Gate (installed packages, automated input): Linux KDE/KWin Wayland and Windows Server 2022 — installed C/Python/PowerShell consumers, chat, file utility, dialogs, window, input/IME, accessibility (AT-SPI/UIA) and environment journeys all passed; see the ledger. Publication needs a separate authorization.
+**Core 0.6.0 is the current candidate** (complete public document and HTML interface;
+[`core-roadmap/versions/0_6.md`](core-roadmap/versions/0_6.md), ledger
+[`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)): HTML serialization, author
+stylesheets with diagnostics, generation-safe node references, text geometry, computed
+style, constraint validation and validated submission, `<input type=file>` with the native
+picker, and an app opt-in external link policy.
+
+**Core 0.5.0 is released (2026-11-11):** [GitHub v0.5.0](https://github.com/ui4me/ui4me/releases/tag/v0.5.0), PyPI `ui4me==0.5.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.5.0`, built by the release workflow from `089e7a8` (the gated `0b79117` plus docs and workflow-only changes). It qualified keyboard layouts, dead keys, AltGr and IME composition on KDE/KWin Wayland and Windows, exposes text-field caret/selection/geometry to screen readers, and adds the capability report and live media-environment changes.
 
 **Core 0.4.0 is released (2026-11-11):** [GitHub v0.4.0](https://github.com/ui4me/ui4me/releases/tag/v0.4.0), PyPI `ui4me==0.4.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.4.0`, built by the release workflow from `8138e78`. Clean public installs were verified on Linux (Python and PowerShell) and on Windows (Python). Core 0.3
 (programmable document, scroll and selection) and Core 0.4 (HTML controls, native
@@ -181,6 +179,14 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | App operations | `on`, `timer`, `post`, `stop`, `stats`, `run`, `close` | `On`, `Timer`, `Post`, `Work`, `Stop`, `StatsJson`, `Run`, `Dispose` |
 | Capabilities (0.5) | `app.capabilities()` | `$app.CapabilitiesJson()` |
 | Environment (0.5) | `set_environment(color_scheme=, reduced_motion=)`, `environment()`; event `environment_changed` | `SetEnvironment(colorScheme, reducedMotion)`, `EnvironmentJson()` |
+| Serialization (0.6) | `get_html(id=None, node=, outer=False)` | `GetHtml(element, node, outer)` |
+| Stylesheets (0.6) | `add_stylesheet(css)`, `replace_stylesheet(sheet, css)`, `remove_stylesheet(sheet)`, `stylesheets()` | `AddStylesheet`, `ReplaceStylesheet`, `RemoveStylesheet`, `StylesheetsJson` |
+| Nodes (0.6) | `node_of(id=None)`, `get_node(ref)`, `node_children(ref, offset=, limit=)` | `NodeOf`, `NodeJson`, `NodeChildrenJson` |
+| Text geometry (0.6) | `text_rects(id, node=, start=, end=)`, `text_at_point(x, y)` | `TextRectsJson`, `TextAtPointJson` |
+| Computed style (0.6) | `computed_style(id, *properties)` | `ComputedStyleJson(id, ...)` |
+| Forms (0.6) | `get_validity(id)`, `check_validity(id)`; event `invalid`; `submit` carries `submitter` | `GetValidityJson`, `CheckValidityJson` |
+| File input (0.6) | `get_files(id)`; `commit`/`change` events carry `files`, `cancel` on dismissal | `GetFiles` |
+| Links (0.6) | `app.set_link_policy(schemes, hosts=, open=False)`; event `link_activated` | `$app.SetLinkPolicy(schemes, hosts, open)` |
 
 **0.5 contract.** `capabilities` (wire op, no window) returns `platform` (`wayland`,
 `x11`, `windows`, `headless`, or `pending` before `run()` starts the native backend),
@@ -202,6 +208,36 @@ scheme in force. `get_accessibility_tree` now reports a text field's `selection`
 (`value`: anchor and focus as UTF-16 offsets) and one text-run child per laid-out
 line with its UTF-16 `offsets`. A close requested for a window ends delivery of its
 events at once; input to a closing window is refused.
+
+**0.6 contract.** `get_html` serializes an element (`element`), a node reference (`node`)
+or the whole document (neither); `outer` includes the node; control values typed by the
+user are not markup; output is capped at 4 MiB (code 5). Author stylesheets attach after
+the document's own sheets (at most 64, 1 MiB each) and return a `sheet` id and parse
+`diagnostics` (`code`, `category`, `feature`, `line`, `column`, `excerpt`); invalid rules
+are dropped, the rest applies; an unknown sheet id is code 4. `list_stylesheets` lists
+`style`/`link` elements then attached sheets in cascade order. A node reference is the
+string `node:<index>:<generation>`; it stays valid while the node is in the document (or in
+a connected `template`'s contents) and is a stale-handle error (code 4) afterwards, never
+another node. `get_node` reports `type` (`element`, `text`, `comment`, `document`,
+`doctype`, `fragment`), `name`, `id`, `attributes`, `text`, `parent`, `previous`, `next`,
+`child_count` and a template's `content`; `node_children` pages children (`limit` 1..4096).
+Text geometry offsets are UTF-16 units over an element's **rendered text** (what selecting
+it copies: its text blocks joined with `\n`, whitespace collapsed), not over DOM text
+nodes; an inline element resolves to its containing block; rectangles are viewport CSS px
+and marked `visible` when inside their scrollports. `get_computed_style` (schema 1, up to
+64 properties) returns per property `supported` with `value` and `inherited`,
+`unsupported` with the profile `feature`, or `invalid`. Constraint validation covers
+required, minlength/maxlength, pattern (Rust regex syntax), email, url, number, step and
+min/max; interactive submission (button, Enter) validates first, fires `invalid` at each
+failing control, focuses the first and skips `submit`; `novalidate`/`formnovalidate`
+skip it; `submit` carries `submitter`. A file input opens the OS picker on click or
+Enter/Space (filters from `accept`); the chosen paths reach the app only after the user
+chose them; Core reads no file. An activated `a[href]`/`area[href]` is reported as
+`link_activated` with the resolved `url`, `allowed`, `opened` and `reason`/`error`; Core
+never navigates; only `https`, `http` and `mailto` can be allowed (optionally per host,
+`example.com` or `*.example.com`), and with `open` Core launches allowed links through the
+OS handler without a shell. Declarative default-action rules also cancel link activation,
+submission, dialog Escape (`cancel`), selection drags and `select` popups (`mousedown`).
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.
