@@ -521,6 +521,18 @@ fn document_text_selection_drag_copy_and_controls() {
     button(&mut d, true, x, y);
     button(&mut d, false, x, y);
     assert_eq!(d.selection_text().unwrap(), "beta");
+    let mut b2 =
+        Document::parse("<!doctype html><p id=t>Keep me</p><button id=copy>Copy</button>").unwrap();
+    b2.render(640, 480, 1.0).unwrap();
+    b2.select_text(Some("t")).unwrap();
+    let r = b2.element_rect("copy").unwrap().unwrap();
+    button(&mut b2, true, r.x + 4.0, r.y + 4.0);
+    button(&mut b2, false, r.x + 4.0, r.y + 4.0);
+    assert_eq!(
+        b2.selection_text().unwrap(),
+        "Keep me",
+        "a button press keeps the selection"
+    );
     let pw = d.element_rect("pw").unwrap().unwrap();
     button(&mut d, true, pw.x + 5.0, pw.y + 5.0);
     button(&mut d, false, pw.x + 5.0, pw.y + 5.0);

@@ -457,8 +457,17 @@ impl Document {
                 let id = self.id();
                 let hit = self.hit_test(id, x, y)?;
                 let d = self.pipeline.document();
-                if hit.is_some_and(|n| in_control(d, n)) {
-                    self.clear_selection();
+                if let Some(n) = hit.filter(|&n| in_control(d, n)) {
+                    // A press into a text-entry control moves the selection into it; buttons,
+                    // checkboxes and similar controls keep the document selection (so a "Copy"
+                    // button can copy it).
+                    let entry = d.arena().inclusive_ancestors(n).into_iter().any(|a| {
+                        crate::interaction::editing::text_kind(d, a).is_some()
+                            || d.local_name(a).is_ok_and(|t| t == "select")
+                    });
+                    if entry {
+                        self.clear_selection();
+                    }
                     return Ok(());
                 }
                 let Some(c) = self.committed_tree()? else {

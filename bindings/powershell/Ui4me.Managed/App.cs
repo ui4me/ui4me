@@ -19,6 +19,8 @@ public sealed class UiEvent
     public double? Scale { get; init; }
     public string Units { get; init; } = "";
     public string Key { get; init; } = "";
+    /// <summary>A default-action rule cancelled this cancelable event (0.3).</summary>
+    public bool DefaultPrevented { get; init; }
     public string Backend { get; init; } = "";
     public string AppId { get; init; } = "";
     public IReadOnlyDictionary<string, JsonElement> Details { get; init; } = new Dictionary<string, JsonElement>();
@@ -38,6 +40,7 @@ public sealed class UiEvent
             Checked = r.TryGetProperty("checked", out var c) && c.ValueKind is JsonValueKind.True or JsonValueKind.False ? c.GetBoolean() : null,
             Width = Number(r, "width"), Height = Number(r, "height"), Scale = Number(r, "scale"),
             Units = Text(r, "units"), Key = Text(r, "key"), Backend = Text(r, "backend"), AppId = Text(r, "app_id"),
+            DefaultPrevented = r.TryGetProperty("default_prevented", out var dp) && dp.ValueKind == JsonValueKind.True,
             Details = r.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone()),
             Json = text,
         };
