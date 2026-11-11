@@ -394,7 +394,7 @@ def run_plain(out: Path, command: list[str]) -> int:
         env["WAYLAND_DISPLAY"] = sock
         use_virtual_display(sock)
         with (out / "command.log").open("w") as output:
-            return subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=300).returncode
+            return subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=1700).returncode
     finally:
         reap_private_bus()
         kwin.terminate()

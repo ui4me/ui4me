@@ -39,4 +39,8 @@ pub use document::{
 pub use ui4me_engine_types::ids::NodeId;
 
 #[cfg(test)]
+mod fuzz_gate;
+#[cfg(test)]
+mod fuzz_resources;
+#[cfg(test)]
 mod regression;

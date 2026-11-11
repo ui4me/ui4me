@@ -465,8 +465,12 @@ impl DocTable {
             if !again
                 && r.url.as_ref() == Some(url)
                 && r.density == density
-                && !matches!(r.state, RequestState::Broken(_) | RequestState::Canceled)
+                && !matches!(r.state, RequestState::Canceled)
             {
+                // A Broken request for the same URL is terminal: the renderer asks again on every
+                // frame, and restarting it each time re-ran the failing load forever (a missing,
+                // denied or oversized file stayed "pending" and burned a worker per frame).
+                // A changed URL or density, or `begin_again`, still starts a new load.
                 return Begin::Unchanged(self.reference(r));
             }
         }
