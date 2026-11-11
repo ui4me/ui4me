@@ -89,6 +89,11 @@ servo_arc = { path = "patches/stylo/stylo/servo_arc" }
 to_shmem = { path = "patches/stylo/stylo/to_shmem" }
 stylo_malloc_size_of = { path = "patches/stylo/stylo/malloc_size_of" }
 
+# Carried AT-SPI state patch: accesskit_atspi_common 0.21.1 + patches/accesskit_atspi_common/P-013-1
+# (aria-expanded and aria-invalid states on Linux; check with patches/accesskit_atspi_common/verify.sh).
+[patch.crates-io]
+accesskit_atspi_common = { path = "patches/accesskit_atspi_common/accesskit_atspi_common" }
+
 [patch."https://github.com/DioxusLabs/taffy"]
 taffy = { path = "patches/taffy/taffy" }
 

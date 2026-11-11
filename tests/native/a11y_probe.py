@@ -24,7 +24,7 @@ with App(app_id="org.ui4me.a11yprobe") as app:
     w = app.open("""<h1>Probe heading</h1><button id="go">Press me</button>
       <label for="name">Your name</label><input id="name" value="Ada">
       <label><input id="ok" type="checkbox" checked> Agree</label>
-      <a id="lnk" href="#x">A link</a><p style="display:none">Hidden text</p>""", title="ui4me a11y probe", width=500, height=300)
+      <a id="lnk" href="#x">A link</a><button id="menu" aria-expanded="false">Menu</button><p style="display:none">Hidden text</p>""", title="ui4me a11y probe", width=500, height=300)
     def click(_):
         state["clicks"] += 1
         open(sys.argv[1], "w").write(json.dumps(state))
@@ -46,6 +46,8 @@ def walk(node, depth=0, out=None):
     out.append({"depth": depth, "role": role, "name": name,
                 "checked": states.contains(__import__("gi.repository.Atspi", fromlist=["Atspi"]).StateType.CHECKED),
                 "focusable": states.contains(__import__("gi.repository.Atspi", fromlist=["Atspi"]).StateType.FOCUSABLE),
+                "expandable": states.contains(__import__("gi.repository.Atspi", fromlist=["Atspi"]).StateType.EXPANDABLE),
+                "collapsed": states.contains(__import__("gi.repository.Atspi", fromlist=["Atspi"]).StateType.COLLAPSED),
                 "node": node})
     for i in range(node.get_child_count()):
         child = node.get_child_at_index(i)
@@ -95,7 +97,8 @@ def main() -> int:
         check("A05_checkbox_state", any(n["role"] == "check box" and n["name"] == "Agree" and n["checked"] for n in nodes), [n for n in summary if n["role"] == "check box"])
         check("A06_link", ("link", "A link") in roles, sorted(r for r in roles if r[0] == "link"))
         check("A07_hidden_excluded", all("Hidden" not in (n["name"] or "") for n in nodes), None)
-        button = next((n["node"] for n in nodes if n["role"] in ("button", "push button")), None)
+        check("A09_expanded_state", any(n["name"] == "Menu" and n["expandable"] and n["collapsed"] for n in nodes), [n for n in summary if n["name"] == "Menu"])
+        button = next((n["node"] for n in nodes if n["role"] in ("button", "push button") and n["name"] == "Press me"), None)
         acted = False
         if button is not None:
             action = button.get_action_iface()
