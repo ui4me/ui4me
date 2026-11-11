@@ -346,6 +346,78 @@ fn ime_commit_replaces_preedit_once_and_uses_utf8_cursor_offsets() {
 }
 
 #[test]
+fn ending_a_composition_inside_the_window_resets_the_platform_once() {
+    // 0.5 F0501: the platform still holds its preedit when the document ends the composition
+    // (a focus move to another field, a host value write, a pointer press); it must be told to drop it, or
+    // its later commit lands a second time in the next control.
+    let mut d = Document::parse("<!doctype html><input id=a><input id=b>").unwrap();
+    d.render(300, 200, 1.0).unwrap();
+    d.handle_input(Input::Focus(true)).unwrap();
+    d.focus("a").unwrap();
+    d.handle_input(Input::ImeEnabled).unwrap();
+    let base = d.ime_reset_count();
+    d.handle_input(Input::ImePreedit {
+        text: "にほん".into(),
+        cursor: Some((9, 9)),
+    })
+    .unwrap();
+    // Keys while composing belong to the IME: Tab does not move the focus.
+    press(&mut d, "Tab");
+    assert_eq!(d.ime_reset_count(), base);
+    d.drain_events();
+    d.focus("b").unwrap();
+    let events = d.drain_events();
+    assert_eq!(
+        d.get_value("a").unwrap(),
+        "にほん",
+        "the composed text is kept"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "compositionend" && e["data"] == "にほん"),
+        "{events:?}"
+    );
+    assert_eq!(
+        d.ime_reset_count(),
+        base + 1,
+        "a focus move inside the window resets the platform"
+    );
+    assert!(
+        d.ime_request().is_some(),
+        "the next field requests the IME again"
+    );
+    // A commit with no composition in progress is ordinary typed text in the new field.
+    d.handle_input(Input::ImeCommit("日本".into())).unwrap();
+    assert_eq!(d.get_value("b").unwrap(), "日本");
+    assert_eq!(d.get_value("a").unwrap(), "にほん");
+    // A host value write abandons the composition and resets the platform.
+    d.handle_input(Input::ImePreedit {
+        text: "한".into(),
+        cursor: Some((3, 3)),
+    })
+    .unwrap();
+    d.set_value("b", "reset").unwrap();
+    assert_eq!(d.ime_reset_count(), base + 2);
+    // A composition that ends normally (commit) does not reset the platform.
+    d.handle_input(Input::ImePreedit {
+        text: "中".into(),
+        cursor: Some((3, 3)),
+    })
+    .unwrap();
+    d.handle_input(Input::ImeCommit("中文".into())).unwrap();
+    assert_eq!(d.ime_reset_count(), base + 2);
+    // The window losing focus ends it without a reset: the platform has committed or cleared it.
+    d.handle_input(Input::ImePreedit {
+        text: "x".into(),
+        cursor: Some((1, 1)),
+    })
+    .unwrap();
+    d.handle_input(Input::Focus(false)).unwrap();
+    assert_eq!(d.ime_reset_count(), base + 2);
+}
+
+#[test]
 fn scrolling_moves_hit_geometry_and_subtree_replacement_retires_it() {
     let mut d = Document::parse("<!doctype html><style>body{margin:0}#s{height:80px;width:180px;overflow:auto}#pad{height:150px}#go{width:80px;height:30px}</style><div id=s><div id=pad></div><button id=go>Go</button></div>").unwrap();
     d.render(200, 200, 1.0).unwrap();

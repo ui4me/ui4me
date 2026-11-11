@@ -1185,7 +1185,8 @@ pub fn host_set_checked(d: &mut Document, el: NodeId, checked: bool) -> Result<(
 
 impl InteractionRuntime {
     /// A host write replaced the value of a text control: the `change` baseline restarts from it.
-    pub fn host_value_written(&mut self, doc: DocumentId, node: NodeId, value: &str) {
-        crate::interaction::editing::reset_baseline(self, doc, node, value);
+    /// Returns whether a composition was abandoned (the platform preedit must be reset).
+    pub fn host_value_written(&mut self, doc: DocumentId, node: NodeId, value: &str) -> bool {
+        crate::interaction::editing::reset_baseline(self, doc, node, value)
     }
 }

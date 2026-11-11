@@ -571,6 +571,12 @@ impl Session {
             .ok()
             .flatten()
     }
+    /// The document's platform-IME reset counter (see `Document::ime_reset_count`).
+    #[cfg(feature = "native")]
+    pub fn ime_reset_count(&self, id: u64) -> u64 {
+        self.with_window(id, |w| Ok(w.document.ime_reset_count()))
+            .unwrap_or(0)
+    }
     #[cfg(feature = "native")]
     pub fn cursor(&self, id: u64) -> String {
         self.with_window(id, |w| Ok(w.document.cursor().to_owned()))

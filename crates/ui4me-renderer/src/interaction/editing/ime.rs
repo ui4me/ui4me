@@ -357,9 +357,10 @@ pub(crate) fn commit(
 /// End the composition of `doc` keeping the composed text as it is (`ImeDisabled`, blur, the window
 /// losing focus, a pointer press): `compositionend` carries the text; no `input` event.
 ///
-/// `reset` asks the platform to drop its own preedit too: for a pointer press, where the platform still
-/// shows it; not after `ImeDisabled`, a blur or the window losing focus, where the platform has
-/// already committed or cleared it (011 Clarification Q3).
+/// `reset` asks the platform to drop its own preedit too: for a pointer press or an element blur
+/// inside a focused window (Tab, a host `focus`), where the platform still holds it and would
+/// otherwise commit it again into the next control (0.5 F0501); not after `ImeDisabled` or the
+/// window losing focus, where the platform has already committed or cleared it (011 Clarification Q3).
 pub(crate) fn finish(
     host: &mut dyn DispatchHost,
     doc: DocumentId,
@@ -461,17 +462,20 @@ pub(crate) fn delete_surrounding(
     Ok(())
 }
 
-/// A host value write abandoned the composition of `node`: forget it, no events.
+/// A host value write abandoned the composition of `node`: forget it, no events. Returns whether a
+/// composition was in progress (the host must then reset the platform's preedit too).
 pub(crate) fn abandon(
     ix: &mut crate::interaction::dispatch::InteractionRuntime,
     doc: DocumentId,
     node: NodeId,
-) {
+) -> bool {
     if let Some(s) = ix.docs.get_mut(&doc)
         && s.edit.comp.as_ref().is_some_and(|c| c.node == node)
     {
         s.edit.comp = None;
+        return true;
     }
+    false
 }
 
 /// Tell the host where the caret of `cx.node` is and what surrounds it.

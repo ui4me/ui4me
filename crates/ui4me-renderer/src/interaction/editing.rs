@@ -1111,15 +1111,16 @@ pub(crate) fn reset_baseline(
     doc: DocumentId,
     node: NodeId,
     value: &str,
-) {
+) -> bool {
     if let Some(s) = ix.docs.get_mut(&doc)
         && let Some(b) = s.edit.baseline.get_mut(&node)
     {
         *b = value.to_owned();
     }
     // A host value write abandons a composition and ends the undo history (editing.md sections 4, 5).
-    ime::abandon(ix, doc, node);
+    let abandoned = ime::abandon(ix, doc, node);
     history::clear(ix, doc, node);
+    abandoned
 }
 
 /// Fire `change` when the value differs from the baseline, and make the value the new baseline.
@@ -1389,8 +1390,9 @@ pub(crate) fn on_blur(
         ts: None,
     };
     host.caret_blink(doc, None);
-    // The composition ends (`compositionend`) before `change` and `blur`.
-    ime::finish(host, doc, false, Modifiers::default(), origin, None)?;
+    // The composition ends (`compositionend`) before `change` and `blur`. The window still has the
+    // focus (window deactivation already ended it), so the platform is told to drop its preedit.
+    ime::finish(host, doc, true, Modifiers::default(), origin, None)?;
     ime::clear(host, doc);
     rt(host, |ix| {
         if let Ok(s) = ix.doc_state(doc) {

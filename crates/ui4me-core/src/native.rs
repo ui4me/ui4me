@@ -121,6 +121,14 @@ struct NativeWindow {
     visible: bool,
     shown_pending: bool,
     last_ime: Option<ImeState>,
+    /// The document's IME reset counter last applied to the platform.
+    ime_resets: u64,
+    /// After a platform IME reset: late preedit/commit events of the dropped composition are
+    /// discarded until this instant or the next key press (0.5 F0501, no double commit).
+    ime_quiet_until: Option<std::time::Instant>,
+    /// The platform emptied its preedit; unless a commit follows in the same batch (Windows and
+    /// text-input-v3 send an empty preedit before every commit) the composition was canceled.
+    preedit_cleared: bool,
     last_cursor: CursorIcon,
     a11y: Accessibility,
 }
@@ -265,6 +273,9 @@ impl Desktop {
                 visible: false,
                 shown_pending: false,
                 last_ime: None,
+                ime_resets: 0,
+                ime_quiet_until: None,
+                preedit_cleared: false,
                 last_cursor: CursorIcon::Default,
                 a11y,
             },
@@ -595,6 +606,20 @@ impl Desktop {
             native.last_cursor = cursor;
         }
         let current = self.session.ime_request(id);
+        let resets = self.session.ime_reset_count(id);
+        if resets != native.ime_resets {
+            native.ime_resets = resets;
+            // The document ended a composition the platform still shows (a pointer press, an
+            // element blur, a host value write): disabling the input method drops its preedit; the
+            // request below re-enables it for the control that now has the focus.
+            if native.last_ime.is_some() {
+                native.window.set_ime_allowed(false);
+                native.last_ime = None;
+                native.composing = false;
+                native.ime_quiet_until =
+                    Some(std::time::Instant::now() + std::time::Duration::from_millis(250));
+            }
+        }
         if current != native.last_ime {
             if let Some(ime) = &current {
                 if native.last_ime.as_ref().map(|i| i.password) != Some(ime.password) {
@@ -641,9 +666,12 @@ impl Desktop {
         );
     }
     fn keyboard(&mut self, id: u64, event: winit::event::KeyEvent) {
-        let Some(native) = self.windows.get(&id) else {
+        let Some(native) = self.windows.get_mut(&id) else {
             return;
         };
+        if event.state == ElementState::Pressed {
+            native.ime_quiet_until = None;
+        }
         let m = native.modifiers;
         let composing = native.composing;
         let key = match &event.logical_key {
@@ -683,6 +711,32 @@ impl Desktop {
                     self.send_input(id, Input::Text(text));
                 }
             }
+        }
+    }
+    /// An empty preedit that no commit followed in its batch canceled the composition: end it with
+    /// what it now holds (nothing). The document treats this like the IME turning off.
+    fn end_canceled_compositions(&mut self) {
+        let canceled: Vec<u64> = self
+            .windows
+            .iter_mut()
+            .filter_map(|(id, w)| std::mem::take(&mut w.preedit_cleared).then_some(*id))
+            .collect();
+        for id in canceled {
+            self.send_input(id, Input::ImeDisabled);
+        }
+    }
+    /// Whether IME text events are the tail of a composition the document already ended and reset.
+    fn ime_quiet(&mut self, id: u64) -> bool {
+        let Some(native) = self.windows.get_mut(&id) else {
+            return true;
+        };
+        match native.ime_quiet_until {
+            Some(until) if std::time::Instant::now() < until => true,
+            Some(_) => {
+                native.ime_quiet_until = None;
+                false
+            }
+            None => false,
         }
     }
     fn stop_if_requested(&mut self, event_loop: &ActiveEventLoop) -> bool {
@@ -733,6 +787,9 @@ impl ApplicationHandler<()> for Desktop {
         let Some(id) = id else { return };
         if let Some(native) = self.windows.get_mut(&id) {
             native.a11y.adapter.process_event(&native.window, &event);
+        }
+        if !matches!(event, WindowEvent::Ime(_) | WindowEvent::RedrawRequested) {
+            self.end_canceled_compositions();
         }
         match event {
             WindowEvent::CloseRequested => {
@@ -842,16 +899,22 @@ impl ApplicationHandler<()> for Desktop {
                 self.observe(id);
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
-                if let Some(native) = self.windows.get_mut(&id) {
-                    native.composing = !text.is_empty();
+                if !self.ime_quiet(id) {
+                    if let Some(native) = self.windows.get_mut(&id) {
+                        native.preedit_cleared = text.is_empty() && native.composing;
+                        native.composing = !text.is_empty();
+                    }
+                    self.send_input(id, Input::ImePreedit { text, cursor });
                 }
-                self.send_input(id, Input::ImePreedit { text, cursor });
             }
             WindowEvent::Ime(Ime::Commit(text)) => {
-                if let Some(native) = self.windows.get_mut(&id) {
-                    native.composing = false;
+                if !self.ime_quiet(id) {
+                    if let Some(native) = self.windows.get_mut(&id) {
+                        native.composing = false;
+                        native.preedit_cleared = false;
+                    }
+                    self.send_input(id, Input::ImeCommit(text));
                 }
-                self.send_input(id, Input::ImeCommit(text));
             }
             WindowEvent::Ime(Ime::Enabled) => self.send_input(id, Input::ImeEnabled),
             WindowEvent::Ime(Ime::Disabled) => {
@@ -866,6 +929,7 @@ impl ApplicationHandler<()> for Desktop {
         self.stop_if_requested(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.end_canceled_compositions();
         self.session.process_work();
         self.synchronize(event_loop);
         if self.stop_if_requested(event_loop) {

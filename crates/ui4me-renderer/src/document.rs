@@ -173,6 +173,8 @@ pub struct Document {
     clipboard: Box<dyn Clipboard>,
     cursor: String,
     ime: Option<ImeState>,
+    /// Platform IME resets requested so far (the native host compares it, 0.5 F0501).
+    ime_resets: u64,
     blink: Option<CaretBlink>,
     started: Instant,
     modifiers: Modifiers,
@@ -306,6 +308,7 @@ impl Document {
             clipboard: Box::new(MemoryClipboard),
             cursor: "default".into(),
             ime: None,
+            ime_resets: 0,
             blink: None,
             started: Instant::now(),
             modifiers: Modifiers::default(),
@@ -337,6 +340,11 @@ impl Document {
     }
     pub fn ime_request(&self) -> Option<&ImeState> {
         self.ime.as_ref().filter(|_| self.window_focused)
+    }
+    /// How many times the document asked the platform to drop its preedit; the native host resets
+    /// the input method whenever this changes.
+    pub fn ime_reset_count(&self) -> u64 {
+        self.ime_resets
     }
     pub fn needs_repaint(&self) -> bool {
         self.repaint || self.pipeline.state() == PipelineState::Dirty
@@ -411,7 +419,9 @@ impl Document {
             .document()
             .control_value(n)
             .unwrap_or_default();
-        self.interaction.host_value_written(self.id(), n, &value);
+        if self.interaction.host_value_written(self.id(), n, &value) {
+            self.ime_resets += 1;
+        }
         self.after_mutation(false);
         Ok(())
     }
@@ -1795,7 +1805,10 @@ impl DispatchHost for Document {
         });
     }
     fn ime_reset(&mut self, _id: DocumentId) {
+        // Clearing the request alone is not enough: a following `ime_update` for the next focused
+        // control would restore an equal request and the platform would never hear of the reset.
         self.ime = None;
+        self.ime_resets += 1;
     }
     fn scroll_chain(
         &mut self,
