@@ -846,6 +846,10 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+        // A plain-text editing host is a multi-line text field (0.8 F0801).
+        if crate::document::editable::is_editing_host(self.d, n) {
+            return Some(Role::MultilineTextInput);
+        }
         let has_name = || {
             e.attr("aria-label").is_some_and(|v| !v.trim().is_empty())
                 || e.attr("aria-labelledby").is_some()

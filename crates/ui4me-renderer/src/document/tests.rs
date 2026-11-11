@@ -1312,3 +1312,74 @@ fn draggable_elements_drag_between_targets_and_escape_cancels() {
     assert!(all.iter().any(|e| e["type"] == "click"));
     assert!(all.iter().all(|e| e["type"] != "dragstart"));
 }
+
+#[test]
+fn plain_text_contenteditable_edits_with_keys_ime_clipboard_and_undo() {
+    // 0.8 F0801.
+    let shared = Rc::new(RefCell::new(String::new()));
+    let mut d = Document::parse("<!doctype html><style>body{margin:0;font:16px sans-serif}#ed{width:200px;min-height:40px}</style><div id=ed contenteditable=plaintext-only>Ahoj <b>světe</b></div><p id=other>other</p>").unwrap();
+    d.set_clipboard(Box::new(TestClipboard(shared.clone())));
+    d.render(300, 200, 1.0).unwrap();
+    d.handle_input(Input::Focus(true)).unwrap();
+    let _ = click(&mut d, "ed");
+    assert_eq!(d.interaction.focused_element(d.id()), d.node("ed").ok(), "a host is focusable");
+    let text = |d: &Document| d.get_text("ed").unwrap();
+    let mut events = Vec::new();
+    events.extend(d.handle_input(Input::Text("!".into())).unwrap());
+    assert_eq!(text(&d), "Ahoj světe!", "markup flattened to text, caret at the end");
+    assert!(d.get_html(Some("ed"), None, false).unwrap() == "Ahoj světe!", "content is one text node");
+    assert!(events.iter().any(|e| e["type"] == "input" && e["input_type"] == "insertText" && e["data"] == "!"));
+    press(&mut d, "Enter");
+    d.handle_input(Input::Text("😀👍🏽".into())).unwrap();
+    assert_eq!(text(&d), "Ahoj světe!\n😀👍🏽");
+    press(&mut d, "Backspace");
+    assert_eq!(text(&d), "Ahoj světe!\n😀", "a whole grapheme (emoji + skin tone) is deleted");
+    press(&mut d, "Backspace");
+    press(&mut d, "Backspace");
+    assert_eq!(text(&d), "Ahoj světe!");
+    // Ctrl+Z restores, Ctrl+Y redoes.
+    d.handle_input(key("z", true, false)).unwrap();
+    assert_eq!(text(&d), "Ahoj světe!\n");
+    d.handle_input(key("y", true, false)).unwrap();
+    assert_eq!(text(&d), "Ahoj světe!");
+    // Ctrl+A then typing replaces; Ctrl+C/V moves text; pasted markup stays text.
+    d.handle_input(key("a", true, false)).unwrap();
+    d.handle_input(key("c", true, false)).unwrap();
+    assert_eq!(&*shared.borrow(), "Ahoj světe!");
+    d.handle_input(Input::Text("x".into())).unwrap();
+    assert_eq!(text(&d), "x");
+    *shared.borrow_mut() = "<img src=x onerror=alert(1)>".into();
+    d.handle_input(key("v", true, false)).unwrap();
+    assert_eq!(text(&d), "x<img src=x onerror=alert(1)>");
+    assert!(d.query_ids("#ed img", 10).unwrap().1 == 0, "no element was created");
+    // Arrows and Home/End move the caret; Shift extends; Delete removes forward.
+    d.handle_input(key("Home", true, false)).unwrap();
+    d.handle_input(Input::Text(">".into())).unwrap();
+    assert!(text(&d).starts_with(">x"), "{}", text(&d));
+    d.handle_input(key("End", true, false)).unwrap();
+    press(&mut d, "ArrowLeft");
+    d.handle_input(key("Delete", false, false)).unwrap();
+    assert!(text(&d).ends_with("alert(1)"), "{}", text(&d));
+    // IME: the preedit is shown in the text and committed once.
+    d.handle_input(Input::ImePreedit { text: "に".into(), cursor: Some((3, 3)) }).unwrap();
+    assert!(text(&d).ends_with("alert(1)に"));
+    d.handle_input(Input::ImePreedit { text: "日本".into(), cursor: Some((6, 6)) }).unwrap();
+    d.handle_input(Input::ImeCommit("日本".into())).unwrap();
+    assert!(text(&d).ends_with("alert(1)日本"), "{}", text(&d));
+    assert_eq!(text(&d).matches("日本").count(), 1);
+    // A non-editable element is untouched by typing after focus leaves the host.
+    let _ = click(&mut d, "other");
+    d.handle_input(Input::Text("Z".into())).unwrap();
+    assert_eq!(d.get_text("other").unwrap(), "other");
+}
+
+#[test]
+fn editing_hosts_are_multiline_text_fields_for_assistive_technology() {
+    let mut d = Document::parse("<!doctype html><div id=ed contenteditable aria-label=Notes>Hello</div>").unwrap();
+    d.render(300, 200, 1.0).unwrap();
+    let t = d.accessibility_tree().unwrap();
+    let n = t.nodes.values().find(|n| n.html_id.as_deref() == Some("ed")).unwrap();
+    assert_eq!(n.role, accesskit::Role::MultilineTextInput);
+    assert_eq!(n.value.as_deref(), Some("Hello"));
+    assert!(n.states.focusable);
+}

@@ -303,3 +303,6 @@ details[open] > summary:first-of-type {
 /* §15.4.1 Embedded content */
 iframe { border: 2px inset; }
 video { object-fit: contain; }
+
+/* Plain-text editing hosts (UI4ME 0.8 F0801): the text is laid out as typed. */
+[contenteditable]:not([contenteditable="false" i]) { white-space: pre-wrap; overflow-wrap: break-word; cursor: text; }

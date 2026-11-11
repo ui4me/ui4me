@@ -390,6 +390,59 @@ impl Document {
         self.selection.dragging = false;
         self.selection.unit = None;
     }
+    /// Editing hosts (0.8 F0801): the selection inside `host`'s single text paragraph as byte
+    /// offsets `(anchor, focus)`, when both ends are there.
+    pub(super) fn host_selection(&self, host: NodeId) -> Option<(usize, usize)> {
+        let (a, f) = (self.selection.anchor?, self.selection.focus?);
+        (a.root == host && f.root == host && a.nth == 0 && f.nth == 0).then_some((a.byte, f.byte))
+    }
+    /// Place the selection inside `host`'s paragraph (byte offsets).
+    pub(super) fn set_host_selection(&mut self, host: NodeId, anchor: usize, focus: usize) {
+        let before = (self.selection.anchor, self.selection.focus);
+        self.selection.anchor = Some(SelPoint { root: host, nth: 0, byte: anchor });
+        self.selection.focus = Some(SelPoint { root: host, nth: 0, byte: focus });
+        self.selection.dragging = false;
+        self.selection.unit = None;
+        self.repaint = true;
+        self.note_selection_change(before);
+    }
+    /// The lines of `host`'s paragraph: byte range, viewport top and height, and the caret stops
+    /// `(byte, viewport x)` in logical order.
+    #[allow(clippy::type_complexity)]
+    pub(super) fn host_lines(&mut self, host: NodeId) -> Result<Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)>> {
+        let Some(c) = self.committed_tree()? else {
+            return Ok(Vec::new());
+        };
+        let tree = &c.layout.fragments;
+        let index = TextIndex::build(tree, self.pipeline.document());
+        let Some(&para) = index.by_root.get(&(host, 0)) else {
+            return Ok(Vec::new());
+        };
+        let p = &tree.paragraphs[para];
+        let mut scroll = HashMap::new();
+        let mut out: Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)> = Vec::new();
+        for &f in &index.paras[&para].frags {
+            let FragmentKind::Text(tf) = &tree.get(f).kind else {
+                continue;
+            };
+            let Some((fx, fy, _, fh, base, _)) = self.frag_geometry(tree, f, &mut scroll) else {
+                continue;
+            };
+            if out.iter().any(|l| l.1 == fy) {
+                continue;
+            }
+            let line = &p.lines()[tf.line_index];
+            let stops = p
+                .caret_stops(tf.line_index)
+                .stops
+                .iter()
+                .map(|s| (s.byte, fx + f64::from(s.x) - base))
+                .collect();
+            out.push((line.text_range.clone(), fy, fh, stops));
+        }
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+        Ok(out)
+    }
     /// Select all document text inside `element` (or the whole document for `None`).
     pub fn select_text(&mut self, element: Option<&str>) -> Result<()> {
         let scope = element.map(|e| self.node(e)).transpose()?;

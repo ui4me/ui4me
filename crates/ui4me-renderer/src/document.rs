@@ -207,6 +207,8 @@ pub struct Document {
     file_requests: Vec<NodeId>,
     /// Element drag and drop (0.7 F0707).
     drag: drag::DragState,
+    /// Plain-text editing hosts (0.8 F0801).
+    editable: editable::EditableState,
     input_files: HashMap<NodeId, Vec<String>>,
     repaint: bool,
     prevent: Vec<StoredRule>,
@@ -346,6 +348,7 @@ impl Document {
             env: Environment::default(),
             file_requests: Vec::new(),
             drag: Default::default(),
+            editable: Default::default(),
             input_files: HashMap::new(),
             repaint: true,
             prevent: Vec::new(),
@@ -1340,6 +1343,7 @@ impl Document {
         }
         frame.recycle();
         self.paint_selection(&mut pixels, width, height, scale)?;
+        self.paint_editing_caret(&mut pixels, width, height, scale)?;
         self.repaint = false;
         Ok(pixels)
     }
@@ -1442,6 +1446,8 @@ impl Document {
         if !dragging {
             self.selection_input(&probe, &events)?;
         }
+        self.editable_pointer(&probe)?;
+        self.editable_input(&probe, &events)?;
         events.extend(self.drain_events());
         Ok(events)
     }
@@ -2551,6 +2557,7 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 
 #[cfg(test)]
 mod a11y_text_tests;
+pub(crate) mod editable;
 #[cfg(test)]
 mod bidi_tests;
 mod drag;

@@ -124,7 +124,8 @@ pub fn is_focusable(d: &Document, n: NodeId) -> bool {
         }
         "summary" => crate::interaction::dialog::summary_details(d, n).is_some(),
         "dialog" => e.attr("open").is_some(),
-        _ => false,
+        // A plain-text editing host (0.8 F0801).
+        _ => crate::document::editable::is_editing_host(d, n),
     }
 }
 
