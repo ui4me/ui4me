@@ -2357,6 +2357,8 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
     }
 }
 
+#[cfg(test)]
+mod bidi_tests;
 mod selection;
 #[cfg(test)]
 mod tests;

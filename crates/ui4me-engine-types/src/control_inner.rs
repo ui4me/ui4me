@@ -21,9 +21,9 @@ pub struct InnerLine {
     /// The line holds right-to-left text (or is a right-to-left paragraph): the stops are in
     /// logical order with the x of each caret position, which is not ascending (lane L-BIDI-r14).
     pub bidi: bool,
-    /// On a bidi line, the extent of each grapheme cluster: (UTF-16 start, UTF-16 end, x0, x1),
-    /// in logical order, x0 < x1. Empty on a plain left-to-right line.
-    pub clusters: Vec<(u32, u32, f32, f32)>,
+    /// On a bidi line, the extent of each grapheme cluster: (UTF-16 start, UTF-16 end, x0, x1,
+    /// right-to-left), in logical order, x0 < x1. Empty on a plain left-to-right line.
+    pub clusters: Vec<(u32, u32, f32, f32, bool)>,
 }
 
 /// Rows a drop-down's popup shows at once before it scrolls.
@@ -135,9 +135,19 @@ impl ControlInner {
         merged
     }
 
-    /// The value offset of the stop nearest to `x` on `line`.
+    /// The value offset nearest to `x` on `line`. On a bidi line the cluster under `x` decides:
+    /// the half of it nearer to `x` picks its leading or trailing offset, so the visual left half
+    /// of a right-to-left cluster is its end (F0503); elsewhere the nearest caret stop wins.
     pub fn offset_at(&self, line: usize, x: f32) -> u32 {
         let l = &self.lines[line.min(self.lines.len() - 1)];
+        let nearest = l.clusters.iter().min_by(|a, b| {
+            let d = |c: &&(u32, u32, f32, f32, bool)| (c.2 - x).max(x - c.3).max(0.0);
+            d(a).total_cmp(&d(b))
+        });
+        if let Some(&(s, e, x0, x1, rtl)) = nearest {
+            let right_half = x >= (x0 + x1) / 2.0;
+            return if right_half == rtl { s } else { e };
+        }
         let mut best = (l.start, f32::INFINITY);
         for (o, sx) in &l.stops {
             let d = (sx - x).abs();

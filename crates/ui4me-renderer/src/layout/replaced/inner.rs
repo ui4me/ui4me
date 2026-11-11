@@ -347,6 +347,7 @@ impl InnerShaped {
                                     self.display.to_u16(e.end),
                                     e.x0,
                                     e.x1,
+                                    e.rtl,
                                 )
                             })
                             .collect()

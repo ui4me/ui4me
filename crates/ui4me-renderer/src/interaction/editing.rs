@@ -100,6 +100,9 @@ pub(crate) struct EditState {
     click: Option<ClickTracker>,
     /// x kept across consecutive vertical caret moves (textarea).
     goal_x: Option<f32>,
+    /// The caret sits at the end of a soft-wrapped line (upstream affinity) at this offset of this
+    /// control: Home, Up and Down then act on that line, not on the one that starts there.
+    upstream_at: Option<(NodeId, u32)>,
     /// The `change` baseline of each text control: its value when focused or last committed.
     baseline: HashMap<NodeId, String>,
     /// Undo and redo stacks per text control (`history.rs`).
@@ -500,6 +503,11 @@ fn reveal_caret(
     upstream: bool,
 ) -> Result<(), Status> {
     host.set_caret_state(cx.doc, cx.node, true, upstream);
+    rt(host, |ix| {
+        if let Ok(s) = ix.doc_state(cx.doc) {
+            s.edit.upstream_at = upstream.then_some((cx.node, offset));
+        }
+    });
     let Some(g) = host.control_geometry(cx.doc, cx.node)? else {
         ime::report(host, cx);
         return Ok(());
@@ -935,6 +943,11 @@ fn motion(host: &mut dyn DispatchHost, cx: &Cx, mo: Motion, extend: bool) -> Res
     let len = c.len();
     let collapsed = c.start == c.end;
     let mut upstream = false;
+    let held_upstream = rt(host, |ix| {
+        ix.doc_state(cx.doc)
+            .ok()
+            .is_some_and(|s| s.edit.upstream_at == Some((cx.node, focus)))
+    });
     let mut keep_goal = false;
     let g = match mo {
         Motion::Visual(_)
@@ -973,7 +986,7 @@ fn motion(host: &mut dyn DispatchHost, cx: &Cx, mo: Motion, extend: bool) -> Res
         Motion::DocEnd => len,
         Motion::LineStart | Motion::LineEnd => match &g {
             Some(g) if g.inner.multiline => {
-                let li = g.inner.line_of(focus, false);
+                let li = g.inner.line_of(focus, held_upstream);
                 let l = &g.inner.lines[li];
                 if mo == Motion::LineStart {
                     l.start
@@ -993,7 +1006,7 @@ fn motion(host: &mut dyn DispatchHost, cx: &Cx, mo: Motion, extend: bool) -> Res
         },
         Motion::Up | Motion::Down | Motion::PageUp | Motion::PageDown => match &g {
             Some(g) if g.inner.multiline => {
-                let li = g.inner.line_of(focus, false);
+                let li = g.inner.line_of(focus, held_upstream);
                 let x = goal_x(host, cx).unwrap_or_else(|| g.inner.x_of(li, focus));
                 keep_goal = true;
                 set_goal_x(host, cx, Some(x));

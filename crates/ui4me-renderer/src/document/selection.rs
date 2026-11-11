@@ -702,7 +702,7 @@ impl Document {
         Ok(())
     }
     /// Highlight rectangles (viewport CSS px) clipped to their scrollports.
-    fn selection_rects(&mut self) -> Result<Vec<(f64, f64, f64, f64)>> {
+    pub(super) fn selection_rects(&mut self) -> Result<Vec<(f64, f64, f64, f64)>> {
         let Some((c, index, start, end)) = self.ordered()? else {
             return Ok(Vec::new());
         };
