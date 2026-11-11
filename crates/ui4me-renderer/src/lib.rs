@@ -19,6 +19,16 @@ pub(crate) mod scene;
 pub(crate) mod style;
 #[allow(dead_code)]
 pub(crate) mod text;
+/// The CSS feature profile: its version and every row (feature id, state name) (1.0 F1102).
+pub fn css_profile() -> (&'static str, Vec<(&'static str, &'static str)>) {
+    (
+        style::profile::VERSION,
+        style::profile::table::FEATURES
+            .iter()
+            .map(|(id, s)| (*id, s.name()))
+            .collect(),
+    )
+}
 /// Page size of a pagination request (1.0 F1001).
 pub use document::paged_facade::PageSize;
 pub use document::{

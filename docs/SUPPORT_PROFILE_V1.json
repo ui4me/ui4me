@@ -1,0 +1,1251 @@
+{
+  "abi": 1,
+  "binding_exceptions": [
+    {
+      "binding": "python",
+      "op": "reserve_completion",
+      "reason": "the PowerShell work API's completion slots; Python settles worker results through post futures and run_in_background"
+    },
+    {
+      "binding": "python",
+      "op": "cancel_completion",
+      "reason": "the PowerShell work API's completion slots; Python settles worker results through post futures and run_in_background"
+    }
+  ],
+  "commands": [
+    {
+      "op": "add_class",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "add_stylesheet",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "append_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "batch",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "cancel_completion",
+      "powershell": true,
+      "python": false
+    },
+    {
+      "op": "cancel_timer",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "capabilities",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "check_validity",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "claim_instance",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "clear_selection",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "close",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "close_dialog",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "close_notification",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "copy_selection",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "diagnostics",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "exec_edit",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "explain",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "export_pdf",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "file_dialog",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "focus",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_accessibility_tree",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_attribute",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_attributes",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_checked",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_clipboard_html",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_clipboard_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_computed_style",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_diagnostics",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_dialog",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_edit_state",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_environment",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_files",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_html",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_node",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_options",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_page_rects",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_pointer_capture",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_popover",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_rect",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_scroll",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_selection",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_validity",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_value",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "get_window_state",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "has_element",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "hide_popover",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "insert_html",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "list_monitors",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "list_stylesheets",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "move_element",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "node_children",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "node_of",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "notify",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "open",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "open_file",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "paginate",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "print",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "query",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "register_hotkey",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "remove_attribute",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "remove_class",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "remove_element",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "remove_stylesheet",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "remove_tray",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "render_page",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "replace_children_html",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "replace_stylesheet",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "reserve_completion",
+      "powershell": true,
+      "python": false
+    },
+    {
+      "op": "resize",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "scroll_by",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "scroll_into_view",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "scroll_to",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "select_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_attribute",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_checked",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_clipboard_html",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_clipboard_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_default_action",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_environment",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_link_policy",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_menu",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_pointer_capture",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_pointer_grab",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_scroll_follow",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_selected_values",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_text",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_title",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_tray",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_value",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_window_constraints",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "set_window_icon",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "show_context_menu",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "show_dialog",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "show_popover",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "snapshot",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "stats",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "text_at_point",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "text_rects",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "timer",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "toggle_popover",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "trim_children",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "unregister_hotkey",
+      "powershell": true,
+      "python": true
+    },
+    {
+      "op": "window_action",
+      "powershell": true,
+      "python": true
+    }
+  ],
+  "core_version": "0.9.0",
+  "css": {
+    "features": [
+      {
+        "id": "css.at-rule.container",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.counter-style",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.at-rule.custom-media",
+        "state": "off"
+      },
+      {
+        "id": "css.at-rule.font-face",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.font-feature-values",
+        "state": "filtered"
+      },
+      {
+        "id": "css.at-rule.font-palette-values",
+        "state": "off"
+      },
+      {
+        "id": "css.at-rule.import",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.keyframes",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.layer",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.media",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.namespace",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.page",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.page-vertical",
+        "state": "off"
+      },
+      {
+        "id": "css.at-rule.page-width-change",
+        "state": "off"
+      },
+      {
+        "id": "css.at-rule.property",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.scope",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.scope-implicit",
+        "state": "off"
+      },
+      {
+        "id": "css.at-rule.starting-style",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.supports",
+        "state": "on"
+      },
+      {
+        "id": "css.at-rule.view-transition",
+        "state": "off"
+      },
+      {
+        "id": "css.display.-webkit-box",
+        "state": "on"
+      },
+      {
+        "id": "css.display.-webkit-inline-box",
+        "state": "on"
+      },
+      {
+        "id": "css.display.block",
+        "state": "on"
+      },
+      {
+        "id": "css.display.contents",
+        "state": "on"
+      },
+      {
+        "id": "css.display.flex",
+        "state": "on"
+      },
+      {
+        "id": "css.display.flow-root",
+        "state": "on"
+      },
+      {
+        "id": "css.display.grid",
+        "state": "on"
+      },
+      {
+        "id": "css.display.grid-lanes",
+        "state": "off"
+      },
+      {
+        "id": "css.display.inline",
+        "state": "on"
+      },
+      {
+        "id": "css.display.inline-block",
+        "state": "on"
+      },
+      {
+        "id": "css.display.inline-flex",
+        "state": "on"
+      },
+      {
+        "id": "css.display.inline-grid",
+        "state": "on"
+      },
+      {
+        "id": "css.display.inline-grid-lanes",
+        "state": "off"
+      },
+      {
+        "id": "css.display.inline-table",
+        "state": "on"
+      },
+      {
+        "id": "css.display.list-item",
+        "state": "on"
+      },
+      {
+        "id": "css.display.none",
+        "state": "on"
+      },
+      {
+        "id": "css.display.ruby",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.display.ruby-base",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.display.ruby-base-container",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.display.ruby-text",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.display.ruby-text-container",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.display.table",
+        "state": "on"
+      },
+      {
+        "id": "css.function.calc",
+        "state": "on"
+      },
+      {
+        "id": "css.function.color-mix",
+        "state": "on"
+      },
+      {
+        "id": "css.function.container-style-query",
+        "state": "off"
+      },
+      {
+        "id": "css.function.counter",
+        "state": "on"
+      },
+      {
+        "id": "css.function.cross-fade",
+        "state": "off"
+      },
+      {
+        "id": "css.function.fit-content",
+        "state": "on"
+      },
+      {
+        "id": "css.function.light-dark",
+        "state": "on"
+      },
+      {
+        "id": "css.function.light-dark-image",
+        "state": "on"
+      },
+      {
+        "id": "css.function.oklch",
+        "state": "on"
+      },
+      {
+        "id": "css.function.progress",
+        "state": "on"
+      },
+      {
+        "id": "css.function.random",
+        "state": "off"
+      },
+      {
+        "id": "css.media.prefers-reduced-motion",
+        "state": "on"
+      },
+      {
+        "id": "css.property.-webkit-line-clamp",
+        "state": "on"
+      },
+      {
+        "id": "css.property.-webkit-text-fill-color",
+        "state": "off"
+      },
+      {
+        "id": "css.property.-webkit-text-stroke",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.accent-color",
+        "state": "on"
+      },
+      {
+        "id": "css.property.anchor-name",
+        "state": "on"
+      },
+      {
+        "id": "css.property.animation",
+        "state": "on"
+      },
+      {
+        "id": "css.property.animation-timeline",
+        "state": "off"
+      },
+      {
+        "id": "css.property.appearance",
+        "state": "on"
+      },
+      {
+        "id": "css.property.backdrop-filter",
+        "state": "on"
+      },
+      {
+        "id": "css.property.baseline-source",
+        "state": "filtered"
+      },
+      {
+        "id": "css.property.break-after",
+        "state": "on"
+      },
+      {
+        "id": "css.property.break-before",
+        "state": "on"
+      },
+      {
+        "id": "css.property.break-inside",
+        "state": "on"
+      },
+      {
+        "id": "css.property.column-count",
+        "state": "on"
+      },
+      {
+        "id": "css.property.column-fill",
+        "state": "on"
+      },
+      {
+        "id": "css.property.column-rule",
+        "state": "on"
+      },
+      {
+        "id": "css.property.column-span",
+        "state": "on"
+      },
+      {
+        "id": "css.property.column-width",
+        "state": "on"
+      },
+      {
+        "id": "css.property.columns",
+        "state": "on"
+      },
+      {
+        "id": "css.property.contain",
+        "state": "on"
+      },
+      {
+        "id": "css.property.contain-intrinsic-size",
+        "state": "on"
+      },
+      {
+        "id": "css.property.container",
+        "state": "on"
+      },
+      {
+        "id": "css.property.container-name",
+        "state": "on"
+      },
+      {
+        "id": "css.property.container-type",
+        "state": "on"
+      },
+      {
+        "id": "css.property.content-visibility",
+        "state": "on"
+      },
+      {
+        "id": "css.property.corner-shape",
+        "state": "off"
+      },
+      {
+        "id": "css.property.counter-increment",
+        "state": "on"
+      },
+      {
+        "id": "css.property.counter-reset",
+        "state": "on"
+      },
+      {
+        "id": "css.property.counter-set",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.field-sizing",
+        "state": "on"
+      },
+      {
+        "id": "css.property.font-optical-sizing",
+        "state": "on"
+      },
+      {
+        "id": "css.property.font-size-adjust",
+        "state": "off"
+      },
+      {
+        "id": "css.property.font-synthesis",
+        "state": "on"
+      },
+      {
+        "id": "css.property.font-variant-emoji",
+        "state": "off"
+      },
+      {
+        "id": "css.property.font-variation-settings",
+        "state": "on"
+      },
+      {
+        "id": "css.property.hyphenate-character",
+        "state": "on"
+      },
+      {
+        "id": "css.property.hyphens",
+        "state": "on"
+      },
+      {
+        "id": "css.property.image-orientation",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.initial-letter",
+        "state": "off"
+      },
+      {
+        "id": "css.property.line-clamp",
+        "state": "on"
+      },
+      {
+        "id": "css.property.mask",
+        "state": "on"
+      },
+      {
+        "id": "css.property.overscroll-behavior",
+        "state": "on"
+      },
+      {
+        "id": "css.property.page",
+        "state": "on"
+      },
+      {
+        "id": "css.property.position-anchor",
+        "state": "on"
+      },
+      {
+        "id": "css.property.position-area",
+        "state": "off"
+      },
+      {
+        "id": "css.property.position-try",
+        "state": "off"
+      },
+      {
+        "id": "css.property.print-color-adjust",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.resize",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scroll-behavior",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scroll-margin",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scroll-padding",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scroll-snap",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scrollbar-color",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scrollbar-gutter",
+        "state": "on"
+      },
+      {
+        "id": "css.property.scrollbar-width",
+        "state": "on"
+      },
+      {
+        "id": "css.property.shape-outside",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.text-combine-upright",
+        "state": "on"
+      },
+      {
+        "id": "css.property.text-decoration-skip-ink",
+        "state": "unavailable"
+      },
+      {
+        "id": "css.property.text-orientation",
+        "state": "on"
+      },
+      {
+        "id": "css.property.text-overflow",
+        "state": "on"
+      },
+      {
+        "id": "css.property.text-underline-offset",
+        "state": "on"
+      },
+      {
+        "id": "css.property.text-underline-position",
+        "state": "on"
+      },
+      {
+        "id": "css.property.transition",
+        "state": "on"
+      },
+      {
+        "id": "css.property.view-transition",
+        "state": "off"
+      },
+      {
+        "id": "css.property.writing-mode",
+        "state": "on"
+      },
+      {
+        "id": "css.property.zoom",
+        "state": "off"
+      },
+      {
+        "id": "css.pseudo.backdrop",
+        "state": "on"
+      },
+      {
+        "id": "css.pseudo.color-swatch",
+        "state": "filtered"
+      },
+      {
+        "id": "css.pseudo.details-content",
+        "state": "off"
+      },
+      {
+        "id": "css.pseudo.file-selector-button",
+        "state": "filtered"
+      },
+      {
+        "id": "css.pseudo.first-letter",
+        "state": "on"
+      },
+      {
+        "id": "css.pseudo.first-line",
+        "state": "on"
+      },
+      {
+        "id": "css.pseudo.marker",
+        "state": "on"
+      },
+      {
+        "id": "css.pseudo.part",
+        "state": "filtered"
+      },
+      {
+        "id": "css.pseudo.slotted",
+        "state": "filtered"
+      },
+      {
+        "id": "css.selector.dir",
+        "state": "on"
+      },
+      {
+        "id": "css.selector.has",
+        "state": "on"
+      },
+      {
+        "id": "css.selector.host",
+        "state": "filtered"
+      },
+      {
+        "id": "css.selector.modal",
+        "state": "on"
+      },
+      {
+        "id": "css.selector.nth-child-of",
+        "state": "on"
+      },
+      {
+        "id": "css.selector.open",
+        "state": "on"
+      },
+      {
+        "id": "css.syntax.nesting",
+        "state": "on"
+      },
+      {
+        "id": "css.unit.cq",
+        "state": "on"
+      },
+      {
+        "id": "css.unit.lh-normal",
+        "state": "off"
+      },
+      {
+        "id": "css.value.-webkit-fill-available",
+        "state": "on"
+      },
+      {
+        "id": "css.value.background-clip-border-area",
+        "state": "off"
+      },
+      {
+        "id": "css.value.background-clip-text",
+        "state": "on"
+      },
+      {
+        "id": "css.value.clip-path-url",
+        "state": "filtered"
+      },
+      {
+        "id": "css.value.filter-url",
+        "state": "filtered"
+      },
+      {
+        "id": "css.value.font-variant-caps-all",
+        "state": "on"
+      },
+      {
+        "id": "css.value.revert-rule",
+        "state": "on"
+      },
+      {
+        "id": "css.value.shape-function",
+        "state": "off"
+      },
+      {
+        "id": "css.value.stretch",
+        "state": "on"
+      },
+      {
+        "id": "css.value.subgrid",
+        "state": "on"
+      },
+      {
+        "id": "css.value.system-ui",
+        "state": "on"
+      },
+      {
+        "id": "css.value.text-indent-each-line",
+        "state": "off"
+      },
+      {
+        "id": "css.value.text-indent-hanging",
+        "state": "off"
+      },
+      {
+        "id": "css.value.text-wrap-balance",
+        "state": "on"
+      },
+      {
+        "id": "css.value.text-wrap-pretty",
+        "state": "off"
+      },
+      {
+        "id": "css.value.text-wrap-style-stable",
+        "state": "on"
+      },
+      {
+        "id": "css.value.white-space-collapse-preserve-spaces",
+        "state": "off"
+      },
+      {
+        "id": "css.value.word-break-break-word",
+        "state": "off"
+      }
+    ],
+    "profile_version": "1.26.0"
+  },
+  "documents": {
+    "contract": "docs/PROJECT_STATUS.md",
+    "diagnostics": "docs/core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md",
+    "framework_fixtures": "docs/core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md",
+    "svg": "docs/core-roadmap/data/SVG_PROFILE_V0_9.md"
+  },
+  "events": [
+    "animationcancel",
+    "animationend",
+    "animationiteration",
+    "animationstart",
+    "beforetoggle",
+    "blur",
+    "cancel",
+    "change",
+    "click",
+    "close",
+    "close_requested",
+    "closed",
+    "commit",
+    "completion",
+    "compositionend",
+    "compositionstart",
+    "compositionupdate",
+    "dragend",
+    "dragover",
+    "dragstart",
+    "drop",
+    "environment_changed",
+    "error",
+    "file_dialog",
+    "file_drop",
+    "file_hover",
+    "file_hover_cancelled",
+    "focus",
+    "focusin",
+    "focusout",
+    "gotpointercapture",
+    "hotkey",
+    "input",
+    "invalid",
+    "keydown",
+    "keyup",
+    "link_activated",
+    "lostpointercapture",
+    "menu_command",
+    "menu_status",
+    "mousedown",
+    "mousemove",
+    "mouseup",
+    "notification",
+    "open_files",
+    "pointer_grab",
+    "pointercancel",
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "post",
+    "print",
+    "reset",
+    "resized",
+    "scale_changed",
+    "scroll",
+    "selectionchange",
+    "shown",
+    "started",
+    "stopped",
+    "submit",
+    "system_preferences",
+    "timer",
+    "toggle",
+    "touch",
+    "transitioncancel",
+    "transitionend",
+    "transitionrun",
+    "transitionstart",
+    "tray",
+    "wheel",
+    "window_state"
+  ],
+  "platform": {
+    "note": "placeholder; filled by tests/native/capabilities_probe.py --update on each host"
+  },
+  "schema": 1
+}

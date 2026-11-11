@@ -676,7 +676,9 @@ impl Session {
                 "clipboard.html": if headless { capability("supported", "an in-process clipboard (headless backend)") } else { clipboard.clone() },
                 "clipboard.image": capability("unsupported", "image clipboard formats are not offered (no image codec stack in Core)"),
                 "clipboard.text": clipboard,
-                "file_dialogs": file_dialogs,
+                "file_dialogs": file_dialogs.clone(),
+                // 1.0 F1002: the native print dialog (the xdg-desktop-portal Print interface on Linux).
+                "printing": if headless { capability("unavailable", "the headless backend has no printers") } else if cfg!(target_os = "linux") { match file_dialogs["status"].as_str() { Some("supported") => capability("supported", "through xdg-desktop-portal Print; the desktop's dialog chooses the printer"), _ => file_dialogs } } else if pending { capability("unknown", "reported once run() has started the native backend") } else { ok() },
                 "file_drop": native(Some("winit 0.30 has no Wayland drag-and-drop")),
                 "ime": native(None),
                 "ime.surrounding_text": if headless { capability("unavailable", "no input method in the headless backend") } else { capability("unsupported", "winit 0.30 cannot send the text around the caret to the input method") },

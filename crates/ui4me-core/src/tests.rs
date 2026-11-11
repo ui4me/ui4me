@@ -2906,3 +2906,139 @@ fn explain_answers_each_status() {
     let node = cmd(json!({"op":"explain","window":id,"element":"node:99999:1"})).unwrap();
     assert_eq!(node["status"], "stale_reference");
 }
+
+/// Wire ops a binding deliberately does not expose one-to-one (op, binding, reason).
+const BINDING_EXCEPTIONS: &[(&str, &str, &str)] = &[
+    ("reserve_completion", "python", "the PowerShell work API's completion slots; Python settles worker results through post futures and run_in_background"),
+    ("cancel_completion", "python", "the PowerShell work API's completion slots; Python settles worker results through post futures and run_in_background"),
+];
+
+fn snake(name: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                out.push('_');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// The canonical support profile (1.0 F1102), generated from the source: CSS rows, wire ops
+/// with their binding coverage, host event types, expected platform capabilities.
+fn support_profile() -> Value {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
+    // Wire ops: the variants of `enum Command`.
+    let protocol = read("crates/ui4me-core/src/protocol.rs");
+    let start = protocol.find("pub enum Command {").unwrap();
+    let body = &protocol[start..protocol[start..].find("\n}\n").unwrap() + start];
+    let mut ops: Vec<String> = body
+        .lines()
+        .filter_map(|l| {
+            let t = l.strip_prefix("    ")?;
+            if t.starts_with(' ') || t.starts_with('/') || t.starts_with('#') {
+                return None;
+            }
+            let name: String = t.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+            (!name.is_empty() && name.chars().next()?.is_ascii_uppercase()).then(|| snake(&name))
+        })
+        .collect();
+    ops.sort();
+    ops.dedup();
+    let py = read("bindings/python/src/ui4me/app.py");
+    let ps = read("bindings/powershell/Ui4me.Managed/App.cs")
+        + &read("bindings/powershell/Ui4me.Managed/BackgroundTask.cs");
+    let commands: Vec<Value> = ops
+        .iter()
+        .map(|op| {
+            let q = format!("\"{op}\"");
+            json!({"op": op, "python": py.contains(&q), "powershell": ps.contains(&q)})
+        })
+        .collect();
+    // Host event types: the document listener list plus the events Core emits itself.
+    let doc = read("crates/ui4me-renderer/src/document.rs");
+    let list = &doc[doc.find("for event in [").unwrap()..];
+    let list = &list[..list.find(']').unwrap()];
+    let mut events: Vec<String> = list
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect();
+    let mut files = Vec::new();
+    for dir in ["crates/ui4me-core/src", "crates/ui4me-core/src/services", "crates/ui4me-core/src/print", "crates/ui4me-renderer/src/document"] {
+        for e in std::fs::read_dir(root.join(dir)).unwrap().flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|x| x == "rs") && !p.file_name().unwrap().to_string_lossy().contains("test") {
+                files.push(p);
+            }
+        }
+    }
+    files.push(root.join("crates/ui4me-renderer/src/document.rs"));
+    files.sort();
+    for f in files {
+        let s = std::fs::read_to_string(&f).unwrap();
+        for pat in ["\"type\":\"", "\"type\": \"", "[\"type\"] = json!(\""] {
+            for part in s.split(pat).skip(1) {
+                let name: String = part.chars().take_while(|c| c.is_ascii_lowercase() || *c == '_').collect();
+                if !name.is_empty() {
+                    events.push(name);
+                }
+            }
+        }
+    }
+    // `change` reaches hosts as `commit` (and the legacy `change` after every `input`).
+    events.push("commit".into());
+    events.sort();
+    events.dedup();
+    let (css_version, rows) = ui4me_renderer::css_profile();
+    let platform: Value =
+        serde_json::from_str(&read("docs/core-roadmap/data/PLATFORM_CAPABILITIES_V1.json")).unwrap();
+    json!({
+        "schema": 1,
+        "core_version": env!("CARGO_PKG_VERSION"),
+        "abi": 1,
+        "css": {"profile_version": css_version, "features": rows.iter().map(|(id, s)| json!({"id": id, "state": s})).collect::<Vec<_>>()},
+        "commands": commands,
+        "binding_exceptions": BINDING_EXCEPTIONS.iter().map(|(op, b, why)| json!({"op": op, "binding": b, "reason": why})).collect::<Vec<_>>(),
+        "events": events,
+        "platform": platform,
+        "documents": {
+            "svg": "docs/core-roadmap/data/SVG_PROFILE_V0_9.md",
+            "framework_fixtures": "docs/core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md",
+            "diagnostics": "docs/core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md",
+            "contract": "docs/PROJECT_STATUS.md"
+        }
+    })
+}
+
+#[test]
+fn support_profile_is_current_and_bindings_cover_every_op() {
+    // 1.0 F1102/F1103. Regenerate with UI4ME_UPDATE_PROFILE=1.
+    let profile = support_profile();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/SUPPORT_PROFILE_V1.json");
+    let text = serde_json::to_string_pretty(&profile).unwrap() + "\n";
+    if std::env::var_os("UI4ME_UPDATE_PROFILE").is_some() {
+        std::fs::write(&path, &text).unwrap();
+    }
+    let committed = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+    assert!(committed == text, "docs/SUPPORT_PROFILE_V1.json is stale: run the test with UI4ME_UPDATE_PROFILE=1");
+    let missing: Vec<String> = profile["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|c| {
+            ["python", "powershell"].into_iter().filter_map(move |b| {
+                let op = c["op"].as_str().unwrap();
+                (c[b] == false && !BINDING_EXCEPTIONS.iter().any(|(o, bb, _)| *o == op && *bb == b))
+                    .then(|| format!("{op} ({b})"))
+            })
+        })
+        .collect();
+    assert!(missing.is_empty(), "wire ops a binding does not expose: {missing:?}");
+}
