@@ -132,6 +132,25 @@ process worker slot until it actually exits; stopping the UI does not kill it.
 The process permits four such workers, with at most 256 captured output entries
 per work item. Keep long operations off UI callbacks.
 
+### Core 0.4 status (2026-11-11): Foundation Complete (local)
+
+Candidate 0.4.0 (`ce201c7`, source `sha256:69001e95…`) passed the 0.4 gate on Linux x64 and Windows x64:
+- installed C, Python and PowerShell consumers;
+- the Core-only file utility (`examples/*/file_utility.*`) and chat/log demo (`examples/*/chat_log.*`), driven by automated real input with native OS file dialogs;
+- the native window probe.
+
+It is not published. Known limits:
+- no screen-reader bridge;
+- full relayout per change (keep logs bounded);
+- Wayland cannot focus, hide, set icons or receive file drops;
+- the Linux wheel tag is `manylinux_2_39` until it is rebuilt in a manylinux container.
+
+Ledger: `docs/core-foundation/PROGRESS.md`.
+
+Quick start from a local build: `python dev.py build --binding all --profile release`, then `python dev.py package --binding all --profile release`.
+- **Python:** install `dist/<platform>/ui4me-0.4.0-*.whl` into a virtual environment, then run `python examples/python/file_utility.py`.
+- **PowerShell:** extract `dist/<platform>/Ui4me-0.4.0-<platform>-stage.zip`, `Import-Module <dir>/Ui4me/Ui4me.psd1`, then run `examples/powershell/file_utility.ps1`.
+
 ### Core 0.3 status (2026-11-11)
 
 Candidate 0.3.0 (`8b536fe`, source `sha256:30cab4db…`) passed the local 0.3 gate on Linux x64 and Windows x64:

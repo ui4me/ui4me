@@ -179,12 +179,12 @@ try {
     }
     Case 'G07_settings_modal_select_escape' {
         Click-Element 'settings'
-        $s = Wait-State { param($s) $s.dialog.open -and $s.dialog.modal }
+        $s = Wait-State { param($s) (Get-Field $s.dialog 'open', 'Open') -and (Get-Field $s.dialog 'modal', 'Modal') }
         if ((@($s.focus) -join ',') -ne 'theme') { throw "modal focus $(@($s.focus) -join ',')" }
         Press 0x28
         $s = Wait-State { param($s) $s.theme -eq 'dark' }
         Press 0x1B
-        $s = Wait-State { param($s) -not $s.dialog.open }
+        $s = Wait-State { param($s) -not (Get-Field $s.dialog 'open', 'Open') }
         if ((@($s.focus) -join ',') -ne 'settings') { throw "focus not restored: $(@($s.focus) -join ',')" }
         @{ theme = $s.theme; focus = @($s.focus) }
     }
