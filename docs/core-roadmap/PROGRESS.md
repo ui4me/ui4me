@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** RELEASED 0.8.0 from `24f16e4` (publish run 43078533202: PyPI, PowerShell Gallery, GitHub). **0.9:** GO, candidate 0.9.0 @ `aa4496f` (being released). **Next milestone:** 1.0 (not started; not covered by the current authorization) (owner authorized releasing each).
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** RELEASED 0.6.0 (2026-11-11, workflow run 43059000437 from `3f9eaf7`, gated `f004dd6`: PyPI, PowerShell Gallery, GitHub `v0.6.0`). **0.7:** RELEASED 0.7.0 from `d53acc8` (publish run 43070193722: PyPI, PowerShell Gallery, GitHub). **0.8:** RELEASED 0.8.0 from `24f16e4` (publish run 43078533202: PyPI, PowerShell Gallery, GitHub). **0.9:** RELEASED 0.9.0 from `3a047d7` (publish run 43085807197: PyPI, PowerShell Gallery, GitHub). **Next milestone:** 1.0 (not started; not covered by the current authorization) (owner authorized releasing each).
 
 ## Version ledger
 
@@ -13,7 +13,7 @@
 | 0.6 | RELEASED 0.6.0 (`3f9eaf7`) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
 | 0.7 | RELEASED 0.7.0 | `33b1d77`, source sha256:ab8db0e1… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 9/9, PowerShell 9/9 both hosts) | 11/11 items |
 | 0.8 | RELEASED 0.8.0 | `8f20779`, source sha256:ae1940a2… | PASS (installed, virtual KWin) | PASS (installed, interactive session; one flaky case passed on rerun) | PASS (installed C 1/1, Python 10/10, PowerShell 10/10 both hosts) | 8/8 items |
-| 0.9 | GO (candidate 0.9.0) | `aa4496f`, source sha256:8c1548cf… | PASS (installed, virtual KWin; animation probe 4/4) | PASS (installed, interactive session; animation probe 4/4) | PASS (installed C 1/1, Python 11/11, PowerShell 11/11 both hosts) | 11/11 items (F0906/F0909 partial, see entries) |
+| 0.9 | RELEASED 0.9.0 | `aa4496f`, source sha256:8c1548cf… | PASS (installed, virtual KWin; animation probe 4/4) | PASS (installed, interactive session; animation probe 4/4) | PASS (installed C 1/1, Python 11/11, PowerShell 11/11 both hosts) | 11/11 items (F0906/F0909 partial, see entries) |
 | 0.10 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 1.0 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 1.1 | FUTURE OPTIONAL | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
