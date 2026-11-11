@@ -42,8 +42,11 @@ jobs:
         run: |
           sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
           sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
-          sudo apt-get -o Acquire::Retries=5 update
-          sudo apt-get -o Acquire::Retries=5 install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1
+          # Best effort: the native libraries are loaded at run time (wayland/x11 dlopen) and the
+          # image has the toolchain; the build below fails loudly if something is really missing.
+          if ! { sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1; }; then
+            echo "::warning::apt packages unavailable on this runner; continuing with the image's packages"
+          fi
       - name: MSVC x64 environment
         if: runner.os == 'Windows'
         shell: pwsh
