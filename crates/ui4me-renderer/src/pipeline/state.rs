@@ -375,7 +375,7 @@ pub struct DocumentPipeline {
     /// Test hook: never reuse the committed layout when the box tree is unchanged (the differential tests compare it with reuse).
     pub(crate) no_layout_reuse: bool,
     /// Scene reuse (015 PERF-2, `crate::scene::reuse`): element-box paint subtrees kept from one scene to the next.
-    /// Off by default in 0.4: with it on, glibc's heap does not plateau under repeated updates (PERF-4). On with
+    /// On by default since F1004 (heap plateau qualified: `long_document` tests, F1006 soak); off with `UI4ME_SCENE_REUSE=0`. Formerly off (PERF-4). On with
     /// `set_scene_reuse(true)` or `UI4ME_SCENE_REUSE=1` (tests, bench).
     pub(crate) scene_reuse: bool,
     /// Test hook: every frame is a full raster (the damage raster is compared with it).

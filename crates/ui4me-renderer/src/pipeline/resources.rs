@@ -92,9 +92,13 @@ struct InlineEntry {
 const MAX_SIZED: usize = 128;
 
 /// One vector image's re-rasterisation at placed sizes (the scene asks while planning).
+///
+/// Both references are weak: the raster is stored in the `State` it points at (`State::images`), and a
+/// strong reference would make a cycle that kept the state, every cached picture and the whole resource
+/// manager of a closed document alive for the life of the process (F1006).
 struct SizedRaster {
-    manager: SharedResources,
-    state: Arc<Mutex<State>>,
+    manager: std::sync::Weak<Mutex<ResourceManager>>,
+    state: std::sync::Weak<Mutex<State>>,
     request: ResourceRef,
 }
 
@@ -108,10 +112,11 @@ impl std::fmt::Debug for SizedRaster {
 
 impl VectorRaster for SizedRaster {
     fn raster_at(&self, css_size: (f32, f32)) -> Option<Arc<ImageData>> {
-        let scale = lock(&self.state).scale;
+        let (manager, state) = (self.manager.upgrade()?, self.state.upgrade()?);
+        let scale = lock(&state).scale;
         let dev = |v: f32| ((f64::from(v) * scale).ceil().max(1.0)) as u32;
         let (natural, ratio) = {
-            let mgr = lock(&self.manager);
+            let mgr = lock(&manager);
             match mgr.natural_size(&self.request) {
                 ImageState::Ready {
                     width_css,
@@ -121,13 +126,12 @@ impl VectorRaster for SizedRaster {
                 _ => return None,
             }
         };
-        let (pixels, generation) = match lock(&self.manager)
-            .paint_image(&self.request, (dev(css_size.0), dev(css_size.1)))
-        {
-            PaintImage::Raster { pixels, generation } => (pixels, generation),
-            PaintImage::NotReady | PaintImage::Broken { .. } => return None,
-        };
-        let mut s = lock(&self.state);
+        let (pixels, generation) =
+            match lock(&manager).paint_image(&self.request, (dev(css_size.0), dev(css_size.1))) {
+                PaintImage::Raster { pixels, generation } => (pixels, generation),
+                PaintImage::NotReady | PaintImage::Broken { .. } => return None,
+            };
+        let mut s = lock(&state);
         if let Some(d) = s.sized.get(&(self.request, generation)) {
             return Some(d.clone());
         }
@@ -378,8 +382,8 @@ impl PipelineResources {
         let id = s.next_id;
         let vector = mgr_is_vector.then(|| {
             VectorHandle(Arc::new(SizedRaster {
-                manager: self.manager.clone(),
-                state: self.state.clone(),
+                manager: Arc::downgrade(&self.manager),
+                state: Arc::downgrade(&self.state),
                 request: r,
             }))
         });

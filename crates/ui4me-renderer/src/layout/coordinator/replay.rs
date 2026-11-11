@@ -170,7 +170,12 @@ fn is_cell(boxes: &BoxTree, b: BoxId) -> bool {
 /// Box `b` is laid out by its parent through `compute_child_layout`, without a shared block
 /// formatting context: an in-flow flex or grid item, an atomic inline (not a float) placed by its
 /// inline root, or a table cell (module docs).
-fn replay_root(boxes: &BoxTree, b: BoxId) -> bool {
+///
+/// With `plain_blocks` (no float and no multi-column flow thread in either tree: nothing then reaches
+/// from a sibling into a block child, and every other input of its layout is in Taffy's cache key) an
+/// in-flow block of a block container is one too (F1004): a long log or chat of plain rows re-lays out
+/// only the rows that changed instead of every row on every update.
+fn replay_root(boxes: &BoxTree, b: BoxId, plain_blocks: bool) -> bool {
     if is_cell(boxes, b) {
         return true;
     }
@@ -182,9 +187,24 @@ fn replay_root(boxes: &BoxTree, b: BoxId) -> bool {
         return true;
     }
     lb.is_block()
-        && lb
-            .parent
-            .is_some_and(|p| matches!(boxes.get(p).inner, InnerDisplay::Flex | InnerDisplay::Grid))
+        && lb.parent.is_some_and(|p| {
+            let p = boxes.get(p);
+            matches!(p.inner, InnerDisplay::Flex | InnerDisplay::Grid)
+                || (plain_blocks
+                    && matches!(p.kind, BoxKind::BlockContainer { .. })
+                    && matches!(p.inner, InnerDisplay::Flow | InnerDisplay::FlowRoot)
+                    && matches!(lb.kind, BoxKind::BlockContainer { .. }))
+        })
+}
+
+/// Neither tree has a float or a multi-column flow thread (see [`replay_root`]).
+fn plain_blocks(a: &BoxTree, b: &BoxTree) -> bool {
+    let plain = |t: &BoxTree| {
+        t.boxes
+            .iter()
+            .all(|x| !x.is_float() && x.tag != BoxTag::FlowThread)
+    };
+    plain(a) && plain(b)
 }
 
 /// Equal box subtrees: same ids, owners, kinds, tags, styles and children (the root's parent aside).
@@ -253,13 +273,14 @@ pub(crate) fn replay(
     }
     let new_map = host_index(tree.nodes.iter().map(|n| n.box_id), boxes.boxes.len());
     let mut seeded = 0;
+    let plain = plain_blocks(boxes, old_boxes);
     let mut stack = vec![root];
     while let Some(b) = stack.pop() {
         let h = new_map[b.0 as usize];
         if h != u32::MAX
             && b != root
-            && replay_root(boxes, b)
-            && seed(tree, boxes, old_boxes, old, b, h as usize)
+            && replay_root(boxes, b, plain)
+            && seed(tree, boxes, old_boxes, old, b, h as usize, plain)
         {
             seeded += 1;
             continue;
@@ -276,6 +297,7 @@ fn seed(
     old: &HostSnapshot,
     b: BoxId,
     h: usize,
+    plain: bool,
 ) -> bool {
     let i = b.0 as usize;
     let Some(&oh) = old.box_to_host.get(i) else {
@@ -300,7 +322,7 @@ fn seed(
         || np.style.webkit_align
         || op.style.webkit_align
         || np.style.writing_mode != op.style.writing_mode
-        || !replay_root(old_boxes, b)
+        || !replay_root(old_boxes, b, plain)
     {
         return false;
     }
