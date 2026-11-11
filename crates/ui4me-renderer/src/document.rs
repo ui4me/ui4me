@@ -824,9 +824,22 @@ impl Document {
         let c = self.pipeline.committed.as_deref()?;
         let tree = &c.layout.fragments;
         let mut bounds: Option<(f64, f64, f64, f64)> = None;
+        let offsets = self.pipeline.scroll_offsets();
         for &f in tree.fragments_of(n) {
             let r = tree.document_rect(f).rect;
-            let (x0, y0) = (r.origin.x.to_f64(), r.origin.y.to_f64());
+            // `position: sticky` boxes (the fragment or an ancestor) are drawn shifted.
+            let (mut dx, mut dy) = (0.0, 0.0);
+            let mut at = Some(f);
+            while let Some(a) = at {
+                if let Ok((sx, sy)) =
+                    crate::layout::coordinator::sticky::sticky_shift(tree, offsets, a)
+                {
+                    dx += sx;
+                    dy += sy;
+                }
+                at = tree.get(a).parent;
+            }
+            let (x0, y0) = (r.origin.x.to_f64() + dx, r.origin.y.to_f64() + dy);
             let (x1, y1) = (x0 + r.size.width.to_f64(), y0 + r.size.height.to_f64());
             bounds = Some(match bounds {
                 None => (x0, y0, x1, y1),

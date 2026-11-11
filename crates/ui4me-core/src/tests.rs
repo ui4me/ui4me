@@ -1185,3 +1185,64 @@ fn file_dialog_requests_validate_and_complete() {
         4
     );
 }
+
+#[test]
+fn responsive_layout_flex_media_grid_overflow() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let html = "<style>*{box-sizing:border-box}body{margin:0;font:14px sans-serif}\
+        header{display:flex;justify-content:space-between;align-items:center;height:40px;padding:0 10px}\
+        #app{display:flex;height:calc(100vh - 40px)}#side{width:200px;flex:none;overflow:auto}#main{flex:1;min-width:0;position:relative}\
+        @media (max-width:700px){#app{flex-direction:column}#side{width:auto;height:120px}}\
+        #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:10px}\
+        .cell{height:50px}#name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:120px}\
+        #badge{position:absolute;right:8px;top:8px;width:20px;height:20px}\
+        #scroller{height:100px;overflow:auto}#sticky{position:sticky;top:0;height:20px}</style>\
+        <header><b id='brand'>Files</b><button id='act'>Action</button></header>\
+        <div id='app'><nav id='side'><div id='name'>a-very-long-file-name-that-must-be-truncated.txt</div></nav>\
+        <main id='main'><span id='badge'></span><div id='grid'><div id='c1' class='cell'></div><div id='c2' class='cell'></div><div id='c3' class='cell'></div><div id='c4' class='cell'></div><div id='c5' class='cell'></div></div>\
+        <div id='scroller'><div id='sticky'></div><div style='height:400px'></div></div></main></div>";
+    let id = cmd(json!({"op":"open","width":1000,"height":600,"html":html})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let r = |e: &str| {
+        let v = cmd(json!({"op":"get_rect","window":id,"element":e})).unwrap()["rect"].clone();
+        (
+            v["x"].as_f64().unwrap(),
+            v["y"].as_f64().unwrap(),
+            v["width"].as_f64().unwrap(),
+            v["height"].as_f64().unwrap(),
+        )
+    };
+    // Wide: header spreads, sidebar beside main, grid has several columns, ellipsis clips.
+    assert_eq!(r("brand").0, 10.0);
+    assert!(
+        (r("act").0 + r("act").2 - 990.0).abs() < 0.5,
+        "space-between puts the button at the end: {:?}",
+        r("act")
+    );
+    assert_eq!((r("side").2, r("main").0), (200.0, 200.0));
+    assert_eq!(r("main").3, 560.0, "calc(100vh - 40px)");
+    let cols = |cells: &[&str]| cells.iter().filter(|c| r(c).1 == r("c1").1).count();
+    assert_eq!(
+        cols(&["c1", "c2", "c3", "c4", "c5"]),
+        4,
+        "780px of grid content fits 4 columns of >=150px with 10px gaps"
+    );
+    assert_eq!(r("name").2, 120.0);
+    assert_eq!((r("badge").0, r("badge").1), (1000.0 - 8.0 - 20.0, 48.0));
+    // Narrow: the media query stacks the layout and the grid reflows.
+    cmd(json!({"op":"resize","window":id,"width":600,"height":600})).unwrap();
+    assert_eq!((r("side").2, r("side").3), (600.0, 120.0));
+    assert_eq!((r("main").0, r("main").1), (0.0, 160.0));
+    assert_eq!(
+        cols(&["c1", "c2", "c3", "c4", "c5"]),
+        3,
+        "580px fits 3 columns"
+    );
+    assert_eq!(r("c4").1, r("c1").1 + 60.0);
+    // Sticky stays at the top of its scroller while scrolling.
+    let top = r("scroller").1;
+    cmd(json!({"op":"scroll_to","window":id,"element":"scroller","y":150})).unwrap();
+    assert_eq!(r("sticky").1, top);
+}
