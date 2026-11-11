@@ -156,4 +156,15 @@ jobs:
         shell: bash
         run: |
           version=$(tr -d '\r\n' < VERSION)
-          gh release create "v$version" dist/release/* --target "$GITHUB_SHA" --title "ui4me $version" --notes "Built from commit $GITHUB_SHA. This release workflow does not run tests."
+          # The LuaJIT binding (pure Lua over the C ABI) ships as a source archive beside the SDKs.
+          if [ -d bindings/lua ]; then
+            (cd bindings && zip -qr "../dist/release/ui4me-lua-$version.zip" lua -x 'lua/tools/build/*')
+          fi
+          (cd dist/release && sha256sum -- * | grep -v ' SHA256SUMS$' > SHA256SUMS)
+          notes="docs/release-notes/v$version.md"
+          if [ -f "$notes" ]; then
+            { cat "$notes"; printf '\n\nBuilt from commit %s. Qualification evidence is recorded in docs/core-roadmap/PROGRESS.md; this workflow builds and publishes, it does not run the native gate.\n' "$GITHUB_SHA"; } > release-notes.md
+          else
+            printf 'Built from commit %s. This release workflow does not run tests.\n' "$GITHUB_SHA" > release-notes.md
+          fi
+          gh release create "v$version" dist/release/* --target "$GITHUB_SHA" --title "ui4me $version" --notes-file release-notes.md
