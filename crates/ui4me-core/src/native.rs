@@ -259,6 +259,9 @@ impl Desktop {
             .update_geometry(id, size.width, size.height, window.scale_factor())?;
         self.session
             .install_clipboard(id, Box::new(NativeClipboard(self.clipboard.clone())))?;
+        // The OS colour scheme (Windows, X11 via the desktop portal); `None` on Wayland in winit 0.30.
+        self.session
+            .system_color_scheme(id, window.theme().map(|t| t == winit::window::Theme::Dark));
         self.windows.insert(
             id,
             NativeWindow {
@@ -819,6 +822,10 @@ impl ApplicationHandler<()> for Desktop {
             WindowEvent::HoveredFileCancelled => {
                 self.session
                     .emit(json!({"type":"file_hover_cancelled","window":id}));
+            }
+            WindowEvent::ThemeChanged(theme) => {
+                self.session
+                    .system_color_scheme(id, Some(theme == winit::window::Theme::Dark));
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(native) = self.windows.get(&id) {

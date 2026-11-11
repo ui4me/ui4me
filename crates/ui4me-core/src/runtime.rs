@@ -380,7 +380,10 @@ impl Session {
                 "accessibility": native(None),
                 "keyboard.layouts": native(None),
                 "environment.scale_changes": native(None),
-                "environment.theme_changes": native(Some("winit 0.30 does not report Wayland theme changes")),
+                "environment.theme_changes": if headless || pending || platform == "windows" { native(None) } else { capability("unsupported", "winit 0.30 reports OS theme changes on Windows only; use set_environment") },
+                "environment.app_override": ok(),
+                "environment.contrast": capability("unsupported", "prefers-contrast and forced-colors are not evaluated"),
+                "environment.locale": capability("unsupported", "Core does not read the OS locale; set lang in the document"),
                 "environment.font_changes": capability("unsupported", "system font changes are not observed; restart the app or reopen the window"),
                 "notifications": later("0.7"),
                 "system_tray": later("0.7"),
@@ -646,6 +649,24 @@ impl Session {
             w.document.set_viewport(width, height, scale)?;
             Ok(())
         })
+    }
+    /// The platform reported the OS colour scheme of a window (creation, theme change). When the
+    /// scheme in force changes, the document restyles once and `environment_changed` is emitted.
+    pub fn system_color_scheme(&self, id: u64, dark: Option<bool>) {
+        let changed = self.with_window(id, |w| {
+            let changed = w.document.set_system_color_scheme(dark)?;
+            w.info.dirty |= changed;
+            Ok(changed.then(|| w.document.environment()))
+        });
+        match changed {
+            Ok(Some(mut env)) => {
+                env["type"] = json!("environment_changed");
+                env["window"] = json!(id);
+                self.emit(env);
+            }
+            Ok(None) => {}
+            Err(error) => self.report_document_error(id, error),
+        }
     }
     #[cfg(any(feature = "native", test))]
     pub fn input(&self, id: u64, input: Input) -> Result<()> {
@@ -1216,6 +1237,39 @@ impl Session {
                 d.scroll_into_view(&element, &block, &inline)
                     .map(|()| json!({}))
             })?,
+            Command::SetEnvironment {
+                window,
+                color_scheme,
+                reduced_motion,
+            } => {
+                let dark = match color_scheme.as_deref() {
+                    None => None,
+                    Some("light") => Some(Some(false)),
+                    Some("dark") => Some(Some(true)),
+                    Some("system") => Some(None),
+                    Some(_) => return Err(Error::arg("color_scheme must be light, dark or system")),
+                };
+                let reduce = match reduced_motion.as_deref() {
+                    None => None,
+                    Some("reduce") => Some(Some(true)),
+                    Some("no-preference") => Some(Some(false)),
+                    Some("system") => Some(None),
+                    Some(_) => {
+                        return Err(Error::arg(
+                            "reduced_motion must be reduce, no-preference or system",
+                        ))
+                    }
+                };
+                self.with_window(window, |w| {
+                    if w.document.set_app_environment(dark, reduce)? {
+                        w.info.dirty = true;
+                    }
+                    Ok(w.document.environment())
+                })?
+            }
+            Command::GetEnvironment { window } => {
+                self.with_window(window, |w| Ok(w.document.environment()))?
+            }
             Command::GetRect { window, element } => self.query(window, |d| {
                 d.element_rect(&element).map(|r| {
                     json!({"rect": r.map(|r| json!({"x":r.x,"y":r.y,"width":r.width,"height":r.height}))})

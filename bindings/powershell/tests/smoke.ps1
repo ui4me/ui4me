@@ -404,6 +404,11 @@ try {
             if ($app.MonitorsJson() -ne '[]') { throw 'Headless should report no monitors' }
             $caps = $app.CapabilitiesJson() | ConvertFrom-Json
             if ($caps.backend -ne 'headless' -or $caps.features.'window.focus'.status -ne 'unavailable' -or -not $caps.features.'window.focus'.reason) { throw "Headless capabilities: $($app.CapabilitiesJson())" }
+            $styled = $app.Open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>')
+            $env = $styled.SetEnvironment('dark', $null) | ConvertFrom-Json
+            if ($env.color_scheme -ne 'dark' -or $env.color_scheme_source -ne 'app' -or $styled.GetRect('b').Width -ne 20) { throw "Dark override: $($styled.EnvironmentJson())" }
+            $null = $styled.SetEnvironment('system', $null)
+            if ($styled.GetRect('b').Width -ne 10) { throw 'system did not restore the default scheme' }
             $null = $app.On('started', { $app.Stop() })
         }
     }

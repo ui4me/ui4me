@@ -247,6 +247,18 @@ pub enum Command {
         window: u64,
         element: String,
     },
+    /// App media preferences (0.5 F0506): `light`, `dark` or `system`; `reduce`,
+    /// `no-preference` or `system`. Omitted fields stay as they are.
+    SetEnvironment {
+        window: u64,
+        #[serde(default)]
+        color_scheme: Option<String>,
+        #[serde(default)]
+        reduced_motion: Option<String>,
+    },
+    GetEnvironment {
+        window: u64,
+    },
     SetScrollFollow {
         window: u64,
         #[serde(default)]

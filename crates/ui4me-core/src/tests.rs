@@ -1350,3 +1350,68 @@ fn keyboard_only_operation_of_ordinary_controls() {
     );
     assert_eq!(focus(), "r2");
 }
+
+#[test]
+fn environment_and_scale_changes_restyle_without_losing_input_state() {
+    // 0.5 F0506: an OS theme signal, an app override and a scale change each restyle the
+    // document; the DOM, control values and focus survive.
+    let h = Harness::new(0);
+    let s = &h.session;
+    let cmd = |v: Value| s.command(v);
+    let id = cmd(json!({"op":"open","html":"<style>#box{width:100px;height:10px}@media (prefers-color-scheme: dark){#box{width:200px}}@media (prefers-reduced-motion: reduce){#box{height:30px}}</style><div id=box></div><input id=name value=Ada>"})).unwrap()["window"].as_u64().unwrap();
+    let rect = |k: &str| {
+        cmd(json!({"op":"get_rect","window":id,"element":"box"})).unwrap()["rect"][k]
+            .as_f64()
+            .unwrap()
+    };
+    cmd(json!({"op":"focus","window":id,"element":"name"})).unwrap();
+    cmd(json!({"op":"set_value","window":id,"element":"name","value":"Ada!"})).unwrap();
+    assert_eq!(rect("width"), 100.0);
+    let env = cmd(json!({"op":"get_environment","window":id})).unwrap();
+    assert_eq!(
+        (
+            env["color_scheme"].as_str(),
+            env["color_scheme_source"].as_str()
+        ),
+        (Some("light"), Some("default"))
+    );
+    s.system_color_scheme(id, Some(true));
+    assert_eq!(rect("width"), 200.0, "the OS dark scheme applies");
+    assert!(h.events().iter().any(|e| e["type"] == "environment_changed"
+        && e["color_scheme"] == "dark"
+        && e["color_scheme_source"] == "system"));
+    // The app override wins over a later OS change, and `system` returns to the OS value.
+    let env = cmd(json!({"op":"set_environment","window":id,"color_scheme":"light","reduced_motion":"reduce"})).unwrap();
+    assert_eq!(
+        (
+            env["color_scheme"].as_str(),
+            env["color_scheme_source"].as_str()
+        ),
+        (Some("light"), Some("app"))
+    );
+    s.system_color_scheme(id, Some(true));
+    assert_eq!(rect("width"), 100.0);
+    assert_eq!(rect("height"), 30.0, "reduced motion applies");
+    cmd(json!({"op":"set_environment","window":id,"color_scheme":"system"})).unwrap();
+    assert_eq!(rect("width"), 200.0);
+    assert_eq!(
+        cmd(json!({"op":"set_environment","window":id,"color_scheme":"blue"}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    // A scale change keeps the input state.
+    s.update_geometry(id, 1280, 960, 2.0).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_environment","window":id})).unwrap()["scale"],
+        2.0
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_value","window":id,"element":"name"})).unwrap()["value"],
+        "Ada!"
+    );
+    assert_eq!(
+        cmd(json!({"op":"query","window":id,"selector":":focus"})).unwrap()["elements"],
+        json!(["name"])
+    );
+}

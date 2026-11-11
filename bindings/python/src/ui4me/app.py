@@ -487,6 +487,18 @@ class Window:
     def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest") -> None:
         self._command("scroll_into_view", element=element, block=block, inline=inline)
 
+    def set_environment(self, *, color_scheme: str | None = None, reduced_motion: str | None = None) -> dict:
+        """Override media preferences: ``color_scheme`` ``light``/``dark``/``system`` and
+        ``reduced_motion`` ``reduce``/``no-preference``/``system`` (``None`` leaves one as it is).
+        The document restyles in place; returns :meth:`environment`."""
+        return self._command("set_environment", color_scheme=color_scheme, reduced_motion=reduced_motion)
+
+    def environment(self) -> dict:
+        """Media preferences in force and their source (``system``, ``app`` or ``default``):
+        ``color_scheme``, ``system_color_scheme``, ``reduced_motion`` and ``scale``. The window
+        emits ``environment_changed`` when an OS theme change alters them."""
+        return self._command("get_environment")
+
     def get_rect(self, element: str) -> dict | None:
         """Border box in viewport CSS px (``x``, ``y``, ``width``, ``height``) or ``None``."""
         return self._command("get_rect", element=element)["rect"]

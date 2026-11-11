@@ -181,6 +181,8 @@ pub struct Document {
     pointer_buttons: u16,
     pointer: (f64, f64),
     window_focused: bool,
+    /// Media preferences: what the OS reported and what the app chose (0.5 F0506).
+    env: Environment,
     repaint: bool,
     prevent: Vec<StoredRule>,
     follow: Vec<Follow>,
@@ -315,6 +317,7 @@ impl Document {
             pointer_buttons: 0,
             pointer: (0.0, 0.0),
             window_focused: true,
+            env: Environment::default(),
             repaint: true,
             prevent: Vec::new(),
             follow: Vec::new(),
@@ -643,6 +646,50 @@ impl Document {
         }
     }
     /// Apply a new device size/scale now, so geometry queries before the next frame are current.
+    /// The OS colour scheme (`Some(true)` = dark; `None` = the platform does not say). An app
+    /// override wins. Returns whether the scheme in force changed (one restyle; DOM, values, focus
+    /// and selection are untouched).
+    pub fn set_system_color_scheme(&mut self, dark: Option<bool>) -> Result<bool> {
+        self.env.system_dark = dark;
+        self.apply_environment()
+    }
+    /// The app's media preferences: `Some(Some(v))` overrides, `Some(None)` returns to the system
+    /// value, `None` leaves it. Returns whether anything in force changed.
+    pub fn set_app_environment(
+        &mut self,
+        dark: Option<Option<bool>>,
+        reduced_motion: Option<Option<bool>>,
+    ) -> Result<bool> {
+        if let Some(v) = dark {
+            self.env.app_dark = v;
+        }
+        if let Some(v) = reduced_motion {
+            self.env.app_reduced_motion = v;
+        }
+        self.apply_environment()
+    }
+    fn apply_environment(&mut self) -> Result<bool> {
+        let dark = self.env.app_dark.or(self.env.system_dark).unwrap_or(false);
+        let reduce = self.env.app_reduced_motion.unwrap_or(false);
+        let changed = self.pipeline.set_dark(dark)? | self.pipeline.set_reduced_motion(reduce)?;
+        if changed {
+            self.repaint = true;
+        }
+        Ok(changed)
+    }
+    /// The media preferences in force and where each comes from.
+    pub fn environment(&self) -> Value {
+        let scheme = |dark: bool| if dark { "dark" } else { "light" };
+        let dark = self.env.app_dark.or(self.env.system_dark).unwrap_or(false);
+        json!({
+            "color_scheme": scheme(dark),
+            "color_scheme_source": if self.env.app_dark.is_some() { "app" } else if self.env.system_dark.is_some() { "system" } else { "default" },
+            "system_color_scheme": self.env.system_dark.map_or("unknown", scheme),
+            "reduced_motion": if self.env.app_reduced_motion.unwrap_or(false) { "reduce" } else { "no-preference" },
+            "reduced_motion_source": if self.env.app_reduced_motion.is_some() { "app" } else { "default" },
+            "scale": self.pipeline.config.scale,
+        })
+    }
     pub fn set_viewport(&mut self, width: u32, height: u32, scale: f64) -> Result<()> {
         if width == 0 || height == 0 {
             return Ok(());
@@ -2382,6 +2429,15 @@ mod focus_pointer_tests;
 mod selection;
 #[cfg(test)]
 mod tests;
+
+/// Media preferences of a document (0.5 F0506): the OS signal and the app override are kept
+/// apart, so a later OS change never undoes an app choice.
+#[derive(Clone, Copy, Debug, Default)]
+struct Environment {
+    system_dark: Option<bool>,
+    app_dark: Option<bool>,
+    app_reduced_motion: Option<bool>,
+}
 
 /// Style and layout answers for the accessibility builder, read from the committed state.
 struct A11yInfo<'a> {

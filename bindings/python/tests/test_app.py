@@ -316,6 +316,15 @@ class BindingTests(unittest.TestCase):
             self.assertEqual((caps["backend"], caps["platform"]), ("headless", "headless"))
             self.assertEqual(caps["features"]["window.focus"]["status"], "unavailable")
             self.assertTrue(caps["features"]["window.focus"]["reason"])
+            styled = app.open("<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>")
+            self.assertEqual(styled.environment()["color_scheme_source"], "default")
+            env = styled.set_environment(color_scheme="dark")
+            self.assertEqual((env["color_scheme"], env["color_scheme_source"]), ("dark", "app"))
+            self.assertEqual(styled.get_rect("b")["width"], 20)
+            styled.set_environment(color_scheme="system")
+            self.assertEqual(styled.get_rect("b")["width"], 10)
+            with self.assertRaises(Ui4meError):
+                styled.set_environment(color_scheme="blue")
             with self.assertRaises(Ui4meError):
                 window.window_action("spin")
 

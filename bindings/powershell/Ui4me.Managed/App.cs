@@ -525,6 +525,16 @@ public sealed class Window
         return Scroll(app.Command(request));
     }
     public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest") { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline }); }
+    /// <summary>Override media preferences (colorScheme light/dark/system, reducedMotion
+    /// reduce/no-preference/system; null or empty leaves one as it is — PowerShell passes $null to a
+    /// string parameter as ""). Returns the environment JSON.</summary>
+    public string SetEnvironment(string? colorScheme = null, string? reducedMotion = null)
+    {
+        Check();
+        return app.Command(new { op = "set_environment", window = Id, color_scheme = string.IsNullOrEmpty(colorScheme) ? null : colorScheme, reduced_motion = string.IsNullOrEmpty(reducedMotion) ? null : reducedMotion }).GetRawText();
+    }
+    /// <summary>Media preferences in force and their source, as JSON.</summary>
+    public string EnvironmentJson() { Check(); return app.Command(new { op = "get_environment", window = Id }).GetRawText(); }
     public ElementRect? GetRect(string element)
     {
         Check();
