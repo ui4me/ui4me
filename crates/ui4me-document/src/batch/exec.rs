@@ -65,6 +65,31 @@ impl Document {
         Ok(locals)
     }
 
+    /// Run host-composed mutations as one atomic batch: one revision step on success; on `Err`
+    /// the tree, attributes, text, control/UI state, journal and revisions are rolled back exactly
+    /// as for [`Self::apply_batch`] and nodes created inside are freed. Batches do not nest: inside
+    /// an active batch `f` runs as part of the outer one.
+    pub fn transaction<R, E>(&mut self, f: impl FnOnce(&mut Self) -> Result<R, E>) -> Result<R, E>
+    where
+        E: From<Status>,
+    {
+        self.check_open()?;
+        if self.batch_active {
+            return f(self);
+        }
+        self.begin_batch();
+        match f(self) {
+            Ok(value) => {
+                self.commit_batch();
+                Ok(value)
+            }
+            Err(error) => {
+                self.rollback_batch();
+                Err(error)
+            }
+        }
+    }
+
     fn begin_batch(&mut self) {
         self.batch_active = true;
         self.arena.begin_undo();

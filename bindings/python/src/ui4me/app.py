@@ -424,6 +424,32 @@ class Window:
         """IDs of identified elements matching a CSS selector, in document order."""
         return self._command("query", selector=selector, limit=limit)["elements"]
 
+    def batch(self, operations: list[dict]) -> None:
+        """Apply DOM operations atomically with one invalidation.
+
+        Each operation is a dict with ``op`` (``set_text``, ``set_attribute``,
+        ``remove_attribute``, ``add_class``, ``remove_class``, ``insert_html``,
+        ``replace_children_html``, ``remove_element``, ``move_element``) and that
+        command's fields. Any failure rolls back every operation; the error names its index.
+        """
+        ops = [dict(op) for op in operations]
+        self._command("batch", ops=ops)
+
+    def set_default_action(self, element: str, event: str, *, prevent: bool = True,
+                           key: str | None = None, shift: bool | None = None,
+                           ctrl: bool | None = None, alt: bool | None = None,
+                           meta: bool | None = None) -> None:
+        """Cancel (or stop cancelling) the default action of ``event`` at or inside ``element``.
+
+        Handlers run after dispatch and cannot cancel; register the rule up front.
+        ``key`` and modifier filters are exact when given. Delivered events include
+        ``default_prevented``.
+        """
+        filters = {name: value for name, value in
+                   (("key", key), ("shift", shift), ("ctrl", ctrl), ("alt", alt), ("meta", meta))
+                   if value is not None}
+        self._command("set_default_action", element=element, event=event, prevent=bool(prevent), **filters)
+
     @property
     def closed(self) -> bool:
         return self._closed

@@ -52,6 +52,9 @@ fn title() -> String {
 fn width() -> u32 {
     640
 }
+fn yes() -> bool {
+    true
+}
 fn query_limit() -> usize {
     1024
 }
@@ -174,6 +177,27 @@ pub enum Command {
         #[serde(default = "query_limit")]
         limit: usize,
     },
+    Batch {
+        window: u64,
+        ops: Vec<BatchOp>,
+    },
+    SetDefaultAction {
+        window: u64,
+        element: String,
+        event: String,
+        #[serde(default)]
+        key: Option<String>,
+        #[serde(default)]
+        shift: Option<bool>,
+        #[serde(default)]
+        ctrl: Option<bool>,
+        #[serde(default)]
+        alt: Option<bool>,
+        #[serde(default)]
+        meta: Option<bool>,
+        #[serde(default = "yes")]
+        prevent: bool,
+    },
     Diagnostics {
         window: u64,
     },
@@ -210,6 +234,50 @@ pub enum Command {
     },
     Stats,
 }
+/// One operation of a `batch` command; the same fields as the single command.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub enum BatchOp {
+    SetText {
+        element: String,
+        text: String,
+    },
+    SetAttribute {
+        element: String,
+        name: String,
+        value: String,
+    },
+    RemoveAttribute {
+        element: String,
+        name: String,
+    },
+    AddClass {
+        element: String,
+        name: String,
+    },
+    RemoveClass {
+        element: String,
+        name: String,
+    },
+    InsertHtml {
+        element: String,
+        position: String,
+        html: String,
+    },
+    ReplaceChildrenHtml {
+        element: String,
+        html: String,
+    },
+    RemoveElement {
+        element: String,
+    },
+    MoveElement {
+        element: String,
+        target: String,
+        position: String,
+    },
+}
+
 impl Command {
     pub fn parse(value: Value) -> Result<Self> {
         serde_json::from_value(value).map_err(invalid)

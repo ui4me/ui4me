@@ -690,3 +690,132 @@ fn dom_mutation_commands_insert_remove_move_and_read() {
         "B2"
     );
 }
+
+#[test]
+fn batch_is_atomic_and_restores_focus_on_rollback() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<ul id='log'><li id='l1'>one</li></ul><div id='box'><input id='edit' value='v'></div>"})).unwrap()["window"].as_u64().unwrap();
+    let ids = |sel: &str| {
+        cmd(json!({"op":"query","window":id,"selector":sel})).unwrap()["elements"].clone()
+    };
+    cmd(json!({"op":"batch","window":id,"ops":[
+        {"op":"insert_html","element":"log","position":"beforeend","html":"<li id='l2'>two</li>"},
+        {"op":"set_text","element":"l2","text":"zwei"},
+        {"op":"add_class","element":"l2","name":"new"},
+        {"op":"move_element","element":"l2","target":"l1","position":"beforebegin"},
+        {"op":"set_attribute","element":"log","name":"data-n","value":"2"}
+    ]}))
+    .unwrap();
+    assert_eq!(ids("#log > li"), json!(["l2", "l1"]));
+    assert_eq!(ids(".new"), json!(["l2"]));
+    cmd(json!({"op":"focus","window":id,"element":"edit"})).unwrap();
+    let error = cmd(json!({"op":"batch","window":id,"ops":[
+        {"op":"remove_element","element":"box"},
+        {"op":"insert_html","element":"log","position":"beforeend","html":"<li id='l3'>three</li>"},
+        {"op":"set_text","element":"missing","text":"x"}
+    ]}))
+    .unwrap_err();
+    assert_eq!(error.code, 1);
+    assert!(
+        error.message.contains("batch operation 2"),
+        "{}",
+        error.message
+    );
+    assert_eq!(ids("#log > li"), json!(["l2", "l1"]));
+    assert_eq!(
+        ids(":focus"),
+        json!(["edit"]),
+        "rollback restores the removed focused element"
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_value","window":id,"element":"edit"})).unwrap()["value"],
+        "v"
+    );
+    // A fragment rejected late inside a batch also rolls back earlier creations.
+    assert!(cmd(json!({"op":"batch","window":id,"ops":[
+        {"op":"insert_html","element":"log","position":"beforeend","html":"<li id='l4'>4</li>"},
+        {"op":"insert_html","element":"log","position":"beforeend","html":"<li id='l4'>dup</li>"}
+    ]}))
+    .is_err());
+    assert_eq!(
+        cmd(json!({"op":"has_element","window":id,"element":"l4"})).unwrap()["exists"],
+        false
+    );
+    // Controls are rejected and the batch is bounded.
+    assert!(cmd(
+        json!({"op":"batch","window":id,"ops":[{"op":"set_text","element":"edit","text":"x"}]})
+    )
+    .is_err());
+    let many: Vec<Value> = (0..1025)
+        .map(|_| json!({"op":"add_class","element":"log","name":"x"}))
+        .collect();
+    assert_eq!(
+        cmd(json!({"op":"batch","window":id,"ops":many}))
+            .unwrap_err()
+            .code,
+        5
+    );
+    assert!(
+        cmd(json!({"op":"batch","window":id,"ops":[{"op":"focus","element":"edit"}]})).is_err()
+    );
+    // Still usable after rejections.
+    cmd(json!({"op":"batch","window":id,"ops":[{"op":"remove_element","element":"l1"}]})).unwrap();
+    assert_eq!(ids("#log > li"), json!(["l2"]));
+}
+
+#[test]
+fn default_action_rule_cancels_enter_but_not_shift_enter() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<form id='f'><textarea id='msg'></textarea></form>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    cmd(json!({"op":"set_default_action","window":id,"element":"f","event":"keydown","key":"Enter","shift":false})).unwrap();
+    assert!(
+        cmd(json!({"op":"set_default_action","window":id,"element":"f","event":"input"})).is_err()
+    );
+    cmd(json!({"op":"focus","window":id,"element":"msg"})).unwrap();
+    let key = |shift: bool| {
+        for pressed in [true, false] {
+            h.session
+                .input(
+                    id,
+                    crate::document::Input::Key {
+                        key: "Enter".into(),
+                        code: "Enter".into(),
+                        pressed,
+                        repeat: false,
+                        shift,
+                        ctrl: false,
+                        alt: false,
+                        meta: false,
+                    },
+                )
+                .unwrap();
+        }
+    };
+    let value = || {
+        cmd(json!({"op":"get_value","window":id,"element":"msg"})).unwrap()["value"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    key(false);
+    assert_eq!(value(), "");
+    let downs: Vec<Value> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "keydown")
+        .collect();
+    assert_eq!(downs.last().unwrap()["default_prevented"], true);
+    key(true);
+    assert_eq!(value(), "\n");
+    cmd(json!({"op":"set_default_action","window":id,"element":"f","event":"keydown","key":"Enter","shift":false,"prevent":false})).unwrap();
+    key(false);
+    assert_eq!(value(), "\n\n");
+    // Rules die with their element.
+    cmd(json!({"op":"set_default_action","window":id,"element":"f","event":"keydown"})).unwrap();
+    cmd(json!({"op":"replace_children_html","window":id,"element":"f","html":"<textarea id='msg'></textarea>"})).unwrap();
+}

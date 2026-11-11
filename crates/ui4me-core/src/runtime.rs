@@ -819,6 +819,79 @@ impl Session {
                 let (ids, count) = w.document.query_ids(&selector, limit.min(16_384))?;
                 Ok(json!({"elements": ids, "count": count}))
             })?,
+            Command::Batch { window, ops } => {
+                use crate::protocol::BatchOp as B;
+                use ui4me_renderer::DomOp as D;
+                let ops: Vec<D> = ops
+                    .into_iter()
+                    .map(|op| match op {
+                        B::SetText { element, text } => D::SetText { element, text },
+                        B::SetAttribute {
+                            element,
+                            name,
+                            value,
+                        } => D::SetAttribute {
+                            element,
+                            name,
+                            value: Some(value),
+                        },
+                        B::RemoveAttribute { element, name } => D::SetAttribute {
+                            element,
+                            name,
+                            value: None,
+                        },
+                        B::AddClass { element, name } => D::AddClass { element, name },
+                        B::RemoveClass { element, name } => D::RemoveClass { element, name },
+                        B::InsertHtml {
+                            element,
+                            position,
+                            html,
+                        } => D::InsertHtml {
+                            element,
+                            position,
+                            html,
+                        },
+                        B::ReplaceChildrenHtml { element, html } => {
+                            D::ReplaceChildrenHtml { element, html }
+                        }
+                        B::RemoveElement { element } => D::RemoveElement { element },
+                        B::MoveElement {
+                            element,
+                            target,
+                            position,
+                        } => D::MoveElement {
+                            element,
+                            target,
+                            position,
+                        },
+                    })
+                    .collect();
+                self.mutate(window, |d| d.apply_batch(&ops))?
+            }
+            Command::SetDefaultAction {
+                window,
+                element,
+                event,
+                key,
+                shift,
+                ctrl,
+                alt,
+                meta,
+                prevent,
+            } => self.mutate(window, |d| {
+                d.set_default_action(
+                    ui4me_renderer::DefaultActionRule {
+                        element,
+                        event,
+                        key,
+                        shift,
+                        ctrl,
+                        alt,
+                        meta,
+                    },
+                    prevent,
+                )
+            })?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {

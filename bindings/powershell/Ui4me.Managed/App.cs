@@ -415,6 +415,38 @@ public sealed class Window
         foreach (var e in app.Command(new { op = "query", window = Id, selector, limit }).GetProperty("elements").EnumerateArray()) list.Add(e.GetString()!);
         return list.ToArray();
     }
+    /// <summary>Apply DOM operations atomically; each is a hashtable/object with <c>op</c> and that command's fields.</summary>
+    public void Batch(System.Collections.IEnumerable operations)
+    {
+        Check();
+        var ops = new System.Collections.Generic.List<object>();
+        foreach (var item in operations)
+        {
+            var source = item is System.Management.Automation.PSObject ps ? ps.BaseObject : item;
+            if (source is System.Collections.IDictionary map)
+            {
+                var copy = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal);
+                foreach (System.Collections.DictionaryEntry e in map) copy[e.Key.ToString()!] = e.Value is System.Management.Automation.PSObject v ? v.BaseObject : e.Value;
+                ops.Add(copy);
+            }
+            else ops.Add(source!);
+        }
+        app.Command(new { op = "batch", window = Id, ops });
+    }
+    public void SetDefaultAction(string element, string eventName, bool prevent = true, string? key = null, bool? shift = null, bool? ctrl = null, bool? alt = null, bool? meta = null)
+    {
+        Check();
+        var command = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["op"] = "set_default_action", ["window"] = Id, ["element"] = element, ["event"] = eventName, ["prevent"] = prevent,
+        };
+        if (key is not null) command["key"] = key;
+        if (shift is not null) command["shift"] = shift;
+        if (ctrl is not null) command["ctrl"] = ctrl;
+        if (alt is not null) command["alt"] = alt;
+        if (meta is not null) command["meta"] = meta;
+        app.Command(command);
+    }
     public bool IsClosed => Closed;
     public void SetTitle(string title) { Check(); app.Command(new { op = "set_title", window = Id, title }); }
     public void Resize(int width, int height) { Check(); app.Command(new { op = "resize", window = Id, width, height }); }

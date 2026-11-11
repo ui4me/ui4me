@@ -2,9 +2,9 @@
 
 **Baseline:** Owner reports Core 0.2 is implemented and already running/tested. Publication workflow for 0.2 is being handled separately. No tests were executed when this handoff was assembled. Existing `docs/PROJECT_STATUS.md` may describe an earlier release-candidate snapshot.
 
-**Working milestone:** 0.3, slice S2 (batching and events).
+**Working milestone:** 0.3, slice S3 (scroll and geometry).
 
-**0.3 status:** IN PROGRESS — S1 done.
+**0.3 status:** IN PROGRESS — S1, S2 done.
 
 **0.4 status:** NOT STARTED by this handoff.
 
@@ -19,6 +19,7 @@ Do not paste massive raw logs, long audit reports or all research feature record
 ## Implemented slices
 
 - 2026-11-11 | (S1 commit) | **S1 DOM mutation and identities** | `crates/ui4me-document/src/parse/fragment.rs` (checked `insertAdjacentHTML`), `crates/ui4me-renderer/src/document.rs` (insert_html/remove_element/move_element/get_text/get_attribute(s)/has_element/query_ids), `crates/ui4me-core/src/{protocol,runtime,tests}.rs`, Python `app.py` + `test_app.py`, PowerShell `App.cs` + `smoke.ps1`, contract in `docs/PROJECT_STATUS.md` | `cargo test -p ui4me-core dom_mutation` (Linux), `cargo test -p ui4me-document` (Linux), `dev.py test --suite unit` python 26/26 + powershell 24/24 (Linux headless) | PASS | Identity = HTML `id` (existing 0.2 model); elements without an ID are counted by `query` but not addressable. Whole-document validation per insert is O(N) — revisit in S5 with 10k-line logs (MAX_NODES 16384 also caps log size). Windows not run for this slice (no native change). | S2
+- 2026-11-11 | (S2 commit) | **S2 Batching and events** | `ui4me-document/src/batch/exec.rs` (`Document::transaction` over the existing undo log), `ui4me-renderer/src/document.rs` (`DomOp`, `apply_batch`, single ops now share `apply_op`; `set_default_action` rules applied in `invoke`, `default_prevented` on events), `ui4me-core` protocol/runtime/tests, Python/PowerShell `batch` + `set_default_action` and tests | `cargo test -p ui4me-core --lib` 23/23, `cargo test -p ui4me-renderer --lib` 221/221, clippy core/renderer/document clean, `dev.py test --suite unit` python 28/28 + powershell 25/25 (Linux headless) | PASS | Cancellation is declarative (host rules), since binding callbacks run after dispatch. Batch excludes value/checked/focus. Stale targets: existing generational recheck, rules keyed by generational NodeId. | S3
 
 ## Deferred non-blocking items
 

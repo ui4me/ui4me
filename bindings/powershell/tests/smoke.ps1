@@ -302,6 +302,23 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21c_batch_and_default_action' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<ul id="log"><li id="l1">one</li></ul><form id="f"><textarea id="msg"></textarea></form>')
+            $window.Batch(@(
+                @{ op = 'insert_html'; element = 'log'; position = 'beforeend'; html = '<li id="l2">two</li>' },
+                @{ op = 'move_element'; element = 'l2'; target = 'l1'; position = 'beforebegin' }
+            ))
+            if (($window.Query('#log > li') -join ',') -ne 'l2,l1') { throw 'Batch order is wrong' }
+            $rejected = $false
+            try { $window.Batch(@(@{ op = 'remove_element'; element = 'l1' }, @{ op = 'set_text'; element = 'missing'; text = 'x' })) } catch { $rejected = $_.Exception.Message -match 'batch operation 1' }
+            if (-not $rejected -or -not $window.HasElement('l1')) { throw 'Failed batch was not rolled back' }
+            $window.SetDefaultAction('f', 'keydown', $true, 'Enter', $false)
+            $window.SetDefaultAction('f', 'keydown', $false, 'Enter', $false)
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

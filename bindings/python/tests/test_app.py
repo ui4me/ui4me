@@ -214,6 +214,30 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 window.get_text("c")
 
+    def test_batch_is_atomic(self):
+        with self.app() as app:
+            window = app.open('<ul id="log"><li id="l1">one</li></ul>')
+            window.batch([
+                {"op": "insert_html", "element": "log", "position": "beforeend", "html": '<li id="l2">two</li>'},
+                {"op": "add_class", "element": "l2", "name": "new"},
+                {"op": "move_element", "element": "l2", "target": "l1", "position": "beforebegin"},
+            ])
+            self.assertEqual(window.query("#log > li"), ["l2", "l1"])
+            with self.assertRaisesRegex(Ui4meError, "batch operation 1"):
+                window.batch([
+                    {"op": "remove_element", "element": "l1"},
+                    {"op": "set_text", "element": "missing", "text": "x"},
+                ])
+            self.assertEqual(window.query("#log > li"), ["l2", "l1"])
+
+    def test_default_action_rule_registration(self):
+        with self.app() as app:
+            window = app.open('<form id="f"><textarea id="msg"></textarea></form>')
+            window.set_default_action("f", "keydown", key="Enter", shift=False)
+            window.set_default_action("f", "keydown", key="Enter", shift=False, prevent=False)
+            with self.assertRaises(Ui4meError):
+                window.set_default_action("f", "input")
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

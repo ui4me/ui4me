@@ -180,6 +180,7 @@ pub struct Document {
     pointer: (f64, f64),
     window_focused: bool,
     repaint: bool,
+    prevent: Vec<StoredRule>,
 }
 impl std::fmt::Debug for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -307,6 +308,7 @@ impl Document {
             pointer: (0.0, 0.0),
             window_focused: true,
             repaint: true,
+            prevent: Vec::new(),
         })
     }
     fn id(&self) -> DocumentId {
@@ -412,141 +414,124 @@ impl Document {
         Ok(())
     }
     pub fn set_attribute(&mut self, element: &str, name: &str, value: Option<&str>) -> Result<()> {
-        let n = self.node(element)?;
-        let name = name.to_ascii_lowercase();
-        if name.starts_with("on") || name == "srcdoc" {
-            return Err(arg("Script-bearing attributes are unsupported"));
-        }
-        if name == "type" && self.pipeline.document().input_type(n).is_some() {
-            validate_input_type(InputType::parse(value))?;
-        }
-        if let Some(value) = value {
-            check_text(value)?;
-            if name == "id" && !value.is_empty() {
-                validate_id(value)?;
-                if self
-                    .pipeline
-                    .element_by_id(value)
-                    .is_some_and(|other| other != n)
-                {
-                    return Err(arg("Duplicate public element ID"));
-                }
-            }
-            self.pipeline.set_attribute(n, &name, value)?;
-        } else {
-            self.pipeline
-                .mutate(|d| d.remove_attribute(n, &name).map(|_| ()))?;
-        }
-        self.after_mutation(false);
-        Ok(())
+        self.run_ops(
+            &[DomOp::SetAttribute {
+                element: element.into(),
+                name: name.into(),
+                value: value.map(Into::into),
+            }],
+            false,
+        )
     }
     pub fn add_class(&mut self, element: &str, class: &str) -> Result<()> {
-        self.class(element, class, true)
+        self.run_ops(
+            &[DomOp::AddClass {
+                element: element.into(),
+                name: class.into(),
+            }],
+            false,
+        )
     }
     pub fn remove_class(&mut self, element: &str, class: &str) -> Result<()> {
-        self.class(element, class, false)
-    }
-    fn class(&mut self, element: &str, class: &str, add: bool) -> Result<()> {
-        if class.is_empty() || class.chars().any(char::is_whitespace) {
-            return Err(arg("A class must be one nonempty token"));
-        }
-        let n = self.node(element)?;
-        let mut classes: Vec<String> = self
-            .pipeline
-            .document()
-            .get_attribute(n, "class")?
-            .unwrap_or("")
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect();
-        classes.retain(|s| s != class);
-        if add {
-            classes.push(class.to_owned());
-        }
-        self.set_attribute(element, "class", Some(&classes.join(" ")))
+        self.run_ops(
+            &[DomOp::RemoveClass {
+                element: element.into(),
+                name: class.into(),
+            }],
+            false,
+        )
     }
     pub fn replace_children_html(&mut self, element: &str, html: &str) -> Result<()> {
-        check_html(html)?;
-        let n = self.node(element)?;
-        self.pipeline.mutate(|d| {
-            d.set_inner_html_checked(n, html, |d, f| validate_document(d, Some(n), Some(f)))
-        })?;
-        self.after_mutation(true);
-        Ok(())
+        self.run_ops(
+            &[DomOp::ReplaceChildrenHtml {
+                element: element.into(),
+                html: html.into(),
+            }],
+            false,
+        )
     }
     /// Parse `html` as a fragment and insert it relative to `element` (`insertAdjacentHTML`
     /// positions). The fragment is validated (active content, IDs unique against the whole
     /// document, limits) before anything is inserted; a rejection leaves the document unchanged.
     pub fn insert_html(&mut self, element: &str, position: &str, html: &str) -> Result<()> {
-        check_html(html)?;
-        let n = self.node(element)?;
-        let position = parse_position(position)?;
-        if matches!(position, "beforebegin" | "afterend") {
-            self.check_movable(n, "insert_html beside")?;
-        }
-        self.pipeline.mutate(|d| {
-            d.insert_adjacent_html_checked(n, position, html, |d, f| {
-                validate_document(d, None, Some(f))
-            })
-        })?;
-        self.after_mutation(true);
-        Ok(())
+        self.run_ops(
+            &[DomOp::InsertHtml {
+                element: element.into(),
+                position: position.into(),
+                html: html.into(),
+            }],
+            false,
+        )
     }
     /// Remove `element` and its subtree. Focus inside it moves to the viewport with no events;
     /// its resources, queued events and ID are retired.
     pub fn remove_element(&mut self, element: &str) -> Result<()> {
-        let n = self.node(element)?;
-        self.check_movable(n, "remove")?;
-        self.pipeline.mutate(|d| d.remove(n))?;
-        self.after_mutation(true);
-        Ok(())
+        self.run_ops(
+            &[DomOp::RemoveElement {
+                element: element.into(),
+            }],
+            false,
+        )
     }
     /// Move `element` (with its subtree) relative to `target`. Identity, control values,
     /// selection and focus within the moved subtree are preserved; no focus events fire.
     pub fn move_element(&mut self, element: &str, target: &str, position: &str) -> Result<()> {
-        let n = self.node(element)?;
-        let t = self.node(target)?;
-        let position = parse_position(position)?;
-        self.check_movable(n, "move")?;
-        if matches!(position, "beforebegin" | "afterend") {
-            self.check_movable(t, "move beside")?;
-        }
-        let d = self.pipeline.document();
-        if d.arena().is_inclusive_ancestor(n, t) {
-            return Err(arg("Cannot move an element into itself or its descendant"));
-        }
-        let (parent, before) = match position {
-            "beforebegin" => (
-                d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?,
-                Some(t),
-            ),
-            "afterend" => {
-                let parent = d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?;
-                let kids = d.children(parent)?;
-                let at = kids
-                    .iter()
-                    .position(|&c| c == t)
-                    .expect("child of its parent");
-                (parent, kids.get(at + 1).copied())
-            }
-            "afterbegin" => (t, d.children(t)?.first().copied()),
-            _ => (t, None),
-        };
-        if before == Some(n) {
+        self.run_ops(
+            &[DomOp::MoveElement {
+                element: element.into(),
+                target: target.into(),
+                position: position.into(),
+            }],
+            false,
+        )
+    }
+    /// Apply `ops` atomically: all succeed with one document revision (one style/layout
+    /// invalidation), or the first failure rolls every earlier operation back and the error
+    /// message names the failing operation index. Value/checked/focus changes are not batch
+    /// operations because they carry interaction state outside the document tree.
+    pub fn apply_batch(&mut self, ops: &[DomOp]) -> Result<()> {
+        if ops.is_empty() {
             return Ok(());
         }
+        if ops.len() > MAX_BATCH_OPS {
+            return Err(limit_error(format!(
+                "A batch holds at most {MAX_BATCH_OPS} operations"
+            )));
+        }
+        let bytes: usize = ops.iter().map(DomOp::payload_len).sum();
+        if bytes > MAX_HTML * 4 {
+            return Err(limit_error("Batch payload exceeds 4 MiB"));
+        }
+        self.run_ops(ops, true)
+    }
+    fn run_ops(&mut self, ops: &[DomOp], atomic: bool) -> Result<()> {
         let id = self.id();
-        let focused = self
-            .interaction
-            .focused_element(id)
-            .filter(|&f| d.arena().is_inclusive_ancestor(n, f));
+        let d = self.pipeline.document();
+        let focused = self.interaction.focused_element(id);
         let visible = focused.is_some_and(|f| {
             d.ui_flags(f)
                 .is_ok_and(|g| g.contains(ui4me_document::ui_state::UiFlags::FOCUS_VISIBLE))
         });
-        self.pipeline
-            .mutate(|d| d.insert_before(parent, n, before).map(|_| ()))?;
-        if let Some(f) = focused {
+        let outcome: Result<()> = self.pipeline.mutate(|d| {
+            Ok(if atomic {
+                d.transaction(|d| {
+                    for (i, op) in ops.iter().enumerate() {
+                        apply_op(d, op).map_err(|e| Error {
+                            code: e.code,
+                            message: format!("batch operation {i}: {}", e.message),
+                        })?;
+                    }
+                    Ok(())
+                })
+            } else {
+                ops.iter().try_for_each(|op| apply_op(d, op))
+            })
+        })?;
+        // A move (or a rolled-back removal) passes through the DOM removing steps, which reset
+        // focus with no events. Restore it when the element is still a connected focusable area.
+        if let Some(f) = focused
+            && self.interaction.focused_element(id).is_none()
+        {
             let interaction = &mut self.interaction;
             self.pipeline.mutate(|d| {
                 if crate::interaction::focus::is_focusable(d, f) {
@@ -555,8 +540,79 @@ impl Document {
                 Ok(())
             })?;
         }
-        self.after_mutation(false);
+        outcome?;
+        self.after_mutation(ops.iter().any(DomOp::is_structural));
         Ok(())
+    }
+    /// Register (`prevent = true`) or remove a host rule that cancels the default action of
+    /// `event` dispatched at `element` or inside it, optionally only for one `key` value and
+    /// exact modifier states. Bindings cannot cancel synchronously, because their callbacks run
+    /// after dispatch; the delivered event reports `default_prevented`. Rules are retired with
+    /// their element.
+    pub fn set_default_action(&mut self, rule: DefaultActionRule, prevent: bool) -> Result<()> {
+        let n = self.node(&rule.element)?;
+        if !PREVENTABLE.contains(&rule.event.as_str()) {
+            return Err(arg(format!(
+                "Default action of {} cannot be prevented; use one of: {}",
+                rule.event,
+                PREVENTABLE.join(", ")
+            )));
+        }
+        if rule
+            .key
+            .as_ref()
+            .is_some_and(|k| k.is_empty() || k.len() > 64)
+        {
+            return Err(arg("key must be 1..64 bytes"));
+        }
+        let d = self.pipeline.document();
+        self.prevent
+            .retain(|r| d.arena().contains(r.node) && d.is_connected(r.node).unwrap_or(false));
+        let stored = StoredRule { node: n, rule };
+        self.prevent.retain(|r| !r.same(&stored));
+        if prevent {
+            if self.prevent.len() >= MAX_PREVENT_RULES {
+                return Err(limit_error(format!(
+                    "At most {MAX_PREVENT_RULES} default-action rules per window"
+                )));
+            }
+            self.prevent.push(stored);
+        }
+        Ok(())
+    }
+    fn apply_prevent_rules(&mut self, ev: ui4me_engine_types::ids::DispatchId, event_type: &str) {
+        if self.prevent.is_empty() {
+            return;
+        }
+        let Ok(event) = self.interaction.event(ev) else {
+            return;
+        };
+        if !event.init.cancelable {
+            return;
+        }
+        let Ok(path) = self.interaction.event_path(ev) else {
+            return;
+        };
+        let data = &event.init.data;
+        let m = event.init.modifiers;
+        let d = self.pipeline.document();
+        let hit = self.prevent.iter().any(|r| {
+            let rule = &r.rule;
+            rule.event == event_type
+                && d.arena().contains(r.node)
+                && path.contains(&r.node)
+                && rule
+                    .key
+                    .as_ref()
+                    .is_none_or(|k| data.key.as_ref() == Some(k))
+                && rule.shift.is_none_or(|v| v == m.shift)
+                && rule.ctrl.is_none_or(|v| v == m.ctrl)
+                && rule.alt.is_none_or(|v| v == m.alt)
+                && rule.meta.is_none_or(|v| v == m.meta)
+        });
+        if hit {
+            let _ = self.interaction.prevent_default(ev);
+        }
     }
     /// Literal text content of `element` (not a control's value).
     pub fn get_text(&self, element: &str) -> Result<String> {
@@ -603,13 +659,6 @@ impl Document {
             .map(str::to_owned)
             .collect();
         Ok((ids, matches.len()))
-    }
-    fn check_movable(&self, n: NodeId, what: &str) -> Result<()> {
-        let d = self.pipeline.document();
-        if Some(n) == d.document_element() || Some(n) == d.body() || Some(n) == d.head() {
-            return Err(arg(format!("Cannot {what} the html, head or body element")));
-        }
-        Ok(())
     }
     fn after_mutation(&mut self, subtree: bool) {
         let id = self.id();
@@ -945,6 +994,7 @@ impl DispatchHost for Document {
         })
     }
     fn invoke(&mut self, inv: &Invocation) -> std::result::Result<(), dispatch::CallbackError> {
+        self.apply_prevent_rules(inv.event, &inv.event_type);
         let event = self
             .interaction
             .event(inv.event)
@@ -1008,6 +1058,9 @@ impl DispatchHost for Document {
         field!("input_type", input_type);
         field!("is_composing", is_composing);
         let m = event.init.modifiers;
+        if event.init.cancelable {
+            value["default_prevented"] = json!(event.flags.canceled);
+        }
         value["shift"] = json!(m.shift);
         value["ctrl"] = json!(m.ctrl);
         value["alt"] = json!(m.alt);
@@ -1427,6 +1480,229 @@ fn validate_document(
             }
         }
         break;
+    }
+    Ok(())
+}
+/// Operations accepted by [`Document::apply_batch`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DomOp {
+    SetText {
+        element: String,
+        text: String,
+    },
+    SetAttribute {
+        element: String,
+        name: String,
+        value: Option<String>,
+    },
+    AddClass {
+        element: String,
+        name: String,
+    },
+    RemoveClass {
+        element: String,
+        name: String,
+    },
+    InsertHtml {
+        element: String,
+        position: String,
+        html: String,
+    },
+    ReplaceChildrenHtml {
+        element: String,
+        html: String,
+    },
+    RemoveElement {
+        element: String,
+    },
+    MoveElement {
+        element: String,
+        target: String,
+        position: String,
+    },
+}
+impl DomOp {
+    fn payload_len(&self) -> usize {
+        match self {
+            Self::SetText { text, .. } => text.len(),
+            Self::SetAttribute { value, .. } => value.as_ref().map_or(0, String::len),
+            Self::InsertHtml { html, .. } | Self::ReplaceChildrenHtml { html, .. } => html.len(),
+            _ => 0,
+        }
+    }
+    fn is_structural(&self) -> bool {
+        matches!(
+            self,
+            Self::SetText { .. }
+                | Self::InsertHtml { .. }
+                | Self::ReplaceChildrenHtml { .. }
+                | Self::RemoveElement { .. }
+        )
+    }
+}
+/// A host default-action rule (see [`Document::set_default_action`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DefaultActionRule {
+    pub element: String,
+    pub event: String,
+    pub key: Option<String>,
+    pub shift: Option<bool>,
+    pub ctrl: Option<bool>,
+    pub alt: Option<bool>,
+    pub meta: Option<bool>,
+}
+struct StoredRule {
+    node: NodeId,
+    rule: DefaultActionRule,
+}
+impl StoredRule {
+    fn same(&self, other: &StoredRule) -> bool {
+        self.node == other.node
+            && DefaultActionRule {
+                element: String::new(),
+                ..self.rule.clone()
+            } == DefaultActionRule {
+                element: String::new(),
+                ..other.rule.clone()
+            }
+    }
+}
+const PREVENTABLE: &[&str] = &["keydown", "click", "mousedown", "wheel", "submit", "reset"];
+const MAX_PREVENT_RULES: usize = 256;
+const MAX_BATCH_OPS: usize = 1024;
+fn limit_error(message: impl Into<String>) -> Error {
+    Error {
+        code: 5,
+        message: message.into(),
+    }
+}
+fn model_node(d: &Model, element: &str) -> Result<NodeId> {
+    d.element_by_id(element)
+        .ok_or_else(|| arg(format!("Unknown element ID: {element}")))
+}
+fn check_movable(d: &Model, n: NodeId, what: &str) -> Result<()> {
+    if Some(n) == d.document_element() || Some(n) == d.body() || Some(n) == d.head() {
+        return Err(arg(format!("Cannot {what} the html, head or body element")));
+    }
+    Ok(())
+}
+fn apply_op(d: &mut Model, op: &DomOp) -> Result<()> {
+    match op {
+        DomOp::SetText { element, text } => {
+            check_text(text)?;
+            let n = model_node(d, element)?;
+            if matches!(d.local_name(n)?, "input" | "textarea" | "select") {
+                return Err(arg(
+                    "Use set_value for form controls; it is not a batch operation",
+                ));
+            }
+            d.set_text_content(n, text)?;
+        }
+        DomOp::SetAttribute {
+            element,
+            name,
+            value,
+        } => model_set_attribute(d, model_node(d, element)?, name, value.as_deref())?,
+        DomOp::AddClass { element, name } | DomOp::RemoveClass { element, name } => {
+            if name.is_empty() || name.chars().any(char::is_whitespace) {
+                return Err(arg("A class must be one nonempty token"));
+            }
+            let n = model_node(d, element)?;
+            let mut classes: Vec<String> = d
+                .get_attribute(n, "class")?
+                .unwrap_or("")
+                .split_whitespace()
+                .filter(|s| s != name)
+                .map(str::to_owned)
+                .collect();
+            if matches!(op, DomOp::AddClass { .. }) {
+                classes.push(name.clone());
+            }
+            model_set_attribute(d, n, "class", Some(&classes.join(" ")))?;
+        }
+        DomOp::InsertHtml {
+            element,
+            position,
+            html,
+        } => {
+            check_html(html)?;
+            let n = model_node(d, element)?;
+            let position = parse_position(position)?;
+            if matches!(position, "beforebegin" | "afterend") {
+                check_movable(d, n, "insert_html beside")?;
+            }
+            d.insert_adjacent_html_checked(n, position, html, |d, f| {
+                validate_document(d, None, Some(f))
+            })?;
+        }
+        DomOp::ReplaceChildrenHtml { element, html } => {
+            check_html(html)?;
+            let n = model_node(d, element)?;
+            d.set_inner_html_checked(n, html, |d, f| validate_document(d, Some(n), Some(f)))?;
+        }
+        DomOp::RemoveElement { element } => {
+            let n = model_node(d, element)?;
+            check_movable(d, n, "remove")?;
+            d.remove(n)?;
+        }
+        DomOp::MoveElement {
+            element,
+            target,
+            position,
+        } => {
+            let n = model_node(d, element)?;
+            let t = model_node(d, target)?;
+            let position = parse_position(position)?;
+            check_movable(d, n, "move")?;
+            if matches!(position, "beforebegin" | "afterend") {
+                check_movable(d, t, "move beside")?;
+            }
+            if d.arena().is_inclusive_ancestor(n, t) {
+                return Err(arg("Cannot move an element into itself or its descendant"));
+            }
+            let (parent, before) = match position {
+                "beforebegin" => (
+                    d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?,
+                    Some(t),
+                ),
+                "afterend" => {
+                    let parent = d.parent(t)?.ok_or_else(|| arg("Target has no parent"))?;
+                    let kids = d.children(parent)?;
+                    let at = kids.iter().position(|&c| c == t).unwrap_or(kids.len());
+                    (parent, kids.get(at + 1).copied())
+                }
+                "afterbegin" => (t, d.children(t)?.first().copied()),
+                _ => (t, None),
+            };
+            if before != Some(n) {
+                d.insert_before(parent, n, before)?;
+            }
+        }
+    }
+    Ok(())
+}
+fn model_set_attribute(d: &mut Model, n: NodeId, name: &str, value: Option<&str>) -> Result<()> {
+    let name = name.to_ascii_lowercase();
+    if name.is_empty() || name.len() > 256 {
+        return Err(arg("Attribute name must be 1..256 bytes"));
+    }
+    if name.starts_with("on") || name == "srcdoc" {
+        return Err(arg("Script-bearing attributes are unsupported"));
+    }
+    if name == "type" && d.input_type(n).is_some() {
+        validate_input_type(InputType::parse(value))?;
+    }
+    if let Some(value) = value {
+        check_text(value)?;
+        if name == "id" && !value.is_empty() {
+            validate_id(value)?;
+            if d.element_by_id(value).is_some_and(|other| other != n) {
+                return Err(arg("Duplicate public element ID"));
+            }
+        }
+        d.set_attribute(n, &name, value)?;
+    } else {
+        d.remove_attribute(n, &name)?;
     }
     Ok(())
 }

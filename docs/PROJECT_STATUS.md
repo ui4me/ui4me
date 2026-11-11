@@ -148,6 +148,8 @@ per work item. Keep long operations off UI callbacks.
 | Replace children | `replace_children_html(id, html)` | `ReplaceChildrenHtml(id, html)` |
 | Insert fragment (0.3) | `insert_html(id, position, html)`, `append_html`, `prepend_html`, `insert_html_before`, `insert_html_after` | `InsertHtml`, `AppendHtml`, `PrependHtml`, `InsertHtmlBefore`, `InsertHtmlAfter` |
 | Remove / move (0.3) | `remove_element(id)`, `move_element(id, target, position="beforeend")` | `RemoveElement`, `MoveElement` |
+| Atomic batch (0.3) | `batch([{"op": ..., ...}, ...])` | `Batch(@(@{op=...}, ...))` |
+| Default-action rule (0.3) | `set_default_action(id, event, prevent=True, key=, shift=, ctrl=, alt=, meta=)` | `SetDefaultAction(id, event, prevent, key, shift, ctrl, alt, meta)` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -167,6 +169,21 @@ and removing or inserting beside `html`/`head`/`body` are rejected. `query`
 returns the IDs of matching identified elements in tree order (at most `limit`,
 default 1024) and `count` of all matches. Only selectors supported by the style
 engine are accepted.
+`batch` (wire op, `ops` array of up to 1024 operations, 4 MiB payload) accepts
+`set_text` (non-control), `set_attribute`, `remove_attribute`, `add_class`,
+`remove_class`, `insert_html`, `replace_children_html`, `remove_element` and
+`move_element` with the single-command fields. It applies all of them with one
+document revision and one invalidation, or none: the first failure rolls back the
+tree, attributes, text and focus, and its message starts with `batch operation N`.
+Value, checked and focus changes are not batch operations. The batch is atomic for
+the document only, never for callbacks or OS actions.
+Binding callbacks run after dispatch, so they cannot cancel an event.
+`set_default_action` registers a rule instead (`keydown`, `click`, `mousedown`,
+`wheel`, `submit`, `reset`; up to 256 per window) matching events at or inside the
+element, optionally filtered by exact `key` and modifier states; `prevent=false`
+removes the identical rule, and rules are retired with their element. Cancelable
+delivered events carry `default_prevented`. Example: prevent `keydown` `Enter`
+with `shift=false` on a chat form, and send on the delivered `keydown` event.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

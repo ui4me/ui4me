@@ -18,7 +18,10 @@ pub(crate) mod scene;
 pub(crate) mod style;
 #[allow(dead_code)]
 pub(crate) mod text;
-pub use document::{Clipboard, Document, Error, ImeState, Input, MAX_PIXELS, MAX_TEXT, Result};
+pub use document::{
+    Clipboard, DefaultActionRule, Document, DomOp, Error, ImeState, Input, MAX_PIXELS, MAX_TEXT,
+    Result,
+};
 
 #[cfg(test)]
 mod regression;
