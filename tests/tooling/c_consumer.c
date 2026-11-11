@@ -54,6 +54,33 @@ int main(int argc, char **argv) {
         const char *reply = NULL;
         if (create("{\"backend\":\"headless\"}", on_event, &completions, &id) != 0 || !id || id == previous) return 5;
         if (command(id, "{\"op\":\"reserve_completion\",\"token\":17}", &reply) != 0 || !reply) return 8;
+        if (i == 0) {
+            /* 0.6 document interface through the language-neutral command (ABI 1 unchanged). */
+            char buf[512];
+            unsigned long long window = 0;
+            if (command(id, "{\"op\":\"open\",\"html\":\"<p id='p'>a<b>b</b></p><input id='n' required>\"}", &reply) != 0 || !reply
+                || sscanf(strstr(reply, "\"window\"") ? strstr(reply, "\"window\"") : "", "\"window\":%llu", &window) != 1) return 10;
+            snprintf(buf, sizeof buf, "{\"op\":\"get_html\",\"window\":%llu,\"element\":\"p\"}", window);
+            if (command(id, buf, &reply) != 0 || !strstr(reply, "a<b>b</b>")) return 11;
+            snprintf(buf, sizeof buf, "{\"op\":\"add_stylesheet\",\"window\":%llu,\"css\":\"p{color:red}\"}", window);
+            if (command(id, buf, &reply) != 0 || !strstr(reply, "\"sheet\"")) return 12;
+            snprintf(buf, sizeof buf, "{\"op\":\"get_validity\",\"window\":%llu,\"element\":\"n\"}", window);
+            if (command(id, buf, &reply) != 0 || !strstr(reply, "\"valueMissing\":true")) return 13;
+            snprintf(buf, sizeof buf, "{\"op\":\"get_node\",\"window\":%llu,\"node\":\"garbage\"}", window);
+            if (command(id, buf, &reply) != 1) return 14;
+            snprintf(buf, sizeof buf, "{\"op\":\"node_of\",\"window\":%llu,\"element\":\"p\"}", window);
+            if (command(id, buf, &reply) != 0 || !strstr(reply, "node:")) return 15;
+            char node[64] = {0};
+            const char *at = strstr(reply, "node:");
+            size_t len = strcspn(at, "\"");
+            if (len >= sizeof node) return 15;
+            memcpy(node, at, len);
+            snprintf(buf, sizeof buf, "{\"op\":\"remove_element\",\"window\":%llu,\"element\":\"p\"}", window);
+            if (command(id, buf, &reply) != 0) return 16;
+            snprintf(buf, sizeof buf, "{\"op\":\"get_node\",\"window\":%llu,\"node\":\"%s\"}", window, node);
+            if (command(id, buf, &reply) != 4) return 17;
+            if (command(id, "{\"op\":\"capabilities\"}", &reply) != 0 || !strstr(reply, "\"features\"")) return 18;
+        }
         if (complete(id, 17) != 0 || complete(id, 17) != 4) return 9;
         if (run_session(id) != 0 || completions != 1 || destroy(id) != 0) return 6;
         if (stop_session(id) == 0) return 7;

@@ -142,6 +142,29 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F16 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $w = $app.Open('<form id=f><input id=n required><input id=pick type=file></form><p id=p>Příliš <b>žluť</b></p>')
+                if ($w.GetHtml('p', $null, $false) -ne 'Příliš <b>žluť</b>') { throw 'html' }
+                $sheet = $w.AddStylesheet('#p{width:80px}') | ConvertFrom-Json
+                if ($w.GetRect('p').Width -ne 80) { throw 'stylesheet' }
+                $w.RemoveStylesheet($sheet.sheet)
+                $kids = $w.NodeChildrenJson($w.NodeOf('p'), 0, 256) | ConvertFrom-Json
+                if ($kids.total -ne 2 -or $kids.children[1].name -ne 'b') { throw 'nodes' }
+                $geo = $w.TextRectsJson('p', $null, -1, -1) | ConvertFrom-Json
+                if ($geo.text -ne 'Příliš žluť' -or $geo.rects.Count -lt 1) { throw 'text rects' }
+                if (($w.ComputedStyleJson('p', 'display') | ConvertFrom-Json).properties.display.value -ne 'block') { throw 'computed style' }
+                if (-not ($w.GetValidityJson('n') | ConvertFrom-Json).flags.valueMissing) { throw 'validity' }
+                if ($w.GetFiles('pick').Count -ne 0) { throw 'files' }
+                $app.SetLinkPolicy(@('https'), $null, $false)
+                $ref = $kids.children[1].node
+                $w.RemoveElement('p')
+                $stale = $false; try { $null = $w.NodeJson($ref) } catch { $stale = $true }
+                if (-not $stale) { throw 'stale node accepted' }
+                $null = $app.On('started', { $app.Stop() })
+            }
+        } '0.6 Core contract: HTML serialization, stylesheets, node traversal and stale references, text geometry, computed style, validity, file input, link policy'
         Test-Case F15 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)
