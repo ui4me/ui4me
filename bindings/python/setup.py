@@ -84,7 +84,7 @@ def build_native_from_sdist(name):
         # Keep the dependency inventory and license texts in source-built
         # wheels too, just as dev.py does for its staged platform wheels.
         metadata = subprocess.run(["cargo", "metadata", "--locked", "--format-version", "1"],
-                                  cwd=NATIVE_SOURCE, env=env, check=True, capture_output=True, text=True)
+                                  cwd=NATIVE_SOURCE, env=env, check=True, capture_output=True, text=True, encoding="utf-8")
         notices = HERE / "src/ui4me/_notices"
         collect_notices(json.loads(metadata.stdout), notices)
         if (HERE / "LICENSE").is_file():
