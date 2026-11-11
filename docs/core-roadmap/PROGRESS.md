@@ -2,7 +2,7 @@
 
 **Baseline:** 0.4.0 released, 2026-11-11, tag `v0.4.0` at `8138e78feed4d63dcd6f189b0f96bb0fbbbc6ba6` (per release metadata). This roadmap was prepared by static reading only; no build/test of Core executed.
 
-**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **Current milestone:** 0.6 (`versions/0_6.md`) — all ten items implemented; 0.6.0 candidate gate in progress.
+**0.5:** RELEASED 0.5.0 (2026-11-11, workflow run 43054633989 from `089e7a8`: PyPI, PowerShell Gallery, GitHub `v0.5.0`). **0.6:** GO, candidate 0.6.0 @ `f004dd6`, release authorized by the owner. **Next milestone:** 0.7 (`versions/0_7.md`).
 
 ## Version ledger
 
@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.4 | OWNER-REPORTED RELEASED | `8138e78` release tag | repository-reported PASS | repository-reported PASS | repository-reported release jobs | Do not requalify unless relevant change/new defect |
 | 0.5 | RELEASED 0.5.0 (`089e7a8`) | `0b79117`, source sha256:ce114407… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 7/7, PowerShell 7/7 both hosts) | 8/8 items; see gate entry |
-| 0.6 | CANDIDATE (gate in progress) | see gate entry | file-input journey PASS (dev) | file-input journey PASS (dev) | unit PASS; installed NOT_RUN yet | 10/10 items implemented |
+| 0.6 | GO (candidate 0.6.0) | `f004dd6`, source sha256:13e4df79… | PASS (installed, virtual KWin) | PASS (installed, interactive session) | PASS (installed C 1/1, Python 8/8, PowerShell 8/8 both hosts) | 10/10 items |
 | 0.7 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.8 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
 | 0.9 | NOT_STARTED | — | NOT_RUN | NOT_RUN | NOT_RUN | — |
@@ -43,6 +43,7 @@ When a new session starts, choose the earliest release not marked GO, then first
 2026-11-11 | 0.6 | F0605 validity and submission | 50417df (Sonnet worker) | `ui4me-document/src/constraint.rs`, interaction, core, bindings | renderer 9 + core 2 new tests | PASS | No native validation bubble (the app renders `message`, English); `pattern` uses Rust regex syntax; `:valid`/`:invalid` styling unchanged; no `setCustomValidity` command | F0606
 2026-11-11 | 0.6 | F0606 file input | 07e198a, b357336 | `document/file_input.rs`, activation, core runtime (picker bridge), native.rs, journeys `tests/native/{file_input_app.py,kwin/file_input_journey.py,windows/file_input_journey.ps1}` | renderer + core tests; KWin + KDE portal 4/4; Windows IFileDialog 4/4 (dev builds) | PASS (dev) | **Fixed:** a click after a modal OS window closed over the same spot (no new pointer move) hit nothing, because the stored pointer was reset on CursorLeft. The input's label stays "Choose File" (the chosen names are not drawn) | F0610
 2026-11-11 | 0.6 | F0610 parity | f3da21f | `tests/tooling/c_consumer.c`, installed F16 (Python/PowerShell), tooling | local C consumer against the dev library | PASS (dev) / installed in gate | ABI 1 unchanged (all new operations are typed JSON commands) | gate
+2026-11-11 | 0.6 | **0.6.0 candidate gate** | `f004dd6` (source sha256:13e4df7914046…) | release builds per host; Linux wheel 5fb055fb…, stage 0e617cc9…; Windows wheel 71fb391c… | **Linux x64** (virtual KWin, fake_input, installed wheel/module): installed C 1/1, Python 8/8 (F01 F09 F11–F16), PowerShell 8/8; chat 10/10 + 10/10, file utility 10/10 + 10/10, portal dialogs 5/5, window 10/10, AT-SPI 16/16, input 17/17 + 17/17, environment 3/3, file input (KDE portal) 4/4. **Windows Server 2022** (interactive ui4me_test session, SendInput, installed wheel/module): installed C 1/1, Python 8/8, PowerShell 8/8; chat 10/10 + 10/10, file utility 10/10 + 10/10, window 10/10, UIA 17/17 + native COM 2/2, input 14/14 + 14/14, environment 3/3, file input (IFileDialog) 4/4 | PASS | Automated input, not a person. The Windows VM stopped once during development and was restarted (authorized); the interactive session was re-created by RDP and attached to the console. Test-user input languages restored to en-US. Evidence `build/evidence-0.6/` (gitignored) | release
 
 ## Outstanding defects / intentional exclusions
 

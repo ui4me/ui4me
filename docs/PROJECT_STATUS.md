@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.6.0 is the current candidate** (complete public document and HTML interface;
+**Core 0.6.0 passed its gate on both hosts and is being released** (complete public document and HTML interface;
 [`core-roadmap/versions/0_6.md`](core-roadmap/versions/0_6.md), ledger
 [`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)): HTML serialization, author
 stylesheets with diagnostics, generation-safe node references, text geometry, computed
