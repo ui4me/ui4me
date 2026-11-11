@@ -2690,6 +2690,8 @@ mod svg_hit;
 mod svg_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod visual_tests;
 
 /// Media preferences of a document (0.5 F0506): the OS signal and the app override are kept
 /// apart, so a later OS change never undoes an app choice.

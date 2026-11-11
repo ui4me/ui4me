@@ -716,12 +716,21 @@ pub(crate) fn pseudo_image(
     ));
 }
 
+/// Largest blur standard deviation (CSS px) the display list carries.
+const MAX_BLUR_SIGMA: f32 = 128.0;
+
 /// One computed `filter` function as the display list carries it (the colour of `drop-shadow()` is
 /// already resolved by the style view).
 fn filter_fn(f: &g::FilterFunction) -> crate::scene::display_list::FilterFn {
     use crate::scene::display_list::FilterFn as F;
     match *f {
-        g::FilterFunction::Blur(v) => F::Blur(v),
+        // 1.26.0: a blur beyond this deviation is flat on any surface the engine rasterises, and an unbounded one
+        // would only make the filter work (and a backdrop capture) exceed its budget.
+        g::FilterFunction::Blur(v) => F::Blur(if v.is_finite() {
+            v.clamp(0.0, MAX_BLUR_SIGMA)
+        } else {
+            0.0
+        }),
         g::FilterFunction::Brightness(v) => F::Brightness(v),
         g::FilterFunction::Contrast(v) => F::Contrast(v),
         g::FilterFunction::Grayscale(v) => F::Grayscale(v),
