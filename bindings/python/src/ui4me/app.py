@@ -661,6 +661,15 @@ class Window:
         """Copy the document selection to the clipboard; returns the copied text."""
         return self._command("copy_selection")["text"]
 
+    def set_clipboard_html(self, html: str, text: str = "") -> None:
+        """Put HTML on the clipboard with ``text`` as its plain-text alternative."""
+        self._command("set_clipboard_html", html=html, text=text)
+
+    def get_clipboard_html(self, *, raw: bool = False) -> str | None:
+        """The clipboard's HTML, sanitized for insertion (scripts, styles, handlers and unsafe
+        URLs removed) unless ``raw``; ``None`` when there is no HTML flavour."""
+        return self._command("get_clipboard_html", raw=raw)["html"]
+
     def get_clipboard_text(self) -> str | None:
         return self._command("get_clipboard_text")["text"]
 

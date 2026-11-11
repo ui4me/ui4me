@@ -2362,3 +2362,41 @@ fn desktop_services_validate_and_refuse_honestly_in_headless_sessions() {
         assert_eq!(caps["features"][f]["status"], "unavailable", "{f}");
     }
 }
+
+#[test]
+fn clipboard_html_round_trips_and_pasted_html_is_sanitized() {
+    // 0.7 F0706 (the headless in-process clipboard; the native one uses the OS formats).
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<div id=dst></div>"})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let evil = "<p style='color:red' onclick='x()'>Ahoj <b>světe</b><script>alert(1)</script></p><a href='javascript:alert(1)'>j</a><a href='https://ui4me.org/'>ok</a><img src=x onerror=y()><iframe src='https://x'></iframe><!-- c -->";
+    cmd(json!({"op":"set_clipboard_html","window":id,"html":evil,"text":"Ahoj světe"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_clipboard_text","window":id})).unwrap()["text"],
+        "Ahoj světe",
+        "plain-text fallback"
+    );
+    let raw = cmd(json!({"op":"get_clipboard_html","window":id,"raw":true})).unwrap();
+    assert_eq!(raw["html"], evil);
+    let safe = cmd(json!({"op":"get_clipboard_html","window":id})).unwrap()["html"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        safe,
+        "<p>Ahoj <b>světe</b></p><a>j</a><a href=\"https://ui4me.org/\">ok</a><img src=\"x\">"
+    );
+    // The sanitized form is accepted by insert_html (which rejects scripts and handlers).
+    cmd(json!({"op":"insert_html","window":id,"element":"dst","position":"beforeend","html":safe}))
+        .unwrap();
+    let caps = cmd(json!({"op":"capabilities"})).unwrap();
+    assert_eq!(caps["features"]["clipboard.image"]["status"], "unsupported");
+    cmd(json!({"op":"set_clipboard_text","window":id,"text":"plain"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_clipboard_html","window":id})).unwrap()["html"],
+        Value::Null,
+        "a text copy replaces the HTML flavour"
+    );
+}

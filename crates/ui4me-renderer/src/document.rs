@@ -95,6 +95,15 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 pub trait Clipboard {
     fn read_text(&mut self) -> std::result::Result<Option<String>, String>;
     fn write_text(&mut self, text: &str) -> std::result::Result<(), String>;
+    /// HTML with its plain-text alternative (0.7 F0706). Default: the text only.
+    fn write_html(&mut self, html: &str, alt_text: &str) -> std::result::Result<(), String> {
+        let _ = html;
+        self.write_text(alt_text)
+    }
+    /// The HTML flavour, if the clipboard holds one. Default: none.
+    fn read_html(&mut self) -> std::result::Result<Option<String>, String> {
+        Ok(None)
+    }
 }
 struct MemoryClipboard;
 impl Clipboard for MemoryClipboard {
@@ -103,9 +112,20 @@ impl Clipboard for MemoryClipboard {
     }
     fn write_text(&mut self, text: &str) -> std::result::Result<(), String> {
         *lock(&CLIPBOARD) = Some(text.to_owned());
+        *lock(&CLIPBOARD_HTML) = None;
         Ok(())
     }
+    fn write_html(&mut self, html: &str, alt_text: &str) -> std::result::Result<(), String> {
+        *lock(&CLIPBOARD) = Some(alt_text.to_owned());
+        *lock(&CLIPBOARD_HTML) = Some(html.to_owned());
+        Ok(())
+    }
+    fn read_html(&mut self) -> std::result::Result<Option<String>, String> {
+        Ok(lock(&CLIPBOARD_HTML).clone())
+    }
 }
+/// The in-process clipboard's HTML flavour (headless sessions).
+static CLIPBOARD_HTML: Mutex<Option<String>> = Mutex::new(None);
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImeState {
     pub password: bool,
@@ -2524,6 +2544,7 @@ pub mod file_input;
 #[cfg(test)]
 mod focus_pointer_tests;
 pub mod public_dom;
+pub mod rich_clipboard;
 mod selection;
 #[cfg(test)]
 mod tests;

@@ -108,6 +108,29 @@ impl Clipboard for NativeClipboard {
             .set_text(text.to_owned())
             .map_err(|e| format!("system clipboard write: {e}"))
     }
+    fn write_html(&mut self, html: &str, alt_text: &str) -> std::result::Result<(), String> {
+        let mut shared = self
+            .0
+            .try_borrow_mut()
+            .map_err(|_| "clipboard is busy".to_owned())?;
+        shared
+            .as_mut()
+            .map_err(|e| e.clone())?
+            .set_html(html.to_owned(), Some(alt_text.to_owned()))
+            .map_err(|e| format!("system clipboard write: {e}"))
+    }
+    fn read_html(&mut self) -> std::result::Result<Option<String>, String> {
+        let mut shared = self
+            .0
+            .try_borrow_mut()
+            .map_err(|_| "clipboard is busy".to_owned())?;
+        let clipboard = shared.as_mut().map_err(|e| e.clone())?;
+        match clipboard.get().html() {
+            Ok(html) => Ok(Some(html)),
+            Err(arboard::Error::ContentNotAvailable) => Ok(None),
+            Err(error) => Err(format!("system clipboard read: {error}")),
+        }
+    }
 }
 
 struct NativeWindow {

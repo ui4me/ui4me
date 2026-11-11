@@ -198,6 +198,18 @@ pub enum Command {
         x: f64,
         y: f64,
     },
+    /// Rich clipboard (0.7 F0706).
+    SetClipboardHtml {
+        window: u64,
+        html: String,
+        #[serde(default)]
+        text: String,
+    },
+    GetClipboardHtml {
+        window: u64,
+        #[serde(default)]
+        raw: bool,
+    },
     /// The files chosen in a file input (0.6 F0606).
     GetFiles {
         window: u64,

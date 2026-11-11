@@ -613,6 +613,8 @@ impl Session {
                 "window.minimized_state": native(Some("Wayland does not report whether a window is minimized")),
                 "window.position": if headless { capability("unavailable", "the headless backend has no on-screen windows") } else { capability("unsupported", if wayland { "Wayland clients cannot read or set their window position" } else { "not offered by Core" }) },
                 "window.monitors": native(None),
+                "clipboard.html": if headless { capability("supported", "an in-process clipboard (headless backend)") } else { clipboard.clone() },
+                "clipboard.image": capability("unsupported", "image clipboard formats are not offered (no image codec stack in Core)"),
                 "clipboard.text": clipboard,
                 "file_dialogs": file_dialogs,
                 "file_drop": native(Some("winit 0.30 has no Wayland drag-and-drop")),
@@ -1496,6 +1498,13 @@ impl Session {
                 }
                 self.with_window(window, |w| Ok(json!({"hit": w.document.text_at_point(x, y)?})))?
             }
+            Command::SetClipboardHtml { window, html, text } => self.with_window(window, |w| {
+                w.document.set_clipboard_html(&html, &text)?;
+                Ok(json!({}))
+            })?,
+            Command::GetClipboardHtml { window, raw } => self.with_window(window, |w| {
+                Ok(json!({"html": w.document.clipboard_html(raw)?, "sanitized": !raw}))
+            })?,
             Command::GetFiles { window, element } => self.with_window(window, |w| {
                 Ok(json!({"files": w.document.get_files(&element)?}))
             })?,

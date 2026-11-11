@@ -595,6 +595,9 @@ public sealed class Window
     public string CopySelection() { Check(); return app.Command(new { op = "copy_selection", window = Id }).GetProperty("text").GetString()!; }
     public string? GetClipboardText() { Check(); var t = app.Command(new { op = "get_clipboard_text", window = Id }).GetProperty("text"); return t.ValueKind == JsonValueKind.Null ? null : t.GetString(); }
     public void SetClipboardText(string text) { Check(); app.Command(new { op = "set_clipboard_text", window = Id, text }); }
+    public void SetClipboardHtml(string html, string text = "") { Check(); app.Command(new { op = "set_clipboard_html", window = Id, html, text }); }
+    /// <summary>The clipboard HTML, sanitized unless raw; null without an HTML flavour.</summary>
+    public string? GetClipboardHtml(bool raw = false) { Check(); var h = app.Command(new { op = "get_clipboard_html", window = Id, raw }).GetProperty("html"); return h.ValueKind == JsonValueKind.Null ? null : h.GetString(); }
     /// <summary>show, hide, focus, minimize, maximize, restore, fullscreen or exit_fullscreen.</summary>
     public WindowActionResult WindowAction(string action)
     {
