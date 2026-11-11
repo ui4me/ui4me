@@ -314,6 +314,18 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 window.window_action("spin")
 
+    def test_file_dialog_headless_completes_as_cancelled(self):
+        results = []
+        with self.app() as app:
+            window = app.open("<p>f</p>")
+            window.open_file_dialog(results.append, title="Pick", filters={"Text": ["txt"]})
+            window.save_file_dialog(results.append, file_name="notes ž.txt")
+            with self.assertRaises(Ui4meError):
+                window.file_dialog("delete", results.append)
+            app.timer(50, lambda _: app.stop())
+            app.run()
+        self.assertEqual(results, [{"paths": None}, {"paths": None}])
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

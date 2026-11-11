@@ -166,6 +166,7 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Dialog (0.4) | `show_dialog(id, modal=True)`, `close_dialog(id, return_value=None)`, `get_dialog(id)` | `ShowDialog`, `CloseDialog`, `GetDialog` |
 | Select (0.4) | `get_options(id)`, `set_selected_values(id, values)`; `get_value`/`set_value` for single selects | `GetOptions`, `SetSelectedValues`, `GetValue`/`SetValue` |
 | Native window (0.4) | `window_action(a)`, `show`, `hide`, `activate`, `minimize`, `maximize`, `restore`, `set_fullscreen`, `set_constraints(min_size=, max_size=, resizable=)`, `set_icon(path)`, `state()`; `app.monitors()` | `WindowAction`, `Show`, `Hide`, `Activate`, `Minimize`, `Maximize`, `Restore`, `SetFullscreen`, `SetConstraints`, `SetIcon`, `StateJson`; `$app.MonitorsJson()` |
+| File dialogs (0.4) | `open_file_dialog(cb, multiple=, title=, directory=, filters=)`, `save_file_dialog(cb, file_name=, ...)`, `folder_dialog(cb, ...)`, `file_dialog(kind, cb, ...)` | `OpenFileDialog`, `SaveFileDialog`, `FolderDialog` (handler gets `$e.Paths`, `$e.Error`) |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -251,6 +252,13 @@ Window services (0.4): actions are queued and applied by the native event loop.
 - **Constraints:** they apply to user resizing and also clamp `resize`.
 - **Monitors:** `monitors()` lists name, physical size, scale, refresh rate and primary flag. Position is null on Wayland. The list is empty in headless sessions.
 - **Headless:** actions update a deterministic model.
+Native file dialogs (0.4) never block the UI.
+- **Native backend:** the OS dialog runs on a worker thread (xdg-desktop-portal on Linux; `IFileDialog` on Windows, owned by and modal to the window). The result arrives once as a `file_dialog` event carrying the request `token`: `paths` is a list, or `null` when cancelled, plus `error` on platform failure. Bindings turn that into a one-shot callback.
+- **Limits and validation:** at most 4 dialogs at once. Paths are Unicode strings; a non-UTF-8 selection reports an error instead of a lossy path. Filters are a label plus extensions without dots. `directory` must be absolute; `file_name` has no separators.
+- **Headless:** sessions complete each request as cancelled with `headless: true`.
+- **Lifetime:** stopping the app does not dismiss an open OS dialog; its result is discarded.
+- **Linux runtime:** dialogs need a running xdg-desktop-portal with a file-chooser backend (KDE or GTK); libdbus is loaded at run time, not linked.
+- **File drops:** dropped files arrive as `file_drop` events (`paths`), and hover as `file_hover`/`file_hover_cancelled`, where winit supports them (Windows and X11). On Wayland, winit 0.30 delivers no drops.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

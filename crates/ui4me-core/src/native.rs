@@ -1,7 +1,7 @@
 //! Retained winit 0.30 host. Native objects never leave their owning thread.
 //! This layer translates OS input and presents pixels; document semantics live in the renderer.
 use crate::document::{Clipboard, ImeState, Input, MAX_PIXELS};
-use crate::runtime::{lock, Observed, Session, WindowInfo, WindowOp};
+use crate::runtime::{lock, FileDialogRequest, Observed, Session, WindowInfo, WindowOp};
 use crate::{Error, Result};
 use serde_json::json;
 use softbuffer::{Context, Surface};
@@ -222,6 +222,69 @@ impl Desktop {
         self.windows.remove(&id);
         self.session.closed(id);
     }
+    /// Run an OS file dialog on a worker thread; the owner keeps painting and receives the
+    /// result as a `file_dialog` event. On Windows the dialog is owned by (modal to) the window.
+    fn spawn_file_dialog(&self, id: u64, request: FileDialogRequest) {
+        #[cfg(target_os = "windows")]
+        let parent = self.windows.get(&id).and_then(|n| {
+            use winit::raw_window_handle::HasWindowHandle;
+            n.window
+                .window_handle()
+                .ok()
+                .map(|h| ParentHandle(h.as_raw()))
+        });
+        let session = self.session.clone();
+        let token = request.token;
+        let spawned = thread::Builder::new()
+            .name("ui4me-file-dialog".into())
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut dialog = rfd::FileDialog::new();
+                    if let Some(title) = &request.title {
+                        dialog = dialog.set_title(title);
+                    }
+                    if let Some(directory) = &request.directory {
+                        dialog = dialog.set_directory(directory);
+                    }
+                    if let Some(name) = &request.file_name {
+                        dialog = dialog.set_file_name(name);
+                    }
+                    for (name, extensions) in &request.filters {
+                        dialog = dialog.add_filter(name, extensions);
+                    }
+                    #[cfg(target_os = "windows")]
+                    if let Some(parent) = &parent {
+                        dialog = dialog.set_parent(parent);
+                    }
+                    let paths = match request.kind.as_str() {
+                        "open" => dialog.pick_file().map(|p| vec![p]),
+                        "open_multiple" => dialog.pick_files(),
+                        "save" => dialog.save_file().map(|p| vec![p]),
+                        _ => dialog.pick_folder().map(|p| vec![p]),
+                    };
+                    match paths {
+                        None => json!({"paths": null}),
+                        Some(paths) => {
+                            let text: Option<Vec<String>> =
+                                paths.iter().map(|p| p.to_str().map(str::to_owned)).collect();
+                            match text {
+                                Some(text) => json!({"paths": text}),
+                                None => json!({"paths": null, "error": "a selected path is not valid UTF-8"}),
+                            }
+                        }
+                    }
+                }))
+                .unwrap_or_else(|_| json!({"paths": null, "error": "the native file dialog failed"}));
+                session.finish_file_dialog(id, token, result);
+            });
+        if spawned.is_err() {
+            self.session.finish_file_dialog(
+                id,
+                token,
+                json!({"paths": null, "error": "cannot start the file dialog thread"}),
+            );
+        }
+    }
     /// Report the platform's view of a window (emits `window_state` on change).
     fn observe(&mut self, id: u64) {
         let Some(native) = self.windows.get(&id) else {
@@ -320,9 +383,14 @@ impl Desktop {
             }
             let ops = self.session.take_window_ops(id);
             if !ops.is_empty() {
-                if let Some(native) = self.windows.get_mut(&id) {
-                    for op in ops {
-                        apply_op(native, op, current.hidden);
+                for op in ops {
+                    match op {
+                        WindowOp::FileDialog(request) => self.spawn_file_dialog(id, request),
+                        op => {
+                            if let Some(native) = self.windows.get_mut(&id) {
+                                apply_op(native, op, current.hidden);
+                            }
+                        }
                     }
                 }
                 self.observe(id);
@@ -575,6 +643,18 @@ impl ApplicationHandler<()> for Desktop {
                 self.observe(id);
             }
             WindowEvent::Moved(_) | WindowEvent::Occluded(_) => self.observe(id),
+            WindowEvent::DroppedFile(path) => {
+                let path = path.to_str().map(str::to_owned);
+                self.session
+                    .emit(json!({"type":"file_drop","window":id,"paths":path.map(|p| vec![p])}));
+            }
+            WindowEvent::HoveredFile(_) => {
+                self.session.emit(json!({"type":"file_hover","window":id}));
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.session
+                    .emit(json!({"type":"file_hover_cancelled","window":id}));
+            }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(native) = self.windows.get(&id) {
                     let size = native.window.inner_size();
@@ -732,11 +812,44 @@ fn apply_op(native: &mut NativeWindow, op: WindowOp, hidden: bool) {
             w.set_max_inner_size(Some(LogicalSize::new(max.0 as f64, max.1 as f64)));
             w.set_resizable(resizable);
         }
+        WindowOp::FileDialog(_) => {}
         WindowOp::Icon(icon) => {
             let icon = icon.and_then(|(rgba, width, height)| {
                 winit::window::Icon::from_rgba(rgba, width, height).ok()
             });
             w.set_window_icon(icon);
         }
+    }
+}
+
+/// A window handle lent to the dialog thread. The window outlives the dialog's use of it as an
+/// owner: Windows disables, not destroys, the owner while the modal dialog runs, and a closed
+/// owner only makes the dialog unowned.
+#[cfg(target_os = "windows")]
+struct ParentHandle(winit::raw_window_handle::RawWindowHandle);
+#[cfg(target_os = "windows")]
+// SAFETY: an HWND is a process-wide identifier, valid to pass between threads.
+unsafe impl Send for ParentHandle {}
+#[cfg(target_os = "windows")]
+impl winit::raw_window_handle::HasWindowHandle for ParentHandle {
+    fn window_handle(
+        &self,
+    ) -> std::result::Result<
+        winit::raw_window_handle::WindowHandle<'_>,
+        winit::raw_window_handle::HandleError,
+    > {
+        // SAFETY: see the type comment; the handle is only used as a dialog owner.
+        Ok(unsafe { winit::raw_window_handle::WindowHandle::borrow_raw(self.0) })
+    }
+}
+#[cfg(target_os = "windows")]
+impl winit::raw_window_handle::HasDisplayHandle for ParentHandle {
+    fn display_handle(
+        &self,
+    ) -> std::result::Result<
+        winit::raw_window_handle::DisplayHandle<'_>,
+        winit::raw_window_handle::HandleError,
+    > {
+        Ok(winit::raw_window_handle::DisplayHandle::windows())
     }
 }

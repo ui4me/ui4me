@@ -561,6 +561,52 @@ class Window:
         platform does not report it), size in CSS px and pixels, scale, monitor, constraints."""
         return self._command("get_window_state")
 
+    def file_dialog(self, kind: str, callback: Callable[[dict], object], *, title: str | None = None,
+                    directory=None, file_name: str | None = None, filters=None) -> int:
+        """Open a native ``open``/``open_multiple``/``save``/``folder`` dialog without blocking.
+
+        ``callback`` runs once on the UI owner with ``{"paths": [...]}`` or ``{"paths": None}``
+        when cancelled (plus ``"error"`` if the platform failed). ``filters`` maps a label to
+        extensions without dots, e.g. ``{"Images": ["png", "jpg"]}``.
+        """
+        if self._closed:
+            raise RuntimeError("Window is closed")
+        token = self._app._next_token()
+        holder: dict = {}
+
+        def handler(event: dict) -> None:
+            if event.get("token") != token:
+                return
+            holder["subscription"].close()
+            callback({k: event[k] for k in ("paths", "error") if k in event})
+
+        holder["subscription"] = self.on("file_dialog", handler)
+        args: dict = {"token": token, "kind": kind}
+        if title is not None:
+            args["title"] = title
+        if directory is not None:
+            args["directory"] = str(Path(directory).absolute())
+        if file_name is not None:
+            args["file_name"] = file_name
+        if filters:
+            items = filters.items() if isinstance(filters, dict) else filters
+            args["filters"] = [{"name": name, "extensions": list(exts)} for name, exts in items]
+        try:
+            self._command("file_dialog", **args)
+        except BaseException:
+            holder["subscription"].close()
+            raise
+        return token
+
+    def open_file_dialog(self, callback, *, multiple: bool = False, **options) -> int:
+        return self.file_dialog("open_multiple" if multiple else "open", callback, **options)
+
+    def save_file_dialog(self, callback, **options) -> int:
+        return self.file_dialog("save", callback, **options)
+
+    def folder_dialog(self, callback, **options) -> int:
+        return self.file_dialog("folder", callback, **options)
+
     def show_dialog(self, element: str, *, modal: bool = True) -> None:
         """Open a ``<dialog>``; a modal one traps focus and makes the rest inert until closed."""
         self._command("show_dialog", element=element, modal=bool(modal))

@@ -25,6 +25,10 @@ public sealed class UiEvent
     public string ReturnValue { get; init; } = "";
     /// <summary>The <c>open</c>/<c>closed</c> state after a <c>toggle</c> event (0.4).</summary>
     public string NewState { get; init; } = "";
+    /// <summary>Paths of a <c>file_dialog</c> or <c>file_drop</c> event; null when cancelled (0.4).</summary>
+    public string[]? Paths { get; init; }
+    /// <summary>An error reported by a native service such as a file dialog.</summary>
+    public string Error { get; init; } = "";
     public string Backend { get; init; } = "";
     public string AppId { get; init; } = "";
     public IReadOnlyDictionary<string, JsonElement> Details { get; init; } = new Dictionary<string, JsonElement>();
@@ -45,7 +49,8 @@ public sealed class UiEvent
             Width = Number(r, "width"), Height = Number(r, "height"), Scale = Number(r, "scale"),
             Units = Text(r, "units"), Key = Text(r, "key"), Backend = Text(r, "backend"), AppId = Text(r, "app_id"),
             DefaultPrevented = r.TryGetProperty("default_prevented", out var dp) && dp.ValueKind == JsonValueKind.True,
-            ReturnValue = Text(r, "return_value"), NewState = Text(r, "new_state"),
+            ReturnValue = Text(r, "return_value"), NewState = Text(r, "new_state"), Error = Text(r, "error"),
+            Paths = r.TryGetProperty("paths", out var ps) && ps.ValueKind == JsonValueKind.Array ? ps.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : null,
             Details = r.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone()),
             Json = text,
         };
@@ -107,6 +112,7 @@ public sealed class App : IDisposable
     private readonly Dictionary<ulong, Window> windows = new();
     private readonly Dictionary<long, (string Event, ulong Window, string? Element, ScriptBlock Handler)> handlers = new();
     private readonly Dictionary<ulong, (ScriptBlock Handler, bool Repeat)> timers = new();
+    private readonly Dictionary<ulong, ScriptBlock> fileDialogs = new();
     private readonly Dictionary<ulong, (PostedWork Work, Func<object?> Action)> pending = new();
     private readonly Dictionary<ulong, (BackgroundWork Work, ScriptBlock Completion)> background = new();
     private long counter;
@@ -165,6 +171,31 @@ public sealed class App : IDisposable
         return new Subscription(this, id);
     }
     internal void RemoveHandler(long id) { OwnerOnly(); handlers.Remove(id); }
+    internal ulong FileDialog(ulong window, string kind, ScriptBlock handler, string? title, string? directory, string? fileName, System.Collections.IDictionary? filters)
+    {
+        Active();
+        ArgumentNullException.ThrowIfNull(handler);
+        var token = checked((ulong)Interlocked.Increment(ref counter));
+        var request = new Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = "file_dialog", ["window"] = window, ["token"] = token, ["kind"] = kind };
+        if (!string.IsNullOrEmpty(title)) request["title"] = title;
+        if (!string.IsNullOrEmpty(directory)) request["directory"] = Path.GetFullPath(directory);
+        if (!string.IsNullOrEmpty(fileName)) request["file_name"] = fileName;
+        if (filters is not null)
+        {
+            var list = new List<object>();
+            foreach (System.Collections.DictionaryEntry entry in filters)
+            {
+                var value = entry.Value is PSObject ps ? ps.BaseObject : entry.Value;
+                var extensions = value is string one ? new[] { one } : ((System.Collections.IEnumerable)value!).Cast<object>().Select(x => x.ToString()!).ToArray();
+                list.Add(new { name = entry.Key.ToString(), extensions });
+            }
+            request["filters"] = list;
+        }
+        fileDialogs.Add(token, ScriptClosure.Capture(handler));
+        try { Command(request); }
+        catch { fileDialogs.Remove(token); throw; }
+        return token;
+    }
     public TimerRegistration Timer(int milliseconds, ScriptBlock handler, bool repeat = false)
     {
         Active();
@@ -320,6 +351,10 @@ public sealed class App : IDisposable
             {
                 if (!timer.Repeat) timers.Remove(evt.Token);
                 timer.Handler.InvokeReturnAsIs(evt);
+            }
+            else if (evt.Type == "file_dialog" && fileDialogs.Remove(evt.Token, out var dialogHandler))
+            {
+                dialogHandler.InvokeReturnAsIs(evt);
             }
             else if (evt.Type == "completion")
             {
@@ -533,6 +568,10 @@ public sealed class Window
     }
     /// <summary>Observed state as JSON: visible, focused, minimized, maximized, fullscreen (null when unknown), size, scale, monitor.</summary>
     public string StateJson() { Check(); return app.Command(new { op = "get_window_state", window = Id }).GetRawText(); }
+    /// <summary>Open a native file dialog; the handler receives the event (Paths is null when cancelled).</summary>
+    public ulong OpenFileDialog(ScriptBlock handler, string? title = null, string? directory = null, System.Collections.IDictionary? filters = null, bool multiple = false) { Check(); return app.FileDialog(Id, multiple ? "open_multiple" : "open", handler, title, directory, null, filters); }
+    public ulong SaveFileDialog(ScriptBlock handler, string? title = null, string? directory = null, string? fileName = null, System.Collections.IDictionary? filters = null) { Check(); return app.FileDialog(Id, "save", handler, title, directory, fileName, filters); }
+    public ulong FolderDialog(ScriptBlock handler, string? title = null, string? directory = null) { Check(); return app.FileDialog(Id, "folder", handler, title, directory, null, null); }
     public void ShowDialog(string element, bool modal = true) { Check(); app.Command(new { op = "show_dialog", window = Id, element, modal }); }
     public void CloseDialog(string element, string? returnValue = null)
     {

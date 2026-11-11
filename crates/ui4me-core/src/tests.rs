@@ -1145,3 +1145,43 @@ fn window_actions_constraints_icon_and_state() {
         4
     );
 }
+
+#[test]
+fn file_dialog_requests_validate_and_complete() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<p>f</p>"})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let ok = cmd(json!({"op":"file_dialog","window":id,"token":7,"kind":"open","title":"Pick ž","filters":[{"name":"Images","extensions":["png","jpg"]}]})).unwrap();
+    assert_eq!(ok["token"], 7);
+    h.session.process_work();
+    let done: Vec<Value> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "file_dialog")
+        .collect();
+    assert_eq!(done.len(), 1);
+    assert_eq!(
+        (
+            done[0]["token"].clone(),
+            done[0]["paths"].clone(),
+            done[0]["window"].clone()
+        ),
+        (json!(7), Value::Null, json!(id))
+    );
+    for bad in [
+        json!({"op":"file_dialog","window":id,"token":8,"kind":"delete"}),
+        json!({"op":"file_dialog","window":id,"token":8,"kind":"save","file_name":"../x"}),
+        json!({"op":"file_dialog","window":id,"token":8,"kind":"open","filters":[{"name":"x","extensions":["*.png"]}]}),
+        json!({"op":"file_dialog","window":id,"token":8,"kind":"open","directory":"relative/dir"}),
+    ] {
+        assert_eq!(cmd(bad).unwrap_err().code, 1);
+    }
+    assert_eq!(
+        cmd(json!({"op":"file_dialog","window":id + 99,"token":9,"kind":"folder"}))
+            .unwrap_err()
+            .code,
+        4
+    );
+}

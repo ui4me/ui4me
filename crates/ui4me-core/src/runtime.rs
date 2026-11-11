@@ -72,6 +72,18 @@ pub enum WindowOp {
         resizable: bool,
     },
     Icon(Option<(Vec<u8>, u32, u32)>),
+    FileDialog(FileDialogRequest),
+}
+/// A native open/save/folder dialog request.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileDialogRequest {
+    pub token: u64,
+    /// `open`, `open_multiple`, `save` or `folder`.
+    pub kind: String,
+    pub title: Option<String>,
+    pub directory: Option<PathBuf>,
+    pub file_name: Option<String>,
+    pub filters: Vec<(String, Vec<String>)>,
 }
 /// Minimum size, maximum size and resizability (logical px).
 type Constraints = (Option<(u32, u32)>, Option<(u32, u32)>, bool);
@@ -123,6 +135,10 @@ pub struct Control {
     // false = reserved; true = published and waiting for owner delivery.
     completions: BTreeMap<u64, bool>,
     ready_completions: VecDeque<u64>,
+    /// Finished native file dialogs: (window, token, result), delivered by the owner.
+    dialog_results: VecDeque<(u64, u64, Value)>,
+    /// Open native file dialogs (token -> window).
+    dialogs_open: BTreeMap<u64, u64>,
     pub failure: Option<Error>,
     pub stats: Stats,
 }
@@ -215,6 +231,8 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
             posts: VecDeque::new(),
             completions: BTreeMap::new(),
             ready_completions: VecDeque::new(),
+            dialog_results: VecDeque::new(),
+            dialogs_open: BTreeMap::new(),
             failure: None,
             stats: Stats::default(),
         }),
@@ -548,8 +566,40 @@ impl Session {
             Ok(())
         })
     }
+    /// A worker publishes a finished file dialog (thread-safe; wakes the owner).
+    pub fn finish_file_dialog(&self, window: u64, token: u64, result: Value) {
+        {
+            let mut state = lock(&self.control);
+            if state.stop || state.dialogs_open.remove(&token).is_none() {
+                return;
+            }
+            state.dialog_results.push_back((window, token, result));
+        }
+        self.wake();
+    }
     pub fn process_work(&self) {
         lock(&self.control).stats.loop_turns += 1;
+        loop {
+            let next = {
+                let mut state = lock(&self.control);
+                if state.stop {
+                    None
+                } else {
+                    state.dialog_results.pop_front()
+                }
+            };
+            let Some((window, token, result)) = next else {
+                break;
+            };
+            if self.window_info(window).is_none() {
+                continue;
+            }
+            let mut event = result;
+            event["type"] = json!("file_dialog");
+            event["window"] = json!(window);
+            event["token"] = json!(token);
+            self.emit(event);
+        }
         // Reserved completions make progress even when the ordinary post queue is saturated.
         for _ in 0..16 {
             let token = {
@@ -657,7 +707,11 @@ impl Session {
     pub fn has_work(&self) -> bool {
         {
             let state = lock(&self.control);
-            if state.stop || !state.posts.is_empty() || !state.ready_completions.is_empty() {
+            if state.stop
+                || !state.posts.is_empty()
+                || !state.ready_completions.is_empty()
+                || !state.dialog_results.is_empty()
+            {
                 return true;
             }
         }
@@ -1160,6 +1214,60 @@ impl Session {
                 Ok(v)
             })?,
             Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
+            Command::FileDialog {
+                window,
+                token,
+                kind,
+                title,
+                directory,
+                file_name,
+                filters,
+            } => {
+                if !matches!(kind.as_str(), "open" | "open_multiple" | "save" | "folder") {
+                    return Err(Error::arg("kind must be open, open_multiple, save or folder"));
+                }
+                if title.as_ref().is_some_and(|t| t.len() > 512)
+                    || file_name.as_ref().is_some_and(|t| t.len() > 1024 || t.contains(['/', '\\', '\0']))
+                    || filters.len() > 32
+                    || filters.iter().any(|f| f.extensions.is_empty() || f.extensions.len() > 64
+                        || f.extensions.iter().any(|e| e.is_empty() || e.len() > 32 || e.contains(['.', '/', '\\', '*'])))
+                {
+                    return Err(Error::arg("invalid file dialog title, file name or filter"));
+                }
+                if directory.as_ref().is_some_and(|d| !d.is_absolute()) {
+                    return Err(Error::arg("directory must be absolute"));
+                }
+                self.with_window(window, |_| Ok(()))?;
+                {
+                    let mut state = lock(&self.control);
+                    if state.dialogs_open.contains_key(&token) {
+                        return Err(Error::arg("file dialog token is already in use"));
+                    }
+                    if state.dialogs_open.len() >= 4 {
+                        return Err(Error::limit("at most 4 file dialogs may be open"));
+                    }
+                    state.dialogs_open.insert(token, window);
+                }
+                let request = FileDialogRequest {
+                    token,
+                    kind,
+                    title,
+                    directory,
+                    file_name,
+                    filters: filters.into_iter().map(|f| (f.name, f.extensions)).collect(),
+                };
+                if self.native {
+                    self.with_window(window, |w| {
+                        w.ops.push_back(WindowOp::FileDialog(request));
+                        Ok(())
+                    })?;
+                    self.wake();
+                } else {
+                    // Headless sessions have no OS dialog: the request completes as cancelled.
+                    self.finish_file_dialog(window, token, json!({"paths": null, "headless": true}));
+                }
+                json!({"token": token})
+            }
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {
@@ -1399,7 +1507,7 @@ impl Session {
                         o.maximized = Some(false);
                     }
                     WindowOp::Fullscreen(f) => o.fullscreen = Some(f),
-                    WindowOp::Constraints { .. } | WindowOp::Icon(_) => {}
+                    WindowOp::Constraints { .. } | WindowOp::Icon(_) | WindowOp::FileDialog(_) => {}
                 }
             }
             Ok(())

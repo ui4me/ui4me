@@ -405,6 +405,18 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21i_file_dialog_headless' {
+        $seen = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<p>f</p>')
+            $results = [Collections.Generic.List[string]]::new()
+            $null = $window.OpenFileDialog({ param($e) $results.Add($(if ($null -eq $e.Paths) { 'cancel' } else { 'paths' })) }, 'Pick', $null, @{ Text = @('txt') }, $false)
+            $null = $window.SaveFileDialog({ param($e) $results.Add($(if ($null -eq $e.Paths) { 'cancel' } else { 'paths' })) }, $null, $null, 'notes ž.txt', $null)
+            $null = $app.Timer(50, { $app.Stop() }, $false)
+            Write-Output -NoEnumerate $results
+        }
+        if (($seen -join ',') -ne 'cancel,cancel') { throw "Headless file dialogs: $($seen -join ',')" }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

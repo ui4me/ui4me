@@ -338,6 +338,19 @@ pub enum Command {
         window: u64,
     },
     ListMonitors,
+    FileDialog {
+        window: u64,
+        token: u64,
+        kind: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        directory: Option<PathBuf>,
+        #[serde(default)]
+        file_name: Option<String>,
+        #[serde(default)]
+        filters: Vec<FileFilter>,
+    },
     Diagnostics {
         window: u64,
     },
@@ -374,6 +387,14 @@ pub enum Command {
     },
     Stats,
 }
+/// A file dialog filter: a label and extensions without dots (`["png", "jpg"]`).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileFilter {
+    pub name: String,
+    pub extensions: Vec<String>,
+}
+
 /// One operation of a `batch` command; the same fields as the single command.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]

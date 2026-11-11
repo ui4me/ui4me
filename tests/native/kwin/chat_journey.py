@@ -26,6 +26,56 @@ HERE = Path(__file__).resolve().parent
 KEY = {"enter": 28, "shift": 42, "ctrl": 29, "backspace": 14, "a": 30, "c": 46, "v": 47, "end": 107}
 
 
+def isolated_environment() -> dict:
+    """The environment for the private session bus: no route to the person's real desktop.
+
+    D-Bus-activated services (xdg-desktop-portal and its file chooser) inherit the bus's
+    activation environment; without this they would draw on the real session's display."""
+    env = dict(os.environ)
+    for name in ("WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
+        env.pop(name, None)
+    return env
+
+
+def use_virtual_display(sock: str) -> None:
+    """Point the private bus's activated services at the virtual KWin. KWin's startup already
+    activated the portals without a display, so they are restarted to re-activate on demand."""
+    subprocess.run(["dbus-update-activation-environment", f"WAYLAND_DISPLAY={sock}", "QT_QPA_PLATFORM=wayland",
+                    "XDG_CURRENT_DESKTOP=KDE"], check=True, capture_output=True)
+    reap_private_bus(("xdg-desktop-portal", "kioworker"))
+    time.sleep(0.5)
+
+
+def reap_private_bus(only: tuple[str, ...] = ()) -> list[int]:
+    """Stop processes attached to this run's private session bus (all, or those whose command
+    line contains one of ``only``)."""
+    bus = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if not bus.startswith("unix:path=/tmp/dbus-"):
+        return []
+    stopped = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) in (os.getpid(), os.getppid()):
+            continue
+        try:
+            environ = (entry / "environ").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if only:
+            try:
+                cmdline = (entry / "cmdline").read_bytes().decode(errors="replace")
+            except OSError:
+                continue
+            if not any(o in cmdline for o in only):
+                continue
+        if f"DBUS_SESSION_BUS_ADDRESS={bus}".encode() in environ:
+            try:
+                os.kill(int(entry.name), 15)
+                stopped.append(int(entry.name))
+            except OSError:
+                pass
+    return stopped
+
+
 def build_fakeinput(out: Path) -> Path:
     binary = out / "fakeinput"
     with tempfile.TemporaryDirectory() as t:
@@ -132,6 +182,7 @@ def journey(out: Path, command: list[str]) -> dict:
         time.sleep(1.0)
         env["WAYLAND_DISPLAY"] = sock
         os.environ["WAYLAND_DISPLAY"] = sock
+        use_virtual_display(sock)
         app_log = (out / "app.log").open("w")
         app = subprocess.Popen(command, env=env, stdout=app_log, stderr=subprocess.STDOUT)
         fake = Input(build_fakeinput(out))
@@ -289,6 +340,7 @@ def journey(out: Path, command: list[str]) -> dict:
                 app.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 app.kill()
+        reap_private_bus()
         kwin.terminate()
         try:
             kwin.wait(timeout=10)
@@ -318,9 +370,11 @@ def run_plain(out: Path, command: list[str]) -> int:
             time.sleep(0.1)
         time.sleep(1.0)
         env["WAYLAND_DISPLAY"] = sock
+        use_virtual_display(sock)
         with (out / "command.log").open("w") as output:
             return subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=300).returncode
     finally:
+        reap_private_bus()
         kwin.terminate()
         try:
             kwin.wait(timeout=10)
@@ -342,7 +396,8 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.inner:
         plain = ["--plain"] if args.plain else []
-        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", *plain, "--out", str(args.out), "--", *command])
+        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", *plain, "--out", str(args.out), "--", *command],
+                               env=isolated_environment())
     if args.plain:
         return run_plain(args.out.resolve(), command)
     result = journey(args.out.resolve(), command)
