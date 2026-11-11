@@ -29,7 +29,7 @@ HTTP resource loader, out-of-process UI broker or plugin system.
 | Documents | Nested HTML, unique public IDs, local file base; insert/remove/move, text/attribute reads, selector queries, atomic batches, streaming text | Script, iframe/object/embed and inline handlers are rejected. Up to 65,536 nodes per document; the whole document is re-laid-out per change, so keep long logs bounded |
 | CSS and layout | Cascade/selectors, custom properties, block/inline/flex/grid, positioning incl. sticky, media queries, overflow/ellipsis | An application subset, not browser conformance |
 | Painting | Backgrounds, borders, clipping, shaped text, raster images, scrollbars | Advanced effects/SVG breadth, animations and printing are not promised |
-| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face` | Bidi selection is logical-order; system font changes are not live |
+| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face`; IME composition plumbing | Bidi selection is logical-order; system font changes are not live; real IME, dead-key and AltGr input has not been qualified on KDE/Windows desktops |
 | Controls | Text/password/textarea, buttons, checkbox/radio, labels, `select` (drop-down/listbox), `dialog`, `details` | No custom-element or rich-text editing component |
 | Interaction | Keyboard/focus/Tab order, document selection + copy + `selectionchange`, declarative default-action rules, scroll API, follow-end | Binding callbacks run after dispatch (use rules to cancel) |
 | Windows | Multiple windows; show/hide, focus, min/max/fullscreen, constraints, icon, state, monitors | Wayland forbids focus/activation, show/hide, client icons, un-minimize; these report `unsupported` |
