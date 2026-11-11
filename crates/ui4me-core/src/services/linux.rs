@@ -969,6 +969,9 @@ impl PlatformServices for LinuxServices {
                 "CloseNotification",
                 &(id,),
             );
+            // The token is forgotten above, so the server's NotificationClosed finds nothing:
+            // report the app-requested close here, once.
+            (self.sink)(serde_json::json!({"type":"notification","token":token,"event":"closed"}));
         }
     }
 

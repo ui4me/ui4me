@@ -248,11 +248,27 @@ def installed_cases():
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def core_07_contract():
+        with App(backend="headless", handle_sigint=False, app_id="org.ui4me.installed07") as app:
+            w = app.open("<p id=p>x</p>")
+            assert app.notify("Hi")["status"] == "unavailable"
+            assert app.set_tray(tooltip="t")["status"] == "unavailable"
+            assert app.register_hotkey("k", "Ctrl+Alt+K")["status"] == "unavailable"
+            assert w.set_menu([{"label": "File", "items": [{"id": "s", "label": "Save", "accelerator": "Ctrl+S"}]}])["accelerators"] is True
+            assert w.set_pointer_grab("confined")["status"] == "unavailable"
+            w.set_clipboard_html("<b onclick='x()'>bold</b><script>1</script>", "bold")
+            assert w.get_clipboard_html() == "<b>bold</b>" and w.get_clipboard_text() == "bold"
+            caps = app.capabilities()["features"]
+            assert caps["clipboard.image"]["status"] == "unsupported" and caps["system_tray"]["reason"]
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
+    check("F17", core_07_contract, "0.7 Core contract: desktop services refuse honestly without a desktop, menu accelerators, pointer grab status, rich clipboard sanitizing")
     check("F16", core_06_contract, "0.6 Core contract: HTML serialization, stylesheets, node traversal and stale references, text geometry, computed style, validity, file input, link policy")
     check("F15", core_05_contract, "0.5 Core contract: capability report with causes, media environment override, per-line accessible text with the caret")
     check("F13", core_03_contract, "0.3 Core contract: batch/trim, follow scroll, into-view geometry, move/append/read, selection copy, clipboard, default-action rule")

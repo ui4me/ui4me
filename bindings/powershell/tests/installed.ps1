@@ -142,6 +142,18 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F17 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $w = $app.Open('<p id=p>x</p>')
+                if (($app.Notify('Hi', '', $null, $null, $null) | ConvertFrom-Json).status -ne 'unavailable') { throw 'notify' }
+                if (($app.RegisterHotkey('k', 'Ctrl+Alt+K') | ConvertFrom-Json).status -ne 'unavailable') { throw 'hotkey' }
+                if (-not ($w.SetMenu(@(@{ label = 'File'; items = @(@{ id = 's'; label = 'Save'; accelerator = 'Ctrl+S' }) })) | ConvertFrom-Json).accelerators) { throw 'menu' }
+                $w.SetClipboardHtml("<b onclick='x()'>bold</b>", 'bold')
+                if ($w.GetClipboardHtml($false) -ne '<b>bold</b>') { throw "clipboard html: $($w.GetClipboardHtml($false))" }
+                $null = $app.On('started', { $app.Stop() })
+            }
+        } '0.7 Core contract: desktop services refuse honestly without a desktop, menu accelerators, rich clipboard sanitizing'
         Test-Case F16 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)

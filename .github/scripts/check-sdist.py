@@ -78,7 +78,7 @@ def main() -> None:
             run("consumer", [str(python), "-I", str(script), "--result", str(output / "consumer.json")], work)
             data = json.loads((output / "consumer.json").read_text(encoding="utf-8"))
             cases = data.get("cases", [])
-            expected = {"F01", "F09", "F11", "F12", "F13", "F14", "F15", "F16"}  # keep in step with tools/ui4me_dev/testing.py INSTALLED
+            expected = {"F01", "F09", "F11", "F12", "F13", "F14", "F15", "F16", "F17"}  # keep in step with tools/ui4me_dev/testing.py INSTALLED
             if len(cases) != len(expected) or {c.get("id") for c in cases} != expected or any(c.get("status") != "passed" for c in cases):
                 raise RuntimeError("Source-built consumer did not pass every installed case")
             info = data.get("build_info", {})
