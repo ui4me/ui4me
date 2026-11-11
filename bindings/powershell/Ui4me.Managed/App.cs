@@ -671,6 +671,10 @@ public sealed class Window
     public bool SetPointerCapture(string element, int pointerId = 1) { Check(); return app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = true }).GetProperty("accepted").GetBoolean(); }
     public void ReleasePointerCapture(string element, int pointerId = 1) { Check(); app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = false }); }
     public string? GetPointerCapture() { Check(); var e = app.Command(new { op = "get_pointer_capture", window = Id }).GetProperty("element"); return e.ValueKind == System.Text.Json.JsonValueKind.String ? e.GetString() : null; }
+    /// <summary>Run a rich-text editing command (bold, italic, underline, strikethrough, code, link, unlink, remove_format, insert_text, insert_paragraph, undo, redo) on a contenteditable host; true when something changed.</summary>
+    public bool ExecEdit(string element, string command, string? value = null) { Check(); return app.Command(new { op = "exec_edit", window = Id, element, command, value }).GetProperty("ok").GetBoolean(); }
+    /// <summary>{"bold","italic","underline","strikethrough","code","link"} at the selection of a contenteditable host, as JSON.</summary>
+    public string GetEditStateJson(string element) { Check(); return app.Command(new { op = "get_edit_state", window = Id, element }).GetRawText(); }
     public string GetPopoverJson(string element) { Check(); return app.Command(new { op = "get_popover", window = Id, element }).GetRawText(); }
     public SelectOption[] GetOptions(string element)
     {

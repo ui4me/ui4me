@@ -11,11 +11,35 @@
 //! fires a cancelable `beforeinput` and an `input` (`input_type`, `data`) at the host; IME
 //! composition shows the preedit in the text and commits it once. Undo/redo keeps 100 steps.
 //! Hosts must be block or inline-block boxes (their text is one paragraph).
+//!
+//! **Rich hosts (F1003).** `contenteditable` (`""` or `true`) is a *rich* host; only
+//! `plaintext-only` keeps the behaviour above. A rich host's content is a bounded HTML subset
+//! (see `rich_edit.rs`): paragraphs (`p`/`div`/headings/`li`), inline `b`, `i`, `u`, `s`, `code`,
+//! `a href` (kept, never activated while editing) and `br`; other content is preserved. The
+//! selection is still the document selection: its points map to **flat byte offsets** (blocks'
+//! texts joined by `\n`), so the key handling (arrows, words, Home/End, Up/Down, Backspace,
+//! Delete) is shared with plain hosts and only the *edit* differs: the host is read into a
+//! `Rich` tree, edited, serialized and written back with `innerHTML` (element identities inside
+//! the host are not kept). Enter splits the paragraph, Backspace/Delete across a paragraph
+//! boundary merge, Shift+Enter inserts `<br>`, Ctrl+B/I/U toggle formats over a range or set a
+//! *pending* format for the next typed text at a caret. Paste inserts the sanitized clipboard
+//! HTML reduced to the subset (unknown elements keep their text, only http/https/mailto links),
+//! else text; copy/cut write text and HTML. Undo/redo restore serialized snapshots with the
+//! selection (100 steps, 16 MiB). `exec_edit` / `get_edit_state` are the programmatic commands.
+//! `beforeinput`/`input` carry `formatBold`, `formatItalic`, `formatUnderline`,
+//! `formatStrikeThrough`, `formatCode`, `insertLink`, `insertText`, `insertParagraph`,
+//! `insertLineBreak`, `deleteContent*`, `insertFromPaste`, `deleteByCut`, `historyUndo/Redo`.
+//! Editing never creates `style`, event-handler or script markup. Limitations: a trailing
+//! `<br>` at the end of a paragraph does not show an extra empty line; lists have no
+//! Enter-on-empty-item exit; formats nest in the order they were applied.
 
+use super::rich_edit::{EditState, Fmt, Rich, safe_href};
+mod rich;
 use super::*;
 use crate::interaction::frame::{EventInit, EventInterface};
 
 const MAX_UNDO: usize = 100;
+const MAX_RICH_UNDO_BYTES: usize = 16 * 1024 * 1024;
 const MAX_HOST_TEXT: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Default)]
@@ -26,6 +50,24 @@ pub(super) struct EditableState {
     comp: Option<(NodeId, usize, usize)>,
     /// x kept across consecutive Up/Down moves.
     goal_x: Option<f64>,
+    /// Rich hosts: serialized snapshots with the selection (flat offsets).
+    rich_undo: Vec<RichSnap>,
+    rich_redo: Vec<RichSnap>,
+    /// A format chosen at a caret for the next typed text: (host, caret, formats).
+    pending: Option<PendingFormat>,
+}
+
+type PendingFormat = (NodeId, usize, Vec<(Fmt, bool)>);
+
+#[derive(Clone, Debug)]
+struct RichSnap {
+    host: NodeId,
+    html: String,
+    sel: (usize, usize),
+}
+
+fn snap_bytes(v: &[RichSnap]) -> usize {
+    v.iter().map(|s| s.html.len()).sum()
 }
 
 fn editable_value(v: Option<&str>) -> Option<bool> {
@@ -149,7 +191,26 @@ impl Document {
         let f = self.interaction.focused_element(self.id())?;
         editing_host(self.pipeline.document(), f)
     }
+    /// Whether `host` is a rich host (anything but `contenteditable=plaintext-only`).
+    pub(super) fn is_rich_host(&self, host: NodeId) -> bool {
+        self.pipeline
+            .document()
+            .arena()
+            .get(host)
+            .and_then(|x| x.as_element())
+            .and_then(|e| e.attr("contenteditable"))
+            .is_some_and(|v| {
+                let v = v.trim();
+                v.is_empty() || v.eq_ignore_ascii_case("true")
+            })
+    }
+    pub(super) fn rich_load(&self, host: NodeId) -> Rich {
+        Rich::read(self.pipeline.document(), host)
+    }
     fn host_value(&self, host: NodeId) -> String {
+        if self.is_rich_host(host) {
+            return self.rich_load(host).text();
+        }
         self.pipeline.text_content(host).unwrap_or_default()
     }
     /// The selection in `host` (anchor, focus), defaulting to a caret at the end.
@@ -190,6 +251,26 @@ impl Document {
         input_type: &str,
         record: bool,
     ) -> Result<bool> {
+        if self.is_rich_host(host) {
+            let text = text.to_owned();
+            return self.rich_edit(
+                host,
+                start,
+                end,
+                input_type,
+                Some(&text),
+                record,
+                |r, s, e, p| {
+                    r.delete_range(s, e);
+                    let caret = if text.is_empty() {
+                        s
+                    } else {
+                        r.insert_text(s, &text, p)
+                    };
+                    Some((caret, caret))
+                },
+            );
+        }
         let value = self.host_value(host);
         let (start, end) = (start.min(value.len()), end.min(value.len()));
         let (start, end) = (start.min(end), start.max(end));
@@ -311,8 +392,19 @@ impl Document {
             d.set_host_selection(host, anchor, to);
         };
         match (key, ctrl) {
+            ("Enter", false) if shift && self.is_rich_host(host) => {
+                self.rich_line_break(host, lo, hi)?;
+            }
             ("Enter", false) => {
                 self.host_edit(host, lo, hi, "\n", "insertParagraph", true)?;
+            }
+            ("b" | "B" | "i" | "I" | "u" | "U", true) if self.is_rich_host(host) => {
+                let f = match key {
+                    "b" | "B" => Fmt::Bold,
+                    "i" | "I" => Fmt::Italic,
+                    _ => Fmt::Underline,
+                };
+                self.rich_format(host, f)?;
             }
             ("Backspace", _) => {
                 let start = if lo != hi {
@@ -423,19 +515,50 @@ impl Document {
             ("a" | "A", true) => self.set_host_selection(host, 0, value.len()),
             ("c" | "C", true) | ("x" | "X", true) => {
                 if lo != hi {
-                    self.clipboard
-                        .write_text(&value[lo..hi])
-                        .map_err(|e| Error {
-                            code: 6,
-                            message: format!("Clipboard write failed: {e}"),
-                        })?;
+                    let lo_t = lo.min(value.len());
+                    let hi_t = hi.min(value.len());
+                    let written = if self.is_rich_host(host) {
+                        let html = self.rich_load(host).slice_html(lo, hi);
+                        self.clipboard.write_html(&html, &value[lo_t..hi_t])
+                    } else {
+                        self.clipboard.write_text(&value[lo_t..hi_t])
+                    };
+                    written.map_err(|e| Error {
+                        code: 6,
+                        message: format!("Clipboard write failed: {e}"),
+                    })?;
                     if matches!(key, "x" | "X") {
                         self.host_edit(host, lo, hi, "", "deleteByCut", true)?;
                     }
                 }
             }
             ("v" | "V", true) => {
-                // Pasted content is text: HTML from the clipboard is never parsed here.
+                if self.is_rich_host(host)
+                    && let Some(html) = self.clipboard_html(false).ok().flatten()
+                    && let Ok(paras) = Rich::paste_paragraphs(&html)
+                    && paras.iter().any(|p| !p.is_empty())
+                {
+                    let plain = paras
+                        .iter()
+                        .map(|p| Rich::runs_text(p))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.rich_edit(
+                        host,
+                        lo,
+                        hi,
+                        "insertFromPaste",
+                        Some(&plain),
+                        true,
+                        |r, s, e, _| {
+                            r.delete_range(s, e);
+                            let caret = r.insert_paragraphs(s, &paras);
+                            Some((caret, caret))
+                        },
+                    )?;
+                    return Ok(true);
+                }
+                // Plain-text hosts never parse clipboard HTML; rich hosts fall back to text.
                 if let Ok(Some(t)) = self.clipboard.read_text() {
                     let t = t.replace("\r\n", "\n").replace('\r', "\n");
                     let t: String = t
@@ -445,14 +568,21 @@ impl Document {
                     self.host_edit(host, lo, hi, &t, "insertFromPaste", true)?;
                 }
             }
-            ("z" | "Z", true) if !shift => self.host_undo(host, true)?,
-            ("y" | "Y", true) | ("z" | "Z", true) => self.host_undo(host, false)?,
+            ("z" | "Z", true) if !shift => {
+                self.host_undo(host, true)?;
+            }
+            ("y" | "Y", true) | ("z" | "Z", true) => {
+                self.host_undo(host, false)?;
+            }
             ("Tab", _) => return Ok(false),
             _ => return Ok(false),
         }
         Ok(true)
     }
-    fn host_undo(&mut self, host: NodeId, undo: bool) -> Result<()> {
+    fn host_undo(&mut self, host: NodeId, undo: bool) -> Result<bool> {
+        if self.is_rich_host(host) {
+            return self.rich_undo(host, undo);
+        }
         let current = self.host_value(host);
         let now = self.host_range(host).1;
         let (from, to) = if undo {
@@ -461,20 +591,20 @@ impl Document {
             (&mut self.editable.redo, &mut self.editable.undo)
         };
         let Some(pos) = from.iter().rposition(|e| e.0 == host) else {
-            return Ok(());
+            return Ok(false);
         };
         let (_, text, caret) = from.remove(pos);
         to.push((host, current, now));
         let input_type = if undo { "historyUndo" } else { "historyRedo" };
         if self.fire_input(host, "beforeinput", input_type, None, true, false) {
-            return Ok(());
+            return Ok(false);
         }
         self.pipeline.set_text_content(host, &text)?;
         self.after_mutation(true);
         let caret = caret.min(text.len());
         self.set_host_selection(host, caret, caret);
         self.fire_input(host, "input", input_type, None, false, false);
-        Ok(())
+        Ok(true)
     }
     /// A click in a focused editing host places the caret there (a collapsed selection).
     pub(super) fn editable_pointer(&mut self, input: &Input) -> Result<()> {

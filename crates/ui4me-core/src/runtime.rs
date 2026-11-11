@@ -1842,6 +1842,18 @@ impl Session {
             Command::GetPointerCapture { window } => self.with_window(window, |w| {
                 Ok(json!({"element": w.document.pointer_capture()}))
             })?,
+            Command::ExecEdit {
+                window,
+                element,
+                command,
+                value,
+            } => self.query(window, |d| {
+                d.exec_edit(&element, &command, value.as_deref())
+                    .map(|ok| json!({"ok": ok}))
+            })?,
+            Command::GetEditState { window, element } => {
+                self.query(window, |d| d.get_edit_state(&element))?
+            }
             Command::GetPopover { window, element } => self.with_window(window, |w| {
                 let (open, kind) = w.document.popover_state(&element)?;
                 Ok(json!({"open":open,"kind":kind}))

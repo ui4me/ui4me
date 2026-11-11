@@ -366,6 +366,21 @@ class BindingTests(unittest.TestCase):
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def test_rich_editing_commands(self):
+        with self.app() as app:
+            window = app.open('<div id="ed" contenteditable><p>ab</p></div><p id="o">o</p>')
+            self.assertTrue(window.exec_edit("ed", "insert_text", "c"))
+            self.assertTrue(window.exec_edit("ed", "bold"))
+            self.assertTrue(window.get_edit_state("ed")["bold"], "pending format at the caret")
+            self.assertIsNone(window.get_edit_state("ed")["link"])
+            self.assertTrue(window.exec_edit("ed", "undo"))
+            with self.assertRaises(Exception):
+                window.exec_edit("ed", "link", "javascript:alert(1)")
+            with self.assertRaises(Exception):
+                window.exec_edit("o", "bold")
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     def test_document_html_stylesheets_and_nodes(self):
         with self.app() as app:
             w = app.open("<div id=box><span>no id</span>žluť</div>")

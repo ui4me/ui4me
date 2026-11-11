@@ -2486,6 +2486,45 @@ fn clipboard_html_round_trips_and_pasted_html_is_sanitized() {
 }
 
 #[test]
+fn exec_edit_and_get_edit_state_drive_rich_contenteditable_hosts() {
+    // F1003 (the editing itself is covered by the renderer tests).
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":300,"height":200,
+        "html":"<div id=ed contenteditable><p>ab</p></div><p id=o>o</p><div id=pl contenteditable=plaintext-only>x</div>"}))
+    .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let edit = |element: &str, command: &str, value: Value| {
+        cmd(json!({"op":"exec_edit","window":id,"element":element,"command":command,"value":value}))
+    };
+    assert_eq!(
+        edit("ed", "insert_text", json!("c")).unwrap(),
+        json!({"ok":true})
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"element":"ed"})).unwrap()["html"],
+        "<p>abc</p>"
+    );
+    assert_eq!(edit("ed", "bold", Value::Null).unwrap(), json!({"ok":true}));
+    let st = cmd(json!({"op":"get_edit_state","window":id,"element":"ed"})).unwrap();
+    assert_eq!(st["bold"], true, "a pending format at the caret");
+    assert_eq!(st["link"], Value::Null);
+    assert_eq!(edit("ed", "undo", Value::Null).unwrap(), json!({"ok":true}));
+    assert_eq!(
+        edit("pl", "bold", Value::Null).unwrap(),
+        json!({"ok":false})
+    );
+    assert!(edit("ed", "link", json!("javascript:x")).is_err());
+    assert!(edit("ed", "nope", Value::Null).is_err());
+    assert!(
+        edit("o", "bold", Value::Null).is_err(),
+        "not an editing host"
+    );
+    assert!(cmd(json!({"op":"get_edit_state","window":id,"element":"zz"})).is_err());
+}
+
+#[test]
 fn pointer_capture_commands_need_a_press_and_a_known_pointer() {
     // 0.8 F0807 (the capture itself is covered by the renderer tests).
     let h = Harness::new(0);

@@ -440,6 +440,19 @@ pub enum Command {
         window: u64,
         element: String,
     },
+    /// Rich-text editing command on a `contenteditable` host (F1003).
+    ExecEdit {
+        window: u64,
+        element: String,
+        command: String,
+        #[serde(default)]
+        value: Option<String>,
+    },
+    /// The formats at the selection of a `contenteditable` host (F1003).
+    GetEditState {
+        window: u64,
+        element: String,
+    },
     /// Pointer capture of the mouse pointer (0.8 F0807); `capture=false` releases.
     SetPointerCapture {
         window: u64,

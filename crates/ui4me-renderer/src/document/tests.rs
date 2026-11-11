@@ -1602,7 +1602,7 @@ fn pointer_events_fields_cancel_and_capture() {
 #[test]
 fn editing_host_interop_scroll_a11y_mutation_bidi_and_removed_selection() {
     // 0.8 F0806.
-    let mut d = Document::parse("<!doctype html><style>body{margin:0;font:16px sans-serif}#sc{height:60px;width:200px;overflow:auto}</style><div id=sc><div id=ed contenteditable>x</div></div><p id=p>Select me please</p><div id=bi contenteditable dir=rtl>abc אבג</div>").unwrap();
+    let mut d = Document::parse("<!doctype html><style>body{margin:0;font:16px sans-serif}#sc{height:60px;width:200px;overflow:auto}</style><div id=sc><div id=ed contenteditable=plaintext-only>x</div></div><p id=p>Select me please</p><div id=bi contenteditable=plaintext-only dir=rtl>abc אבג</div>").unwrap();
     d.render(300, 300, 1.0).unwrap();
     d.handle_input(Input::Focus(true)).unwrap();
     let _ = click(&mut d, "ed");
