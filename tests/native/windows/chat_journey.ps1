@@ -31,6 +31,9 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
+    public static int ScreenWidth() { return GetSystemMetrics(0); }
+    public static int ScreenHeight() { return GetSystemMetrics(1); }
     static void Send(INPUT i) { if (SendInput(1, new[] { i }, Marshal.SizeOf<INPUT>()) != 1) throw new InvalidOperationException("SendInput failed " + Marshal.GetLastWin32Error()); System.Threading.Thread.Sleep(12); }
     public static void Move(int x, int y) {
         int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
@@ -105,11 +108,22 @@ try {
     Case 'J01_window_shown' {
         $s = Wait-State { param($s) $s.rects.compose } 60
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
-        while ($script:hwnd -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $deadline) { $script:hwnd = [Win]::FindWindow($null, 'UI4ME chat demo'); Start-Sleep -Milliseconds 200 }
+        while ($script:hwnd -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $deadline) { $script:hwnd = [Win]::FindWindow([NullString]::Value, 'UI4ME chat demo'); Start-Sleep -Milliseconds 200 }
         if ($script:hwnd -eq [IntPtr]::Zero) { throw 'window not found' }
         [void][Win]::SetForegroundWindow($script:hwnd)
         Update-Origin
-        @{ client = @($script:origin.X, $script:origin.Y); compose = (Get-Rect $s 'compose') }
+        $rect = [Win+RECT]::new(); [void][Win]::GetClientRect($script:hwnd, [ref] $rect)
+        $screen = @([Win]::ScreenWidth(), [Win]::ScreenHeight())
+        if ($script:origin.Y + $rect.B -gt $screen[1] - 48 -or $script:origin.X + $rect.R -gt $screen[0]) {
+            # A small console screen: maximize first so every control is on screen.
+            [void][Win]::ShowWindowAsync($script:hwnd, 3)
+            $before = (Get-Rect $s 'log').w
+            $s = Wait-State { param($s) (Get-Rect $s 'log').w -ne $before }
+            Start-Sleep -Milliseconds 500
+            $s = Read-State
+            Update-Origin
+        }
+        @{ client = @($script:origin.X, $script:origin.Y); screen = $screen; maximized = [Win]::IsZoomed($script:hwnd); compose = (Get-Rect $s 'compose') }
     }
     Case 'J02_type_enter_sends' {
         Click (At (Read-State) 'compose'); [Win]::Text('hello core'); Press 0x0D
@@ -172,11 +186,20 @@ try {
         @{ log_scroll = $v }
     }
     Case 'J09_resize_relayout' {
-        $s = Read-State; $before = (Get-Rect $s 'log').w
-        [void][Win]::ShowWindowAsync($script:hwnd, 3)  # maximize through the window manager
-        $s = Wait-State { param($s) @($s.resized).Count -gt 0 -and (Get-Rect $s 'log').w -gt $before + 20 }
+        $s = Read-State; $count = @($s.resized).Count; $before = Get-Rect $s 'log'
+        # Maximize or restore through the window manager (SetWindowPos from another thread is avoided).
+        $zoomed = [Win]::IsZoomed($script:hwnd)
+        [void][Win]::ShowWindowAsync($script:hwnd, $(if ($zoomed) { 9 } else { 3 }))
+        $s = Wait-State { param($s) @($s.resized).Count -gt $count }
+        Start-Sleep -Milliseconds 700
+        $s = Read-State
+        $rect = [Win+RECT]::new(); [void][Win]::GetClientRect($script:hwnd, [ref] $rect)
+        $last = @(@($s.resized)[-1])
+        if ([int]$last[0] -ne $rect.R -or [int]$last[1] -ne $rect.B) { throw "resized $($last -join 'x') but client is $($rect.R)x$($rect.B)" }
+        $after = Get-Rect $s 'log'
+        if ($after.w -eq $before.w -and $after.h -eq $before.h) { throw 'layout did not change after the resize' }
         Update-Origin
-        @{ resized = @($s.resized)[-1]; log_width = @($before, (Get-Rect $s 'log').w) }
+        @{ was_maximized = $zoomed; resized = $last; client = @($rect.R, $rect.B); log_before = @($before.w, $before.h); log_after = @($after.w, $after.h) }
     }
     Case 'J10_close_exits_cleanly' {
         [void][Win]::PostMessage($script:hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)  # WM_CLOSE, as the title-bar button

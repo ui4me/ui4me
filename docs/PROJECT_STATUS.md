@@ -132,6 +132,14 @@ process worker slot until it actually exits; stopping the UI does not kill it.
 The process permits four such workers, with at most 256 captured output entries
 per work item. Keep long operations off UI callbacks.
 
+### Core 0.3 status (2026-11-11)
+
+Candidate 0.3.0 (`8b536fe`, source `sha256:30cab4db…`) passed the local 0.3 gate on Linux x64 and Windows x64:
+- installed C, Python and PowerShell consumers;
+- the Core-only chat/log demo (`examples/*/chat_log.*`) driven by automated real input (KWin fake_input on a virtual KWin; SendInput in an interactive Windows session).
+
+It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
+
 ### Binding methods
 
 | Operation | Python | PowerShell/.NET |
