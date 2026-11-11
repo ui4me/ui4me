@@ -2562,3 +2562,40 @@ fn css_animation_requests_frames_only_while_it_runs() {
         "a closed window drops its animations"
     );
 }
+
+#[test]
+fn pagination_page_png_pdf_export_and_headless_print() {
+    // 1.0 F1001/F1002.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>@page{size:300px 200px;margin:20px} .b{break-before:page}</style><p id=a>one</p><p class=b id=b>two</p>"}))
+        .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let info = cmd(json!({"op":"paginate","window":id})).unwrap();
+    assert_eq!(info["count"], 2);
+    assert_eq!(
+        cmd(json!({"op":"get_page_rects","window":id,"element":"b"})).unwrap()["rects"][0]["page"],
+        1
+    );
+    assert!(cmd(json!({"op":"paginate","window":id,"size":"A4","width":10.0})).is_err());
+    let dir = std::env::temp_dir().join(format!("ui4me-paged-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = dir.join("p1.png");
+    let r = cmd(json!({"op":"render_page","window":id,"page":1,"dpi":192.0,"path":png})).unwrap();
+    assert_eq!(
+        (r["width"].as_u64(), r["height"].as_u64()),
+        (Some(600), Some(400))
+    );
+    assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
+    let pdf = dir.join("doc.pdf");
+    let r =
+        cmd(json!({"op":"export_pdf","window":id,"path":pdf,"dpi":72.0,"title":"Doc"})).unwrap();
+    assert_eq!(r["pages"], 2);
+    let bytes = std::fs::read(&pdf).unwrap();
+    assert!(bytes.starts_with(b"%PDF-1.4") && String::from_utf8_lossy(&bytes).contains("/Count 2"));
+    assert!(cmd(json!({"op":"export_pdf","window":id,"path":pdf,"dpi":5000.0})).is_err());
+    let r = cmd(json!({"op":"print","window":id,"title":"Doc"})).unwrap();
+    assert_eq!(r["status"], "unavailable");
+    let _ = std::fs::remove_dir_all(&dir);
+}

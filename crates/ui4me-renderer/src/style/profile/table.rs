@@ -194,7 +194,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.at-rule.layer", On),
     ("css.at-rule.media", On),
     ("css.at-rule.namespace", On),
-    ("css.at-rule.page", Off), // Paged media is outside the desktop foundation.
+    ("css.at-rule.page", On), // 1.27.0: public pagination, print and PDF export (1.0 F1001/F1002)
     ("css.at-rule.page-vertical", Off), // 1.15.0: pages of a vertical root are laid out horizontally, reported (015 PAGE-1)
     ("css.at-rule.page-width-change", Off), // 1.15.0: a paragraph broken across pages of different widths keeps the earlier width, reported (015 PAGE-1)
     ("css.at-rule.property", On),
@@ -279,7 +279,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.line-clamp", On),
     ("css.property.mask", On),
     ("css.property.overscroll-behavior", On),
-    ("css.property.page", Off),
+    ("css.property.page", On),            // 1.27.0: named pages (1.0 F1001)
     ("css.property.position-anchor", On), // 1.23.0: F0808, Stylo patch P-006-17
     ("css.property.position-area", Off), // 1.23.0: parsed by the engine, dropped and reported (F0808 subset)
     ("css.property.position-try", Off), // 1.23.0: position-try-fallbacks / -order / the shorthand: dropped and reported
@@ -424,7 +424,6 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
     ("position-try", "css.property.position-try"),
     ("position-try-fallbacks", "css.property.position-try"),
     ("position-try-order", "css.property.position-try"),
-    ("page", "css.property.page"),
     ("print-color-adjust", "css.property.print-color-adjust"),
     ("initial-letter", "css.property.initial-letter"),
     ("shape-outside", "css.property.shape-outside"),

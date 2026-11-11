@@ -3,6 +3,7 @@ mod document;
 mod instance;
 #[cfg(feature = "native")]
 mod native;
+mod print;
 mod protocol;
 mod runtime;
 pub(crate) mod services;

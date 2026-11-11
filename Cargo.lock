@@ -3999,6 +3999,7 @@ version = "0.9.0"
 dependencies = [
  "accesskit_winit",
  "arboard",
+ "miniz_oxide 0.8.9",
  "png",
  "rfd",
  "serde",

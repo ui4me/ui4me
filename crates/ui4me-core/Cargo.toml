@@ -23,6 +23,8 @@ serde = { version = "1", features = ["derive"] }
 ui4me-renderer = { path = "../ui4me-renderer" }
 arboard = { version = "=3.6.1", optional = true, default-features = false, features = ["wayland-data-control"] }
 png = "=0.18.1"
+# Print jobs and PDF export compress page images (already in the tree through png).
+miniz_oxide = "=0.8.9"
 url.workspace = true
 # Native file dialogs: xdg-desktop-portal over a dlopen'd libdbus on Linux, IFileDialog on Windows.
 # Screen-reader bridge: AT-SPI (accesskit_unix, async-io) on Linux, UI Automation on Windows.

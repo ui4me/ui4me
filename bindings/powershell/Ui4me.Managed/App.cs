@@ -667,6 +667,40 @@ public sealed class Window
     /// <summary>Toggle a popover; returns whether it is showing afterwards.</summary>
     public bool TogglePopover(string element) { Check(); return app.Command(new { op = "toggle_popover", window = Id, element }).GetProperty("open").GetBoolean(); }
     /// <summary>{"open": bool, "kind": "auto"|"manual"} as JSON.</summary>
+    static Dictionary<string, object?> PageArgs(string? size, double? width, double? height, double[]? margins, bool printMedia)
+    {
+        var a = new Dictionary<string, object?> { ["print"] = printMedia };
+        if (!string.IsNullOrEmpty(size)) a["size"] = size; // PowerShell passes $null as ""
+        if (width is not null || height is not null) { a["width"] = width; a["height"] = height; }
+        if (margins is not null) a["margins"] = margins;
+        return a;
+    }
+    Dictionary<string, object?> PageRequest(string op, string? size, double? width, double? height, double[]? margins, bool printMedia)
+    {
+        var a = PageArgs(size, width, height, margins, printMedia);
+        a["op"] = op;
+        a["window"] = Id;
+        return a;
+    }
+    /// <summary>Lay the document out as pages (CSS Paged Media); JSON <c>{count, pages, revision}</c>.</summary>
+    public string PaginateJson(string? size = null, double? width = null, double? height = null, double[]? margins = null, bool printMedia = true) { Check(); return app.Command(PageRequest("paginate", size, width, height, margins, printMedia)).GetRawText(); }
+    public string GetPageRectsJson(string element) { Check(); return app.Command(new { op = "get_page_rects", window = Id, element }).GetProperty("rects").GetRawText(); }
+    public string RenderPage(int page, string path, double dpi = 96) { Check(); return app.Command(new { op = "render_page", window = Id, page, dpi, path }).GetRawText(); }
+    public string ExportPdf(string path, string? size = null, double dpi = 150, string title = "", double? width = null, double? height = null, double[]? margins = null, bool printMedia = true)
+    {
+        Check();
+        var a = PageRequest("export_pdf", size, width, height, margins, printMedia);
+        a["path"] = path; a["dpi"] = dpi; a["title"] = title;
+        return app.Command(a).GetRawText();
+    }
+    /// <summary>Print through the native dialog; the outcome is a <c>print</c> event.</summary>
+    public string PrintDocument(string? size = null, double dpi = 300, string title = "", double? width = null, double? height = null, double[]? margins = null, bool printMedia = true)
+    {
+        Check();
+        var a = PageRequest("print", size, width, height, margins, printMedia);
+        a["dpi"] = dpi; a["title"] = title;
+        return app.Command(a).GetRawText();
+    }
     /// <summary>Capture the pointer (the mouse is pointer 1) for an element while a button is pressed; false when none is.</summary>
     public bool SetPointerCapture(string element, int pointerId = 1) { Check(); return app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = true }).GetProperty("accepted").GetBoolean(); }
     public void ReleasePointerCapture(string element, int pointerId = 1) { Check(); app.Command(new { op = "set_pointer_capture", window = Id, element, pointer_id = pointerId, capture = false }); }

@@ -355,6 +355,27 @@ class BindingTests(unittest.TestCase):
             app.run()
             self.assertEqual(states, ["open", "closed", "open", "closed"])
 
+    def test_pagination_pdf_and_print(self):
+        import tempfile
+        with self.app() as app:
+            window = app.open('<style>@page{size:300px 200px;margin:20px} .b{break-before:page}</style><p id="a">one</p><p class="b" id="b">two</p>')
+            info = window.paginate()
+            self.assertEqual(info["count"], 2)
+            self.assertEqual(window.get_page_rects("b")[0]["page"], 1)
+            with tempfile.TemporaryDirectory() as d:
+                window.paginate()
+                png = window.render_page(0, Path(d) / "p.png", dpi=192)
+                self.assertEqual((png["width"], png["height"]), (600, 400))
+                r = window.export_pdf(Path(d) / "doc.pdf", dpi=72, title="Doc")
+                self.assertEqual(r["pages"], 2)
+                self.assertTrue((Path(d) / "doc.pdf").read_bytes().startswith(b"%PDF-1.4"))
+            outcomes = []
+            app.on("print", outcomes.append)
+            self.assertEqual(window.print_document(title="Doc")["status"], "unavailable")
+            app.on("started", lambda _: app.stop())
+            app.run()
+            self.assertEqual([o["status"] for o in outcomes], ["unavailable"])
+
     def test_pointer_capture(self):
         with self.app() as app:
             window = app.open('<div id="a">A</div>')

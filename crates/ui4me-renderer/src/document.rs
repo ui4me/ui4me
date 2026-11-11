@@ -213,6 +213,8 @@ pub struct Document {
     editable: editable::EditableState,
     /// CSS `resize` drags (0.9 F0903).
     resize: resize::ResizeState,
+    /// The last pagination (1.0 F1001).
+    paged: paged_facade::PagedState,
     input_files: HashMap<NodeId, Vec<String>>,
     repaint: bool,
     prevent: Vec<StoredRule>,
@@ -374,6 +376,7 @@ impl Document {
             drag: Default::default(),
             editable: Default::default(),
             resize: Default::default(),
+            paged: Default::default(),
             input_files: HashMap::new(),
             repaint: true,
             prevent: Vec::new(),
@@ -2680,6 +2683,9 @@ mod focus_pointer_tests;
 mod framework_fixtures_tests;
 #[cfg(test)]
 mod layout_conformance_tests;
+pub mod paged_facade;
+#[cfg(test)]
+mod paged_tests;
 #[cfg(test)]
 mod popover_tests;
 pub mod public_dom;

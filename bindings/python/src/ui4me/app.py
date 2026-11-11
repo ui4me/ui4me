@@ -4,6 +4,7 @@ from concurrent.futures import Future
 import ctypes as C
 import itertools
 import json
+import os
 from pathlib import Path
 import signal
 import threading
@@ -823,6 +824,50 @@ class Window:
     def toggle_popover(self, element: str) -> bool:
         """Toggle a popover; returns whether it is showing afterwards."""
         return bool(self._command("toggle_popover", element=element)["open"])
+
+    @staticmethod
+    def _page_args(size, width, height, margins, print_media) -> dict:
+        args: dict = {"print": bool(print_media)}
+        if size is not None:
+            args["size"] = str(size)
+        if width is not None or height is not None:
+            args["width"], args["height"] = float(width), float(height)
+        if margins is not None:
+            args["margins"] = [float(m) for m in margins]
+        return args
+
+    def paginate(self, size: str | None = None, *, width: float | None = None, height: float | None = None,
+                 margins: tuple[float, float, float, float] | None = None, print_media: bool = True) -> dict:
+        """Lay the document out as pages (CSS Paged Media: ``@page`` size/margins/margin boxes, page
+        breaks, widows/orphans, named pages, ``print`` media). ``size`` is a CSS page size name
+        (``"A4"``, ``"letter landscape"``) or give ``width``/``height`` in CSS px; the
+        document's ``@page`` size wins over it; default A4. Returns ``{"count", "pages": [{"width", "height",
+        "content"}], "revision"}``; the screen is unchanged. A DOM change makes it stale."""
+        return self._command("paginate", **self._page_args(size, width, height, margins, print_media))
+
+    def get_page_rects(self, element: str) -> list[dict]:
+        """Where ``element`` falls in the current pagination: ``[{"page", "x", "y", "width", "height"}]``."""
+        return self._command("get_page_rects", element=element)["rects"]
+
+    def render_page(self, page: int, path: str | os.PathLike[str], *, dpi: float = 96.0) -> dict:
+        """Render one page of the current pagination to a PNG file (a print preview)."""
+        return self._command("render_page", page=int(page), dpi=float(dpi), path=os.fspath(path))
+
+    def export_pdf(self, path: str | os.PathLike[str], size: str | None = None, *, width: float | None = None,
+                   height: float | None = None, margins=None, print_media: bool = True, dpi: float = 150.0,
+                   title: str = "") -> dict:
+        """Paginate and write a PDF (one page image per page; the text is not selectable)."""
+        return self._command("export_pdf", path=os.fspath(path), dpi=float(dpi), title=str(title),
+                             **self._page_args(size, width, height, margins, print_media))
+
+    def print_document(self, size: str | None = None, *, width: float | None = None, height: float | None = None,
+                       margins=None, print_media: bool = True, dpi: float = 300.0, title: str = "") -> dict:
+        """Paginate and print through the native print dialog (Windows: the system dialog; Linux: the
+        desktop's print portal). Returns ``{"job", "pages", "status": "started" | "unavailable"}``; the
+        outcome arrives as a ``print`` event (``status``: ``printed``, ``cancelled``, ``failed``,
+        ``unavailable``, with ``reason``)."""
+        return self._command("print", dpi=float(dpi), title=str(title),
+                             **self._page_args(size, width, height, margins, print_media))
 
     def set_pointer_capture(self, element: str, pointer_id: int = 1) -> bool:
         """Capture the pointer for ``element`` while a button is pressed (Pointer Events

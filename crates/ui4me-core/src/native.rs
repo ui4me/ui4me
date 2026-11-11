@@ -355,6 +355,49 @@ impl Desktop {
         }
         self.session.closed(id);
     }
+    /// Run a print job on a worker thread (1.0 F1002); the outcome is one `print` event.
+    fn spawn_print(&self, id: u64, job: crate::runtime::PrintJob) {
+        #[cfg(target_os = "windows")]
+        let owner: isize = self
+            .windows
+            .get(&id)
+            .and_then(|n| {
+                use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                match n.window.window_handle().ok()?.as_raw() {
+                    RawWindowHandle::Win32(h) => Some(h.hwnd.get()),
+                    _ => None,
+                }
+            })
+            .unwrap_or(0);
+        let sink = self.session.service_sink();
+        let count = job.pages.len();
+        let spawned = thread::Builder::new().name("ui4me-print".into()).spawn(move || {
+            let crate::runtime::PrintJob { job, pages, title } = job;
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(target_os = "linux")]
+                {
+                    crate::print::linux::print(job, &pages, &title)
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    crate::print::windows::print(owner, &pages, &title)
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                {
+                    json!({"status": "unsupported", "reason": "printing is implemented on Linux and Windows"})
+                }
+            }))
+            .unwrap_or_else(|_| json!({"status": "failed", "reason": "the print worker failed"}));
+            let mut event = json!({"type": "print", "window": id, "job": job, "pages": count});
+            if let (Some(e), Some(o)) = (event.as_object_mut(), out.as_object()) {
+                e.extend(o.clone());
+            }
+            sink(event);
+        });
+        if spawned.is_err() {
+            self.session.emit(json!({"type":"print","window":id,"status":"failed","reason":"cannot start the print thread"}));
+        }
+    }
     /// Run an OS file dialog on a worker thread; the owner keeps painting and receives the
     /// result as a `file_dialog` event. On Windows the dialog is owned by (modal to) the window.
     fn spawn_file_dialog(&self, id: u64, request: FileDialogRequest) {
@@ -570,6 +613,7 @@ impl Desktop {
                             cursor_visible,
                         } => self.pointer_grab(id, mode, cursor_visible),
                         WindowOp::ContextMenu { x, y, menu } => self.context_menu(id, x, y, menu),
+                        WindowOp::Print(job) => self.spawn_print(id, job),
                         op => {
                             if let Some(native) = self.windows.get_mut(&id) {
                                 apply_op(native, op, current.hidden);
@@ -1257,6 +1301,7 @@ fn apply_op(native: &mut NativeWindow, op: WindowOp, hidden: bool) {
         WindowOp::FileDialog(_)
         | WindowOp::Menu(_)
         | WindowOp::ContextMenu { .. }
+        | WindowOp::Print(_)
         | WindowOp::PointerGrab { .. } => {}
         WindowOp::Icon(icon) => {
             let icon = icon.and_then(|(rgba, width, height)| {

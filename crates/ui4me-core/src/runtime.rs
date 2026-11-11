@@ -80,6 +80,8 @@ pub enum WindowOp {
         mode: &'static str,
         cursor_visible: bool,
     },
+    /// A print job (1.0 F1002): the rendered pages for the native print path.
+    Print(PrintJob),
     /// Context menu at CSS px (0.7 F0703).
     ContextMenu {
         x: f64,
@@ -87,6 +89,46 @@ pub enum WindowOp {
         menu: Vec<crate::services::MenuItem>,
     },
 }
+/// A rendered print job handed to the native print path.
+#[derive(Clone, Debug)]
+pub struct PrintJob {
+    pub job: u64,
+    pub pages: Vec<crate::print::Page>,
+    pub title: String,
+}
+impl PartialEq for PrintJob {
+    fn eq(&self, other: &Self) -> bool {
+        self.job == other.job
+    }
+}
+
+/// `size` (a CSS page-size name) or `width`/`height` (CSS px, both) for a pagination.
+fn page_size(
+    size: Option<String>,
+    width: Option<f32>,
+    height: Option<f32>,
+) -> Result<Option<ui4me_renderer::PageSize>> {
+    use ui4me_renderer::PageSize;
+    match (size, width, height) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+            Err(Error::arg("give size or width/height, not both"))
+        }
+        (Some(s), None, None) => Ok(Some(PageSize::Named(s))),
+        (None, Some(w), Some(h))
+            if w.is_finite()
+                && h.is_finite()
+                && (72.0..=20000.0).contains(&w)
+                && (72.0..=20000.0).contains(&h) =>
+        {
+            Ok(Some(PageSize::Px(w, h)))
+        }
+        (None, None, None) => Ok(None),
+        _ => Err(Error::arg(
+            "width and height are both needed, 72..20000 CSS px",
+        )),
+    }
+}
+
 /// A native open/save/folder dialog request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FileDialogRequest {
@@ -183,6 +225,8 @@ pub struct Session {
     input_pickers: Mutex<BTreeMap<u64, (u64, ui4me_renderer::NodeId)>>,
     /// Events from the desktop services adapter, delivered on the owner thread (0.7).
     service_events: Arc<Mutex<VecDeque<Value>>>,
+    /// Print job ids (1.0 F1002).
+    next_print_job: AtomicU64,
     /// Menu accelerators per window: (accelerator, command) (0.7 F0703).
     menu_accelerators: Mutex<BTreeMap<u64, Vec<(crate::services::Accelerator, String)>>>,
     /// The single-instance listener while this session is the primary (0.7 F0710).
@@ -391,6 +435,7 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         link_policy: Mutex::new(LinkPolicy::default()),
         input_pickers: Mutex::new(BTreeMap::new()),
         service_events: Arc::new(Mutex::new(VecDeque::new())),
+        next_print_job: AtomicU64::new(0),
         menu_accelerators: Mutex::new(BTreeMap::new()),
         hotkeys: Mutex::new(Default::default()),
         instance: Mutex::new(None),
@@ -1842,6 +1887,37 @@ impl Session {
             Command::GetPointerCapture { window } => self.with_window(window, |w| {
                 Ok(json!({"element": w.document.pointer_capture()}))
             })?,
+            Command::Paginate { window, size, width, height, margins, print } => {
+                let size = page_size(size, width, height)?;
+                self.with_window(window, |w| Ok(w.document.paginate(size, margins, print)?))?
+            }
+            Command::GetPageRects { window, element } => self.with_window(window, |w| {
+                Ok(json!({"rects": w.document.page_rects(&element)?}))
+            })?,
+            Command::RenderPage { window, page, dpi, path } => self.render_page_png(window, page, dpi, &path)?,
+            Command::ExportPdf { window, path, size, width, height, margins, print, dpi, title } => {
+                let pages = self.print_pages(window, page_size(size, width, height)?, margins, print, dpi)?;
+                let bytes = crate::print::pdf(&pages, &title);
+                std::fs::write(&path, &bytes).map_err(|e| Error::io(format!("export_pdf: {e}")))?;
+                json!({"path": path, "pages": pages.len(), "bytes": bytes.len()})
+            }
+            Command::Print { window, size, width, height, margins, print, dpi, title } => {
+                let pages = self.print_pages(window, page_size(size, width, height)?, margins, print, dpi)?;
+                let job = self.next_print_job.fetch_add(1, Ordering::Relaxed) + 1;
+                let count = pages.len();
+                if self.native {
+                    self.with_window(window, |w| {
+                        w.ops.push_back(WindowOp::Print(PrintJob { job, pages, title }));
+                        Ok(())
+                    })?;
+                    self.wake();
+                    json!({"job": job, "pages": count, "status": "started"})
+                } else {
+                    // Headless sessions have no printer: an honest outcome, no dialog.
+                    self.emit(json!({"type":"print","window":window,"job":job,"status":"unavailable","reason":"headless session: no printing","pages":count}));
+                    json!({"job": job, "pages": count, "status": "unavailable"})
+                }
+            }
             Command::GetPopover { window, element } => self.with_window(window, |w| {
                 let (open, kind) = w.document.popover_state(&element)?;
                 Ok(json!({"open":open,"kind":kind}))
@@ -2417,6 +2493,7 @@ impl Session {
                     | WindowOp::FileDialog(_)
                     | WindowOp::Menu(_)
                     | WindowOp::ContextMenu { .. }
+                    | WindowOp::Print(_)
                     | WindowOp::PointerGrab { .. } => {}
                 }
             }
@@ -2437,6 +2514,64 @@ impl Session {
         })?;
         self.emit_document_events(id, events);
         Ok(json!({}))
+    }
+    /// Paginate and render every page at `dpi` into compressed images (owner thread).
+    fn print_pages(
+        &self,
+        id: u64,
+        size: Option<ui4me_renderer::PageSize>,
+        margins: Option<[f32; 4]>,
+        print: bool,
+        dpi: f32,
+    ) -> Result<Vec<crate::print::Page>> {
+        if !(dpi.is_finite() && (crate::print::MIN_DPI..=crate::print::MAX_DPI).contains(&dpi)) {
+            return Err(Error::arg(format!(
+                "dpi must be {}..{}",
+                crate::print::MIN_DPI,
+                crate::print::MAX_DPI
+            )));
+        }
+        self.with_window(id, |w| {
+            let info = w.document.paginate(size, margins, print)?;
+            let mut pages = Vec::new();
+            let mut bytes = 0usize;
+            for (i, p) in info["pages"].as_array().into_iter().flatten().enumerate() {
+                let b = w.document.render_page(i, dpi)?;
+                let page = crate::print::Page::from_rgba(
+                    b.width,
+                    b.height,
+                    p["width"].as_f64().unwrap_or(0.0) as f32,
+                    p["height"].as_f64().unwrap_or(0.0) as f32,
+                    &b.data,
+                );
+                bytes += page.zlib_rgb.len();
+                if bytes > crate::print::MAX_JOB_BYTES {
+                    return Err(Error::limit(
+                        "the rendered pages exceed the print job limit (512 MiB); lower dpi",
+                    ));
+                }
+                pages.push(page);
+            }
+            Ok(pages)
+        })
+    }
+    fn render_page_png(&self, id: u64, page: usize, dpi: f32, path: &Path) -> Result<Value> {
+        if !(dpi.is_finite() && (crate::print::MIN_DPI..=crate::print::MAX_DPI).contains(&dpi)) {
+            return Err(Error::arg("dpi must be 36..600"));
+        }
+        let b = self.with_window(id, |w| Ok(w.document.render_page(page, dpi)?))?;
+        let file = File::create(path).map_err(|e| Error::io(format!("render_page: {e}")))?;
+        let mut encoder = png::Encoder::new(BufWriter::new(file), b.width, b.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| Error::io(e.to_string()))?;
+        writer
+            .write_image_data(&b.data)
+            .map_err(|e| Error::io(e.to_string()))?;
+        writer.finish().map_err(|e| Error::io(e.to_string()))?;
+        Ok(json!({"path": path, "width": b.width, "height": b.height}))
     }
     fn snapshot(&self, id: u64, path: &Path) -> Result<Value> {
         let info = self

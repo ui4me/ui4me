@@ -427,6 +427,20 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21g4_pagination_pdf' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<style>@page{size:300px 200px;margin:20px} .b{break-before:page}</style><p id="a">one</p><p class="b" id="b">two</p>')
+            if (($window.PaginateJson() | ConvertFrom-Json).count -ne 2) { throw 'page count' }
+            if (($window.GetPageRectsJson('b') | ConvertFrom-Json)[0].page -ne 1) { throw 'page rects' }
+            $pdf = Join-Path ([System.IO.Path]::GetTempPath()) "ui4me-ps-$PID.pdf"
+            if (($window.ExportPdf($pdf, $null, 72, 'Doc') | ConvertFrom-Json).pages -ne 2) { throw 'pdf pages' }
+            if ([System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($pdf), 0, 8) -ne '%PDF-1.4') { throw 'pdf header' }
+            Remove-Item $pdf
+            if (($window.PrintDocument() | ConvertFrom-Json).status -ne 'unavailable') { throw 'headless print' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS21g3_pointer_capture' {
         Invoke-Ui4meApp -Backend headless {
             param($app)

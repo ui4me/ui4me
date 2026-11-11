@@ -19,6 +19,8 @@ pub(crate) mod scene;
 pub(crate) mod style;
 #[allow(dead_code)]
 pub(crate) mod text;
+/// Page size of a pagination request (1.0 F1001).
+pub use document::paged_facade::PageSize;
 pub use document::{
     Clipboard, DefaultActionRule, Document, DomOp, Error, ImeState, Input, MAX_PIXELS, MAX_TEXT,
     Rect, Result, ScrollState,

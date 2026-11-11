@@ -66,6 +66,15 @@ pub fn trim_from_start(from: &str) -> Result<bool> {
 fn nearest() -> String {
     "nearest".into()
 }
+fn dpi_screen() -> f32 {
+    96.0
+}
+fn dpi_export() -> f32 {
+    150.0
+}
+fn dpi_print() -> f32 {
+    300.0
+}
 fn mouse_pointer() -> u32 {
     1
 }
@@ -587,6 +596,70 @@ pub enum Command {
     Snapshot {
         window: u64,
         path: PathBuf,
+    },
+    /// Paged media (1.0 F1001): paginate with a page size (a CSS name or `width`/`height` CSS px;
+    /// default the document's `@page`, else A4), margins (CSS px) and print media.
+    Paginate {
+        window: u64,
+        #[serde(default)]
+        size: Option<String>,
+        #[serde(default)]
+        width: Option<f32>,
+        #[serde(default)]
+        height: Option<f32>,
+        #[serde(default)]
+        margins: Option<[f32; 4]>,
+        #[serde(default = "yes")]
+        print: bool,
+    },
+    GetPageRects {
+        window: u64,
+        element: String,
+    },
+    /// Render one page of the current pagination to a PNG file.
+    RenderPage {
+        window: u64,
+        page: usize,
+        #[serde(default = "dpi_screen")]
+        dpi: f32,
+        path: PathBuf,
+    },
+    /// Paginate and write a PDF (1.0 F1002; pages are images).
+    ExportPdf {
+        window: u64,
+        path: PathBuf,
+        #[serde(default)]
+        size: Option<String>,
+        #[serde(default)]
+        width: Option<f32>,
+        #[serde(default)]
+        height: Option<f32>,
+        #[serde(default)]
+        margins: Option<[f32; 4]>,
+        #[serde(default = "yes")]
+        print: bool,
+        #[serde(default = "dpi_export")]
+        dpi: f32,
+        #[serde(default)]
+        title: String,
+    },
+    /// Paginate and print through the native print dialog; the outcome is a `print` event.
+    Print {
+        window: u64,
+        #[serde(default)]
+        size: Option<String>,
+        #[serde(default)]
+        width: Option<f32>,
+        #[serde(default)]
+        height: Option<f32>,
+        #[serde(default)]
+        margins: Option<[f32; 4]>,
+        #[serde(default = "yes")]
+        print: bool,
+        #[serde(default = "dpi_print")]
+        dpi: f32,
+        #[serde(default)]
+        title: String,
     },
     Timer {
         token: u64,
