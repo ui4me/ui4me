@@ -433,6 +433,10 @@ impl Document {
         if d.local_name(n)? == "select" {
             return Ok(d.select_value(n));
         }
+        // A range's value is the sanitised one (clamped, step-snapped, default midpoint).
+        if let Some(v) = d.range_value(n) {
+            return Ok(ui4me_document::control_values::format_float(v));
+        }
         match d.control_value(n) {
             Some(value) => Ok(value),
             None => Ok(self.pipeline.text_content(n)?),
@@ -2629,6 +2633,8 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 mod a11y_text_tests;
 #[cfg(test)]
 mod bidi_tests;
+#[cfg(test)]
+mod controls_tests;
 mod drag;
 pub(crate) mod editable;
 pub mod file_input;

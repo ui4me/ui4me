@@ -13,9 +13,14 @@
 //! * `input type=number`: ArrowUp and ArrowDown step the value by `step` within `min`/`max`.
 //! * `input type=radio`: arrow keys move through the group, checking the next radio with a click.
 //!
+//! Range details (F0805): `readonly` does not apply to `range` (HTML), so only `disabled` blocks it;
+//! under `dir=rtl` (the `dir` attribute chain, not CSS `direction`) ArrowLeft increases and the
+//! track is mirrored. A number accepts only the HTML floating-point syntax (`.` decimal separator, no
+//! locale grouping); the wheel never changes a number (documented choice, no spin buttons).
+//!
 //! Not done (reported): a `select` Shift+click range in a single listbox, rubber-band drag
 //! selection in a listbox, a popup that flips above a control at the window's bottom edge, the
-//! number spin buttons and wheel stepping, RTL arrow direction of a range.
+//! number spin buttons and wheel stepping.
 
 use crate::interaction::dispatch::{DispatchHost, InteractionRuntime, eng, rt, run_dispatch};
 use crate::interaction::focus::{FocusSource, focus_update};
@@ -86,6 +91,12 @@ fn fire_input_change(
     origin: DispatchOrigin,
     ts: Option<f64>,
 ) -> Result<(), Status> {
+    // A number step commits itself: its blur must not fire a second `change`.
+    if let Some(v) = eng(host, doc, |_, d| d.control_value(node))? {
+        rt(host, |ix| {
+            crate::interaction::editing::set_baseline(ix, doc, node, &v)
+        });
+    }
     run_dispatch(host, doc, node, ev("input"), true, origin, ts)?;
     if eng(host, doc, |_, d| d.arena().contains(node))? {
         run_dispatch(host, doc, node, ev("change"), true, origin, ts)?;
@@ -935,7 +946,7 @@ pub(crate) fn assistive_set_number(
         let ty = input_type(d, node);
         if !matches!(ty.as_deref(), Some("range" | "number"))
             || is_disabled(d, node)
-            || attr(d, node, "readonly").is_some()
+            || (ty.as_deref() == Some("number") && attr(d, node, "readonly").is_some())
         {
             return Err(crate::interaction::dispatch::status(
                 ui4me_engine_types::codes_generated::Code::InvalidState,
@@ -978,7 +989,10 @@ fn set_range_from_point(
         let (min, max) = (model.min.unwrap_or(0.0), model.max.unwrap_or(100.0));
         let thumb = r.3.clamp(8.0, 16.0);
         let span = (r.2 - thumb).max(1.0);
-        let t = ((x - r.0 - thumb / 2.0) / span).clamp(0.0, 1.0);
+        let mut t = ((x - r.0 - thumb / 2.0) / span).clamp(0.0, 1.0);
+        if crate::style::dir::is_rtl(d, node) {
+            t = 1.0 - t;
+        }
         let Some(v) = d.range_sanitize(node, min + t * (max - min)) else {
             return false;
         };
@@ -1009,9 +1023,11 @@ fn range_keydown(
         return Ok(false);
     }
     let changed = eng(host, doc, |_, d| {
-        if is_disabled(d, node) || attr(d, node, "readonly").is_some() {
+        // `readonly` does not apply to `range` (HTML): only `disabled` blocks the keyboard.
+        if is_disabled(d, node) {
             return false;
         }
+        let rtl = crate::style::dir::is_rtl(d, node);
         let Some(m) = d.input_step_model(node) else {
             return false;
         };
@@ -1020,8 +1036,11 @@ fn range_keydown(
         let cur = d.range_value(node).unwrap_or(min);
         let page = ((max - min) / 10.0).max(step);
         let raw = match key {
-            "ArrowRight" | "ArrowUp" => cur + step,
-            "ArrowLeft" | "ArrowDown" => cur - step,
+            "ArrowUp" => cur + step,
+            "ArrowDown" => cur - step,
+            "ArrowRight" if !rtl => cur + step,
+            "ArrowLeft" if rtl => cur + step,
+            "ArrowRight" | "ArrowLeft" => cur - step,
             "PageUp" => cur + page,
             "PageDown" => cur - page,
             "Home" => min,

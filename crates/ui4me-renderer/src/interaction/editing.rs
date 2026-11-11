@@ -1113,6 +1113,21 @@ fn implicit_submit(host: &mut dyn DispatchHost, cx: &Cx) -> Result<(), Status> {
     Ok(())
 }
 
+/// A control step (number arrows, assistive Increment) already fired its own `change`: move the
+/// baseline to `value` so a later blur does not fire a second one. Leaves composition and history alone.
+pub(crate) fn set_baseline(
+    ix: &mut crate::interaction::dispatch::InteractionRuntime,
+    doc: DocumentId,
+    node: NodeId,
+    value: &str,
+) {
+    if let Some(s) = ix.docs.get_mut(&doc)
+        && let Some(b) = s.edit.baseline.get_mut(&node)
+    {
+        *b = value.to_owned();
+    }
+}
+
 /// A host write replaced the value of `node`: when it has a `change` baseline, restart it from `value`.
 pub(crate) fn reset_baseline(
     ix: &mut crate::interaction::dispatch::InteractionRuntime,
