@@ -183,10 +183,30 @@ def installed_cases():
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def core_04_contract():
+        results = []
+        with App(backend="headless", handle_sigint=False) as app:
+            window = app.open('<button id="b">Open</button><dialog id="d"><select id="s"><option value="a">A</option><option value="b">B</option></select></dialog>')
+            window.show_dialog("d")
+            assert window.get_dialog("d") == {"open": True, "modal": True, "return_value": ""}
+            assert window.query(":focus") == ["s"]
+            window.set_value("s", "b")
+            assert [o["selected"] for o in window.get_options("s")] == [False, True]
+            window.close_dialog("d", "ok")
+            assert window.maximize()["applied"] and window.state()["maximized"] is True
+            window.set_constraints(min_size=(400, 300))
+            window.resize(200, 200)
+            assert (window.state()["width"], window.state()["height"]) == (400.0, 300.0)
+            window.open_file_dialog(results.append, title="Pick", filters={"Text": ["txt"]})
+            app.timer(50, lambda _: app.stop())
+            app.run()
+        assert results == [{"paths": None}], results
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
+    check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
     check("F13", core_03_contract, "0.3 Core contract: batch/trim, follow scroll, into-view geometry, move/append/read, selection copy, clipboard, default-action rule")
     return cases
 

@@ -119,6 +119,29 @@ try {
                 }
             }
         } 'Local candidate version and fresh session; public upgrade is assessed separately'
+        Test-Case F14 {
+            $results = Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $window = $app.Open('<button id="b">Open</button><dialog id="d"><select id="s"><option value="a">A</option><option value="b">B</option></select></dialog>')
+                $window.ShowDialog('d', $true)
+                $state = $window.GetDialog('d')
+                if (-not $state.Open -or -not $state.Modal) { throw 'dialog' }
+                if (($window.Query(':focus') -join ',') -ne 's') { throw 'dialog focus' }
+                $window.SetValue('s', 'b')
+                if (-not $window.GetOptions('s')[1].Selected) { throw 'select' }
+                $window.CloseDialog('d', 'ok')
+                if (-not $window.Maximize().Applied -or -not ($window.StateJson() | ConvertFrom-Json).maximized) { throw 'maximize' }
+                $window.SetConstraints(400, 300, $null, $null, $true)
+                $window.Resize(200, 200)
+                $ws = $window.StateJson() | ConvertFrom-Json
+                if ($ws.width -ne 400 -or $ws.height -ne 300) { throw 'constraints' }
+                $seen = [Collections.Generic.List[string]]::new()
+                $null = $window.OpenFileDialog({ param($e) $seen.Add($(if ($null -eq $e.Paths) { 'cancel' } else { 'paths' })) }, 'Pick', $null, @{ Text = @('txt') }, $false)
+                $null = $app.Timer(50, { $app.Stop() }, $false)
+                Write-Output -NoEnumerate $seen
+            }
+            if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
+        } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
         Test-Case F13 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)
