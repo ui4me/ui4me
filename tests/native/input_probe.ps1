@@ -34,7 +34,10 @@ Invoke-Ui4meApp -ArgumentList @($page, $StatePath, $CommandsPath, $Seconds) {
         $values = [ordered]@{}
         foreach ($f in $fields) { $values[$f] = $window.GetValue($f) }
         $rects = [ordered]@{}
-        foreach ($e in @($fields + 'go')) { $rects[$e] = $window.GetRect($e) }
+        foreach ($e in @($fields + 'go')) {
+            $r = $window.GetRect($e)
+            $rects[$e] = if ($r) { [ordered]@{ x = $r.X; y = $r.Y; width = $r.Width; height = $r.Height } } else { $null }
+        }
         $state = [ordered]@{ log = $log; values = $values; focus = @($window.Query(':focus')); rects = $rects; commands = $read.offset }
         $tmp = "$statePath.tmp"
         [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $state -Depth 6 -Compress), [Text.UTF8Encoding]::new($false))
@@ -63,7 +66,11 @@ Invoke-Ui4meApp -ArgumentList @($page, $StatePath, $CommandsPath, $Seconds) {
 
     $poll = {
         if (-not [IO.File]::Exists($commandsPath)) { return }
-        $bytes = [IO.File]::ReadAllBytes($commandsPath)
+        # Share write access: the driver may be appending (ReadAllBytes would fail on Windows).
+        try {
+            $stream = [IO.FileStream]::new($commandsPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { $buffer = [IO.MemoryStream]::new(); $stream.CopyTo($buffer); $bytes = $buffer.ToArray() } finally { $stream.Dispose() }
+        } catch { return }
         if ($bytes.Length -le $read.offset -or $bytes[$bytes.Length - 1] -ne 10) { return }
         $chunk = [Text.Encoding]::UTF8.GetString($bytes, $read.offset, $bytes.Length - $read.offset)
         $read.offset = $bytes.Length
