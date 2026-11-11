@@ -345,6 +345,8 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 app.set_link_policy(["javascript"])
             app.set_link_policy(["https"], hosts=["*.example.com"])
+            files = app.open("<input id=pick type=file>")
+            self.assertEqual(files.get_files("pick"), [])
             geo = w.text_rects("box")
             self.assertEqual((geo["text"], geo["length"]), ("no idžluť", 9))
             self.assertTrue(geo["rects"] and all(r["width"] > 0 for r in geo["rects"]))

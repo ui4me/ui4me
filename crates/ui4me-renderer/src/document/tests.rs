@@ -503,15 +503,7 @@ fn limits_and_active_content_fail_before_use() {
 fn unsupported_pickers_are_rejected_without_mutating_the_live_document() {
     let mut d = Document::parse("<section id=host><input id=field value=kept></section>").unwrap();
     let field = d.node("field").unwrap();
-    for kind in [
-        "file",
-        "color",
-        "date",
-        "time",
-        "month",
-        "week",
-        "datetime-local",
-    ] {
+    for kind in ["color", "date", "time", "month", "week", "datetime-local"] {
         let html = format!("<input type='{kind}'>");
         let error = Document::parse(&html).unwrap_err();
         assert_eq!(error.code, 1);
@@ -1131,4 +1123,49 @@ fn controls_removed_after_validation_leave_no_stale_state() {
     d.remove_element("f").unwrap();
     assert!(d.check_validity("f").is_err());
     assert!(d.get_validity("b").is_err());
+}
+
+#[test]
+fn file_input_choice_sets_files_fires_input_and_change_and_reset_clears() {
+    // 0.6 F0606: what the host does when the native picker returns.
+    let mut d = Document::parse("<!doctype html><form id=f><input id=pick type=file multiple><button type=reset id=r>R</button></form>").unwrap();
+    d.render(300, 200, 1.0).unwrap();
+    click(&mut d, "pick");
+    let requests = d.take_file_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].multiple);
+    assert_eq!(requests[0].element.as_deref(), Some("pick"));
+    assert!(d.take_file_requests().is_empty(), "taken once");
+    let input = requests[0].input;
+    d.complete_file_input(
+        input,
+        Some(vec![
+            "/tmp/ünïcødé složka/a.txt".into(),
+            "/tmp/b.png".into(),
+        ]),
+    )
+    .unwrap();
+    let events = d.drain_events();
+    let kinds: Vec<_> = events
+        .iter()
+        .map(|e| e["type"].as_str().unwrap().to_owned())
+        .collect();
+    // `input` (with the legacy `change` alias), then HTML `change`, delivered as `commit`.
+    assert_eq!(kinds, ["input", "change", "commit"]);
+    assert_eq!(events[2]["files"][0], "/tmp/ünïcødé složka/a.txt");
+    assert_eq!(d.get_files("pick").unwrap().len(), 2);
+    // Canceling later keeps the earlier choice (browsers do) and fires `cancel`.
+    d.complete_file_input(input, None).unwrap();
+    assert_eq!(d.drain_events()[0]["type"], "cancel");
+    assert_eq!(d.get_files("pick").unwrap().len(), 2);
+    click(&mut d, "r");
+    assert!(
+        d.get_files("pick").unwrap().is_empty(),
+        "a form reset clears the files"
+    );
+    // A removed input completes silently.
+    d.remove_element("pick").unwrap();
+    d.complete_file_input(input, Some(vec!["/x".into()]))
+        .unwrap();
+    assert!(d.drain_events().iter().all(|e| e["type"] != "change"));
 }

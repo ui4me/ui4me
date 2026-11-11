@@ -227,6 +227,14 @@ pub trait DispatchHost {
     ) {
         let _ = (doc, request);
     }
+    /// A form's controls were reset. Default: nothing.
+    fn form_reset(&mut self, doc: DocumentId, form: NodeId) {
+        let _ = (doc, form);
+    }
+    /// A file input's activation behaviour ran: the host shows its file picker. Default: nothing.
+    fn file_input_activated(&mut self, doc: DocumentId, input: NodeId) {
+        let _ = (doc, input);
+    }
     /// A hyperlink's activation behaviour ran (an uncanceled click). Default: nothing.
     fn link_activated(&mut self, doc: DocumentId, link: NodeId) {
         let _ = (doc, link);

@@ -166,6 +166,51 @@ pub struct Session {
     pub clipboard: Mutex<Option<std::result::Result<(), String>>>,
     /// External link policy (0.6 F0608): nothing is allowed until the app opts in.
     pub link_policy: Mutex<LinkPolicy>,
+    /// File-input pickers in flight: dialog token -> (window, input) (0.6 F0606).
+    input_pickers: Mutex<BTreeMap<u64, (u64, ui4me_renderer::NodeId)>>,
+}
+
+#[cfg(test)]
+pub(crate) fn accept_filters_for_tests(accept: &[String]) -> Vec<(String, Vec<String>)> {
+    accept_filters(accept)
+}
+
+/// Dialog tokens from this value up are reserved for file-input pickers.
+const INPUT_PICKER_TOKENS: u64 = 1 << 62;
+
+/// Picker filters from an `accept` list: `.ext` entries and common MIME types; `None` when the
+/// list is empty or names something without a known extension (no filter then).
+fn accept_filters(accept: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut exts: Vec<String> = Vec::new();
+    for a in accept {
+        let found: &[&str] = match a.as_str() {
+            "image/*" => &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"],
+            "audio/*" => &["mp3", "wav", "ogg", "flac", "m4a"],
+            "video/*" => &["mp4", "webm", "mkv", "mov", "avi"],
+            "text/plain" => &["txt"],
+            "text/csv" => &["csv"],
+            "text/html" => &["html", "htm"],
+            "application/json" => &["json"],
+            "application/pdf" => &["pdf"],
+            "image/png" => &["png"],
+            "image/jpeg" => &["jpg", "jpeg"],
+            "image/gif" => &["gif"],
+            "image/webp" => &["webp"],
+            other => match other.strip_prefix('.') {
+                Some(e) if !e.is_empty() && e.len() <= 32 && !e.contains(['.', '/', '\\', '*']) => {
+                    exts.push(e.to_owned());
+                    continue;
+                }
+                _ => return Vec::new(),
+            },
+        };
+        exts.extend(found.iter().map(|s| s.to_string()));
+    }
+    exts.dedup();
+    if exts.is_empty() || exts.len() > 64 {
+        return Vec::new();
+    }
+    vec![("Accepted files".to_owned(), exts)]
 }
 
 /// Which activated links the app allows, and whether Core opens allowed ones with the OS.
@@ -323,6 +368,7 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         monitors: Mutex::new(Vec::new()),
         clipboard: Mutex::new(None),
         link_policy: Mutex::new(LinkPolicy::default()),
+        input_pickers: Mutex::new(BTreeMap::new()),
     }));
     Ok(id)
 }
@@ -612,6 +658,74 @@ impl Session {
         result
     }
     fn emit_document_events(&self, window: u64, events: Vec<Value>) {
+        self.deliver_document_events(window, events);
+        self.open_file_pickers(window);
+    }
+    /// Open the native picker of each activated file input of `window` (0.6 F0606); headless
+    /// sessions complete them as canceled. At most 4 dialogs may be open; more are canceled.
+    fn open_file_pickers(&self, window: u64) {
+        let Ok(requests) = self.with_window(window, |w| Ok(w.document.take_file_requests())) else {
+            return;
+        };
+        for request in requests {
+            let token = {
+                let mut state = lock(&self.control);
+                if state.stop {
+                    return;
+                }
+                let mut pickers = lock(&self.input_pickers);
+                let token = INPUT_PICKER_TOKENS
+                    + pickers
+                        .keys()
+                        .next_back()
+                        .map_or(0, |t| t - INPUT_PICKER_TOKENS + 1);
+                if state.dialogs_open.len() >= 4
+                    || pickers
+                        .values()
+                        .any(|&(w, n)| w == window && n == request.input)
+                {
+                    None
+                } else {
+                    state.dialogs_open.insert(token, window);
+                    pickers.insert(token, (window, request.input));
+                    Some(token)
+                }
+            };
+            let Some(token) = token else {
+                let events = self
+                    .with_window(window, |w| {
+                        w.document.complete_file_input(request.input, None)?;
+                        Ok(w.document.drain_events())
+                    })
+                    .unwrap_or_default();
+                self.deliver_document_events(window, events);
+                continue;
+            };
+            if self.native {
+                let dialog = FileDialogRequest {
+                    token,
+                    kind: if request.multiple {
+                        "open_multiple"
+                    } else {
+                        "open"
+                    }
+                    .into(),
+                    title: None,
+                    directory: None,
+                    file_name: None,
+                    filters: accept_filters(&request.accept),
+                };
+                let _ = self.with_window(window, |w| {
+                    w.ops.push_back(WindowOp::FileDialog(dialog));
+                    Ok(())
+                });
+                self.wake();
+            } else {
+                self.finish_file_dialog(window, token, json!({"paths": null, "headless": true}));
+            }
+        }
+    }
+    fn deliver_document_events(&self, window: u64, events: Vec<Value>) {
         for mut event in events {
             // A stop, or a close requested by an earlier callback, ends delivery for the window.
             if self.should_stop() || self.window_info(window).is_none_or(|i| i.closing) {
@@ -870,6 +984,24 @@ impl Session {
                 break;
             };
             if self.window_info(window).is_none() {
+                lock(&self.input_pickers).remove(&token);
+                continue;
+            }
+            if let Some((_, input)) = lock(&self.input_pickers).remove(&token) {
+                // A file input's picker: the input gets the files (or `cancel`).
+                let paths: Option<Vec<String>> = result["paths"].as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|p| p.as_str().map(str::to_owned))
+                        .collect()
+                });
+                let events = self
+                    .with_window(window, |w| {
+                        w.document.complete_file_input(input, paths)?;
+                        w.info.dirty = true;
+                        Ok(w.document.drain_events())
+                    })
+                    .unwrap_or_default();
+                self.deliver_document_events(window, events);
                 continue;
             }
             let mut event = result;
@@ -1223,6 +1355,9 @@ impl Session {
                 }
                 self.with_window(window, |w| Ok(json!({"hit": w.document.text_at_point(x, y)?})))?
             }
+            Command::GetFiles { window, element } => self.with_window(window, |w| {
+                Ok(json!({"files": w.document.get_files(&element)?}))
+            })?,
             Command::GetComputedStyle {
                 window,
                 element,
@@ -1642,6 +1777,9 @@ impl Session {
                 }
                 if directory.as_ref().is_some_and(|d| !d.is_absolute()) {
                     return Err(Error::arg("directory must be absolute"));
+                }
+                if token >= INPUT_PICKER_TOKENS {
+                    return Err(Error::arg("file dialog tokens from 2^62 up are reserved"));
                 }
                 self.with_window(window, |_| Ok(()))?;
                 {

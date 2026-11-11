@@ -430,6 +430,8 @@ try {
             $app.SetLinkPolicy(@('https'), @('*.example.com'), $false)
             $refused = $false; try { $app.SetLinkPolicy(@('file'), $null, $false) } catch { $refused = $true }
             if (-not $refused) { throw 'file: scheme accepted' }
+            $picker = $app.Open('<input id=pick type=file>')
+            if ($picker.GetFiles('pick').Count -ne 0) { throw 'file input starts empty' }
             $geo = $doc.TextRectsJson('box', $null, -1, -1) | ConvertFrom-Json
             if ($geo.length -ne 9 -or $geo.rects.Count -lt 1) { throw "text rects: $($geo | ConvertTo-Json -Compress)" }
             $styled = $app.Open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>')

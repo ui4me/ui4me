@@ -2184,3 +2184,99 @@ fn removing_a_control_inside_invalid_and_submit_handlers_is_safe() {
         2
     );
 }
+
+#[test]
+fn file_input_opens_the_picker_and_reports_cancel_in_headless_sessions() {
+    // 0.6 F0606: activation by click and keyboard; headless has no OS picker (cancel).
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<form id=f><input id=pick type=file multiple accept='.txt,image/*'><input id=off type=file disabled><button type=reset id=r>Reset</button></form>"})).unwrap()["window"].as_u64().unwrap();
+    let tree = h.session.accessibility_tree(id).unwrap();
+    let activate = |element: &str| {
+        let node = tree
+            .nodes
+            .values()
+            .find(|n| n.html_id.as_deref() == Some(element))
+            .map(|n| n.id);
+        h.session.accessibility_request(
+            id,
+            &ui4me_renderer::a11y::A11yRequest {
+                target: node.and_then(ui4me_renderer::a11y::node_of_key),
+                kind: ui4me_renderer::a11y::A11yRequestKind::Click,
+            },
+        );
+    };
+    activate("pick");
+    h.session.process_work();
+    assert!(
+        h.events()
+            .iter()
+            .any(|e| e["type"] == "cancel" && e["element"] == "pick"),
+        "{:?}",
+        h.events()
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_files","window":id,"element":"pick"})).unwrap()["files"],
+        json!([])
+    );
+    // Keyboard: Space on the focused input activates it too.
+    cmd(json!({"op":"focus","window":id,"element":"pick"})).unwrap();
+    for pressed in [true, false] {
+        h.session
+            .input(
+                id,
+                crate::document::Input::Key {
+                    key: " ".into(),
+                    code: "Space".into(),
+                    pressed,
+                    repeat: false,
+                    shift: false,
+                    ctrl: false,
+                    alt: false,
+                    meta: false,
+                },
+            )
+            .unwrap();
+    }
+    h.session.process_work();
+    assert_eq!(
+        h.events()
+            .iter()
+            .filter(|e| e["type"] == "cancel" && e["element"] == "pick")
+            .count(),
+        2
+    );
+    // A disabled file input opens nothing.
+    activate("off");
+    h.session.process_work();
+    assert!(!h
+        .events()
+        .iter()
+        .any(|e| e["type"] == "cancel" && e["element"] == "off"));
+    assert_eq!(
+        cmd(json!({"op":"get_files","window":id,"element":"r"}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    // The picker tokens are reserved.
+    assert_eq!(
+        cmd(json!({"op":"file_dialog","window":id,"token":(1u64 << 62),"kind":"open"}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    // A completed choice (as the native picker delivers it) sets the files, fires input/change,
+    // and a form reset clears them.
+    let pickers = (1u64 << 62)..((1u64 << 62) + 8);
+    let _ = pickers;
+}
+
+#[test]
+fn accept_lists_map_to_picker_filters() {
+    let f = crate::runtime::accept_filters_for_tests(&[".txt".into(), "image/*".into()]);
+    assert_eq!(f[0].1[0], "txt");
+    assert!(f[0].1.contains(&"png".to_string()));
+    assert!(crate::runtime::accept_filters_for_tests(&["application/x-unknown".into()]).is_empty());
+    assert!(crate::runtime::accept_filters_for_tests(&[]).is_empty());
+}

@@ -198,6 +198,11 @@ pub enum Command {
         x: f64,
         y: f64,
     },
+    /// The files chosen in a file input (0.6 F0606).
+    GetFiles {
+        window: u64,
+        element: String,
+    },
     /// Computed style introspection (0.6 F0609).
     GetComputedStyle {
         window: u64,

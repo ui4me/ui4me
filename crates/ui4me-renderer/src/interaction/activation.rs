@@ -37,7 +37,7 @@ pub fn has_activation_behaviour(d: &Document, n: NodeId) -> bool {
         "a" | "area" => e.attr("href").is_some(),
         "input" => matches!(
             input_type(e).as_str(),
-            "checkbox" | "radio" | "submit" | "reset" | "button" | "image"
+            "checkbox" | "radio" | "submit" | "reset" | "button" | "image" | "file"
         ),
         _ => false,
     }
@@ -222,6 +222,8 @@ enum Behaviour {
     Label {
         control: NodeId,
     },
+    /// A file input: the host opens the native picker (0.6 F0606).
+    FilePicker,
     /// A hyperlink (`a`/`area` with `href`): reported to the host, which applies its link
     /// policy (0.6 F0608). Core never navigates the document or fetches the target.
     Link,
@@ -333,6 +335,13 @@ fn decide(
             submitter: act,
         };
     }
+    if element(d, act).is_some_and(|e| e.local_name() == "input" && input_type(e) == "file") {
+        return if is_disabled_form_control(d, act) {
+            Behaviour::None
+        } else {
+            Behaviour::FilePicker
+        };
+    }
     if element(d, act)
         .is_some_and(|e| matches!(e.local_name(), "a" | "area") && e.attr("href").is_some())
     {
@@ -414,6 +423,7 @@ pub(crate) fn activation_behaviour(
             let _ = fire(host, doc, control, click);
         }
         Behaviour::Link => host.link_activated(doc, act),
+        Behaviour::FilePicker => host.file_input_activated(doc, act),
         Behaviour::Summary => {
             let _ = eng(host, doc, |_, d| {
                 crate::interaction::dialog::toggle_details(d, act)
@@ -423,6 +433,7 @@ pub(crate) fn activation_behaviour(
             let init = EventInit::new("reset").bubbles(true).cancelable(true);
             if let Ok(false) = fire(host, doc, form, init) {
                 let _ = eng(host, doc, |_, d| d.form_reset_controls(form));
+                host.form_reset(doc, form);
             }
         }
         Behaviour::Submit { form, submitter } => {

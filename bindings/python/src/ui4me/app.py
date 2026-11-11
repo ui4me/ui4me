@@ -532,6 +532,11 @@ class Window:
         "reason"}}``."""
         return self._command("get_computed_style", element=element, node=node, properties=list(properties))["properties"]
 
+    def get_files(self, element: str) -> list[str]:
+        """The paths the user chose in a file input (its ``change`` event carries them as
+        ``files``; ``cancel`` fires when the picker is dismissed)."""
+        return self._command("get_files", element=element)["files"]
+
     def add_stylesheet(self, css: str) -> dict:
         """Attach an author stylesheet after the document's own; returns ``{"sheet": id,
         "diagnostics": [...]}`` (invalid rules are reported and dropped)."""

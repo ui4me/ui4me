@@ -12,7 +12,7 @@ use crate::pipeline::state::{DocumentPipeline, PipelineConfig, PipelineState};
 use crate::raster::headless::PixelFormat;
 use crate::scene::hit_index::{HitOptions, ScrollAxis, ViewportPoint};
 use serde_json::{Value, json};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -183,6 +183,9 @@ pub struct Document {
     window_focused: bool,
     /// Media preferences: what the OS reported and what the app chose (0.5 F0506).
     env: Environment,
+    /// File inputs whose picker the host must open, and the files chosen per input (0.6 F0606).
+    file_requests: Vec<NodeId>,
+    input_files: HashMap<NodeId, Vec<String>>,
     repaint: bool,
     prevent: Vec<StoredRule>,
     follow: Vec<Follow>,
@@ -319,6 +322,8 @@ impl Document {
             pointer: (0.0, 0.0),
             window_focused: true,
             env: Environment::default(),
+            file_requests: Vec::new(),
+            input_files: HashMap::new(),
             repaint: true,
             prevent: Vec::new(),
             follow: Vec::new(),
@@ -1191,6 +1196,9 @@ impl Document {
         Ok((ids, matches.len()))
     }
     fn after_mutation(&mut self, subtree: bool) {
+        if subtree && !self.input_files.is_empty() {
+            self.prune_input_files();
+        }
         let id = self.id();
         self.interaction.note_doc(id);
         dispatch::operation(self, |_| {});
@@ -1633,6 +1641,9 @@ impl DispatchHost for Document {
         if d.local_name(node).is_ok_and(|t| t == "select") {
             value["value"] = json!(d.select_value(node));
         }
+        if let Some(files) = self.input_files.get(&node) {
+            value["files"] = json!(files);
+        }
         let data = &event.init.data;
         macro_rules! field {
             ($name:literal,$field:ident) => {
@@ -1909,6 +1920,18 @@ impl DispatchHost for Document {
             cursor_area: r.cursor_area,
         });
     }
+    fn form_reset(&mut self, _id: DocumentId, form: NodeId) {
+        // A reset empties the file inputs of the form (HTML reset algorithm).
+        let d = self.pipeline.document();
+        self.input_files
+            .retain(|&n, _| !d.arena().is_inclusive_ancestor(form, n));
+    }
+    fn file_input_activated(&mut self, _id: DocumentId, input: NodeId) {
+        // One picker per input at a time; the host opens it after the dispatch (0.6 F0606).
+        if !self.file_requests.contains(&input) && self.file_requests.len() < 8 {
+            self.file_requests.push(input);
+        }
+    }
     fn link_activated(&mut self, _id: DocumentId, link: NodeId) {
         // Reported after the dispatch as `link_activated` (0.6 F0608); the host decides.
         let d = self.pipeline.document();
@@ -2043,8 +2066,8 @@ fn validate_id(id: &str) -> Result<()> {
 fn validate_input_type(kind: InputType) -> std::result::Result<(), Status> {
     if matches!(
         kind,
-        InputType::File
-            | InputType::Color
+        // `file` has the native picker since 0.6 (F0606).
+        InputType::Color
             | InputType::Date
             | InputType::Time
             | InputType::Month
@@ -2052,7 +2075,7 @@ fn validate_input_type(kind: InputType) -> std::result::Result<(), Status> {
             | InputType::DateTimeLocal
     ) {
         return Err(invalid(format!(
-            "Input type '{}' requires a native picker and is unavailable in UI4ME 0.2",
+            "Input type '{}' requires a native picker and is unavailable in UI4ME Core",
             kind.as_str()
         )));
     }
@@ -2491,6 +2514,7 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 mod a11y_text_tests;
 #[cfg(test)]
 mod bidi_tests;
+pub mod file_input;
 #[cfg(test)]
 mod focus_pointer_tests;
 pub mod public_dom;

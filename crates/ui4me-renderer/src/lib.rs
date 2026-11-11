@@ -23,6 +23,8 @@ pub use document::{
     Clipboard, DefaultActionRule, Document, DomOp, Error, ImeState, Input, MAX_PIXELS, MAX_TEXT,
     Rect, Result, ScrollState,
 };
+/// Generation-checked DOM node identity (opaque to hosts).
+pub use ui4me_engine_types::ids::NodeId;
 
 #[cfg(test)]
 mod regression;

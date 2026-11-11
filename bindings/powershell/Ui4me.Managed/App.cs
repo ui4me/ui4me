@@ -544,6 +544,8 @@ public sealed class Window
     public string TextAtPointJson(double x, double y) { Check(); return app.Command(new { op = "text_at_point", window = Id, x, y }).GetProperty("hit").GetRawText(); }
     /// <summary>Computed values (schema 1) of properties of an element, as JSON.</summary>
     public string ComputedStyleJson(string element, params string[] properties) { Check(); return app.Command(new { op = "get_computed_style", window = Id, element, properties }).GetRawText(); }
+    /// <summary>The paths the user chose in a file input.</summary>
+    public string[] GetFiles(string element) { Check(); return app.Command(new { op = "get_files", window = Id, element }).GetProperty("files").EnumerateArray().Select(e => e.GetString()!).ToArray(); }
     /// <summary>Attach an author stylesheet; returns JSON {sheet, diagnostics}.</summary>
     public string AddStylesheet(string css) { Check(); return app.Command(new { op = "add_stylesheet", window = Id, css }).GetRawText(); }
     public string ReplaceStylesheet(long sheet, string css) { Check(); return app.Command(new { op = "replace_stylesheet", window = Id, sheet, css }).GetRawText(); }

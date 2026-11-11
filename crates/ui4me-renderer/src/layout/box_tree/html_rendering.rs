@@ -271,10 +271,7 @@ pub(crate) fn special<S: StyledSource>(
             match ty.as_str() {
                 "hidden" => Special::Skip,
                 "button" | "submit" | "reset" | "file" | "image" => {
-                    // The button is only a visual fallback; no file picker is implemented.
-                    if ty == "file" {
-                        b.report(feature("html.control.file"), Stage::Box, node);
-                    }
+                    // A file input is a button that opens the native picker (0.6 F0606).
                     let value = info.attr("value").filter(|v| !v.is_empty());
                     let label = match ty.as_str() {
                         "submit" => value.unwrap_or("Submit").to_string(),
