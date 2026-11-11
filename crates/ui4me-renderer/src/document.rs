@@ -2679,6 +2679,8 @@ mod focus_pointer_tests;
 #[cfg(test)]
 mod framework_fixtures_tests;
 #[cfg(test)]
+mod layout_conformance_tests;
+#[cfg(test)]
 mod popover_tests;
 pub mod public_dom;
 mod resize;
