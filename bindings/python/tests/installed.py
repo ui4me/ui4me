@@ -294,11 +294,33 @@ def installed_cases():
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def core_10_contract():
+        import tempfile
+        with App(backend="headless", handle_sigint=False) as app:
+            w = app.open("<style>@page{size:400px 300px;margin:20px} p{height:200px;margin:0}</style><p id=a>a</p><p id=b>b</p><p id=c>c</p>"
+                         "<div id=ed contenteditable>hello world</div>")
+            pages = w.paginate()
+            assert pages["count"] >= 2 and pages["pages"][0]["width"] == 400, f"paginate {pages}"
+            assert w.get_page_rects("c")[0]["page"] >= 1, "page rects"
+            with tempfile.TemporaryDirectory() as tmp:
+                pdf = Path(tmp) / "out.pdf"
+                w.export_pdf(pdf, dpi=72)
+                assert pdf.read_bytes().startswith(b"%PDF"), "export_pdf"
+            w.select_text("ed")
+            assert w.exec_edit("ed", "bold") and w.get_edit_state("ed")["bold"] is True, "rich editing"
+            assert "<b>hello world</b>" in w.get_html("ed").replace("strong", "b"), w.get_html("ed")
+            assert w.get_diagnostics()["schema"] == 1, "diagnostics schema"
+            seen = []
+            app.on("started", lambda _: app.run_in_background(lambda: 6 * 7, on_done=lambda v: (seen.append(v), app.stop())))
+            app.run()
+            assert seen == [42], f"run_in_background {seen}"
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
+    check("F20", core_10_contract, "1.0 Core contract: pagination, page rects, PDF export, rich editing, diagnostics schema 1, background work settles on the owner thread")
     check("F19", core_09_contract, "0.9 Core contract: field-sizing, content-visibility, CSS animations parse and compute, inline SVG box")
     check("F18", core_08_contract, "0.8 Core contract: popover show/toggle, scroll snapping, smooth scroll animation, pointer capture needs a press, range sanitizing")
     check("F17", core_07_contract, "0.7 Core contract: desktop services refuse honestly without a desktop, menu accelerators, pointer grab status, rich clipboard sanitizing")

@@ -288,6 +288,7 @@ class Journey:
         self.scale = 1.0
         self.proc = None
         self.retries = 0
+        self.scale_known = False
 
     # --- state helpers
     def state(self) -> dict:
@@ -329,9 +330,13 @@ class Journey:
                 time.sleep(0.3)
                 s = self.state()
                 page = (s.get("rects") or {}).get("page")
-                if page and page["width"] > 0:
+                # The output scale is fixed for the session: derive it once. Re-deriving it after a
+                # resize reads a page width that may not have caught up with the new frame yet,
+                # and every later click would land scaled away from its target.
+                if page and page["width"] > 0 and not self.scale_known:
                     ratio = g[2] / page["width"]
                     self.scale = 1.0 if abs(ratio - 1.0) < 0.02 else ratio
+                    self.scale_known = True
                 return g
             time.sleep(0.25)
         raise RuntimeError("the data viewer window is not listed by the window system")
@@ -359,7 +364,10 @@ class Journey:
                 return
             except AssertionError:
                 self.retries += 1
-        raise AssertionError("the filter field never took focus after 4 clicks")
+        s = self.state()
+        raise AssertionError(f"the filter field never took focus after 4 clicks: origin={self.origin} scale={self.scale} "
+                             f"client={self.desk.client_geometry(TITLE)} filter={s['rects']['filter']} focus={s['focus']} "
+                             f"details_open={s['details_open']} titles={self.desk.titles()}")
 
     def filter_step(self):
         self.focus_filter()

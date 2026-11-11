@@ -142,6 +142,27 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F20 {
+            $seen = Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $w = $app.Open('<style>@page{size:400px 300px;margin:20px} p{height:200px;margin:0}</style><p id=a>a</p><p id=b>b</p><p id=c>c</p><div id=ed contenteditable>hello world</div>')
+                $pages = $w.PaginateJson() | ConvertFrom-Json
+                if ($pages.count -lt 2 -or $pages.pages[0].width -ne 400) { throw "paginate $($pages.count)" }
+                if ((($w.GetPageRectsJson('c') | ConvertFrom-Json)[0]).page -lt 1) { throw 'page rects' }
+                $pdf = Join-Path ([IO.Path]::GetTempPath()) "ui4me-f20-$PID.pdf"
+                $null = $w.ExportPdf($pdf, $null, 72)
+                $head = [IO.File]::ReadAllBytes($pdf)[0..3]
+                Remove-Item $pdf
+                if ([Text.Encoding]::ASCII.GetString($head) -ne '%PDF') { throw 'export pdf' }
+                $w.SelectText('ed')
+                if (-not $w.ExecEdit('ed', 'bold') -or -not ($w.GetEditStateJson('ed') | ConvertFrom-Json).bold) { throw 'rich editing' }
+                if ((($w.GetDiagnosticsJson() | ConvertFrom-Json).schema) -ne 1) { throw 'diagnostics schema' }
+                $out = [Collections.Generic.List[int]]::new()
+                $null = $app.On('started', { $null = $app.RunInBackground({ 6 * 7 }, { param($v) $out.Add([int]$v); $app.Stop() }, $null) })
+                Write-Output -NoEnumerate $out
+            }
+            if (($seen -join ',') -ne '42') { throw "run in background: $($seen -join ',')" }
+        } '1.0 Core contract: pagination, page rects, PDF export, rich editing, diagnostics schema 1, background work'
         Test-Case F19 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)

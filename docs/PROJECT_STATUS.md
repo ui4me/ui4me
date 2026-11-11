@@ -1,11 +1,22 @@
-# UI4ME Core 0.9: implementation status and contract
+# UI4ME Core 1.0: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
 are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
-Python (`bindings/python`) and PowerShell (`bindings/powershell`).
+Python (`bindings/python`), PowerShell (`bindings/powershell`) and LuaJIT (`bindings/lua`).
 
 ## Current status
+
+**Core 1.0.0 is the stable Core** (PyPI, PowerShell Gallery, GitHub; 0.10 and 1.0 scope plus a
+LuaJIT binding; [`core-roadmap/versions/0_10.md`](core-roadmap/versions/0_10.md),
+[`core-roadmap/versions/1_0.md`](core-roadmap/versions/1_0.md)): paged media, PDF export and
+native printing, rich `contenteditable`, background work in the bindings, versioned developer
+diagnostics and `explain`, long-document scalability, a soak driver, fuzz harnesses, a
+LuaJIT FFI binding, screen-reader journeys with NVDA and Orca, and an upgrade/rollback matrix
+from 0.4.0. Compatibility from here on is governed by [`COMPATIBILITY.md`](COMPATIBILITY.md);
+the supported surface is the generated [`SUPPORT_PROFILE_V1.json`](SUPPORT_PROFILE_V1.json).
+CSS profile 1.27.0. Deferred by the owner: the GPU backend (F1005), macOS (F1201) and ARM64
+(F1202).
 
 **Core 0.9.0 is released** (PyPI, PowerShell Gallery, GitHub; advanced CSS, SVG and typography;
 [`core-roadmap/versions/0_9.md`](core-roadmap/versions/0_9.md)): CSS transitions and keyframe
@@ -297,8 +308,9 @@ unsupported on Wayland (winit 0.30). `claim_instance` makes the first process pe
 forward bounded path lists (data only) and get `primary: false`. Core installs no file
 associations.
 
-**0.8 contract.** An element with `contenteditable` (`""`, `true`, `plaintext-only`;
-`false` ends it) is a focusable plain-text editing host laid out `pre-wrap`: its content is
+**0.8 contract.** (Since 1.0 this applies to `contenteditable="plaintext-only"`; `""` and `true`
+are rich hosts, see the 1.0 contract.) An element with `contenteditable` (`false` ends it) is a
+focusable plain-text editing host laid out `pre-wrap`: its content is
 one text node (the first edit flattens markup to text; typed and pasted content is never
 parsed as HTML). The document selection is its caret/selection; characters, Enter,
 Backspace/Delete (grapheme; Ctrl: word), arrows, Home/End (visual line), Up/Down, Ctrl+Home/
@@ -349,6 +361,29 @@ Framework-style markup is covered by fixtures with documented exceptions
 ([`core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md`](core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md)).
 Ruby layout, `shape-outside`, `clip-path`/`filter` `url()` references, `cross-fade()`,
 `shape()` and `corner-shape` are not implemented.
+
+**1.0 contract.** CSS profile 1.27.0 (`@page` and `page` On). `paginate` lays the document
+out into pages (`size` a named size or `width`/`height` in CSS px, `margins`, `print` media;
+an `@page` size wins) and returns `{count, pages:[{width, height, content}], revision}`;
+`get_page_rects` maps an element to its page boxes, `render_page` writes one page as PNG at
+`dpi`, and `export_pdf` writes a deterministic raster PDF (one image per page, `dpi` default 150).
+A DOM change after `paginate` makes the page commands fail as stale until it is called again;
+at most 2000 pages and a bounded pixel budget per job. `print_document` opens the native print
+dialog (Windows `PrintDlgEx` + GDI; Linux the xdg-desktop-portal Print interface) and reports a
+`print` event with `status` (`printed`, `cancelled`, `failed`, `unavailable` headless); the
+`printing` capability says whether it is available. `contenteditable` `""`/`true` hosts are rich
+editing hosts over a bounded HTML subset (b/strong, i/em, u, s/del, code, links, paragraphs,
+line breaks): typing, Enter (new paragraph), Shift+Enter, Ctrl+B/I/U, sanitized HTML paste and
+undo/redo; `exec_edit` applies a command (formatting, link, paragraph) and `get_edit_state`
+reports the active formats. Element ids inside a rich host are not stable across edits.
+`run_in_background` (Python) / `RunInBackground` (PowerShell) run a function on a bounded worker
+pool and settle exactly once on the owner thread (done, error or cancelled); unfinished tasks
+are cancelled at stop. `get_diagnostics` returns schema 1 (redacted by default, `since` cursor,
+`kinds` filter; [`core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md`](core-roadmap/data/DIAGNOSTICS_SCHEMA_V1.md))
+and `explain` answers why an element looks or behaves as it does (matched rules, box, hit and
+focus state) without exposing engine handles. The LuaJIT binding (`bindings/lua/ui4me.lua`,
+release asset `ui4me-lua-1.0.0.zip`) is a pure FFI binding over ABI 1 with the same owner-thread
+model; it finds the native library through `UI4ME_NATIVE_LIB` or the system loader path.
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.

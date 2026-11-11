@@ -1,12 +1,14 @@
 # ui4me
 
-UI4ME is a native desktop UI runtime for applications written in **Python or
-PowerShell**. Applications supply HTML and CSS; Rust owns layout, text shaping,
+UI4ME is a native desktop UI runtime for applications written in **Python,
+PowerShell or LuaJIT**. Applications supply HTML and CSS; Rust owns layout, text shaping,
 painting, input and native windows. Application logic stays in the host language.
 
-This checkout implements **0.4.0**, the Core foundation. It targets
-**Linux x86-64 (Wayland/X11)** and **Windows x64**, with **Python 3.11–3.14** or
-**PowerShell 7.4+**. It uses a software renderer, not a browser or JavaScript
+This checkout implements **1.0.0**, the stable Core. It targets
+**Linux x86-64 (Wayland/X11)** and **Windows x64**, with **Python 3.11–3.14**,
+**PowerShell 7.4+** or **LuaJIT 2.1**. ABI 1 and the wire schema are frozen under
+[COMPATIBILITY](docs/COMPATIBILITY.md); the supported surface is listed in
+[SUPPORT_PROFILE_V1.json](docs/SUPPORT_PROFILE_V1.json). It uses a software renderer, not a browser or JavaScript
 runtime. Consumers of packaged wheels/modules do not need Rust or a .NET SDK.
 See [PROJECT_STATUS](docs/PROJECT_STATUS.md) for the full contract, the measured
 platform results and the limits.
@@ -35,15 +37,34 @@ platform results and the limits.
 - **Accessibility:** keyboard operation of all controls, and an AccessKit
   screen-reader bridge (AT-SPI on Linux, UI Automation on Windows) with roles,
   names, states, values and assistive actions. No WCAG conformance is claimed.
-- **Runtime:** owner-thread dispatch, timers, background work, bounded queues and
-  assets, generational element identity (stale events are dropped).
+- **Runtime:** owner-thread dispatch, timers, background work that settles on the
+  owner thread (`run_in_background`), bounded queues and assets, generational element
+  identity (stale events are dropped).
+- **Public document interface (0.6):** HTML serialization, author stylesheets with
+  diagnostics, node references, text geometry, computed style, constraint validation,
+  `<input type=file>`, an opt-in external link policy.
+- **Desktop integration (0.5, 0.7):** keyboard layouts, dead keys and IME on Wayland and
+  Windows; notifications, tray icon, menu bars and context menus, global shortcuts, dark and
+  high-contrast preference, rich clipboard, drag and drop, single-instance activation.
+- **Interaction and editing (0.8, 1.0):** plain-text and rich `contenteditable` (formatting,
+  paragraphs, sanitized paste, undo), touch, pointer events and capture, smooth scrolling and
+  scroll snapping, popovers with anchor positioning.
+- **Advanced CSS (0.9):** transitions and keyframe animations, `@starting-style`,
+  `content-visibility`, `field-sizing`, inline SVG with hit testing, `backdrop-filter`,
+  hyphenation in nine languages.
+- **Paged media and printing (1.0):** `@page`, page breaks, `paginate`, page rendering,
+  PDF export and the native print dialog.
+- **Developer diagnostics (1.0):** `get_diagnostics` (versioned, redacted) and `explain`.
 
-Core-only examples: `examples/python/chat_log.py` and `examples/python/file_utility.py`
-(and the PowerShell equivalents in `examples/powershell/`).
+Core-only examples: `examples/python/chat_log.py`, `examples/python/file_utility.py`,
+`examples/python/data_viewer.py` (and the PowerShell equivalents in `examples/powershell/`),
+and `examples/lua/notes.lua`.
 
-Known limits: the whole document is re-laid-out on each change (keep long logs
-bounded); no JavaScript, network resources, embedded browser, printing or
-general SVG/video engine.
+Known limits: a software renderer only (no GPU backend); no macOS or ARM64 builds yet;
+updates stay interactive up to roughly a thousand rows of a log and slow down linearly
+beyond (keep long logs bounded; a document holds at most 65,536 nodes); PDF export is
+raster; no JavaScript, network resources, embedded browser or video. See
+[PROJECT_STATUS](docs/PROJECT_STATUS.md) for every reported limit.
 
 ## Python
 
@@ -96,6 +117,23 @@ input, button { padding: 10px; }</style>
 `Invoke-Ui4meApp` runs the initializer and handlers on a retained UI owner thread
 in a fresh runspace. Pass external values through `-ArgumentList`; see the
 complete example in [`examples/powershell/hello.ps1`](examples/powershell/hello.ps1).
+
+## LuaJIT
+
+```lua
+local ui4me = require("ui4me")   -- bindings/lua/ui4me.lua; UI4ME_NATIVE_LIB names the library
+local app = ui4me.App{ app_id = "org.example.hello" }
+local win = app:open([[<input id="name" value="Ada"><button id="greet">Greet</button>
+<p id="status">Ready.</p>]], { title = "Hello", width = 480, height = 240 })
+win:on("click", function() win:set_text("status", "Hello, " .. win:get_value("name") .. "!") end,
+       { element = "greet" })
+app:run()
+app:close()
+```
+
+The binding is a single FFI file over the C ABI, shipped in the GitHub release as
+`ui4me-lua-1.0.0.zip` together with the native library. `tools/build_luajit.sh`
+(`.cmd` on Windows) builds a pinned LuaJIT for development.
 
 ## Build and try it
 

@@ -534,7 +534,7 @@
       "python": true
     }
   ],
-  "core_version": "0.9.0",
+  "core_version": "1.0.0",
   "css": {
     "features": [
       {
@@ -1162,7 +1162,7 @@
         "state": "off"
       }
     ],
-    "profile_version": "1.26.0"
+    "profile_version": "1.27.0"
   },
   "documents": {
     "contract": "docs/PROJECT_STATUS.md",
