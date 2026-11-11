@@ -33,6 +33,8 @@ public sealed class BackgroundTask
     public bool IsCancellationRequested => Volatile.Read(ref cancelRequested) != 0;
     /// <summary>The completion callback ran (false for tasks discarded by stop).</summary>
     public bool Delivered => Volatile.Read(ref delivered) != 0;
+    /// <summary>Position among tasks that ran to an outcome; callbacks are delivered in this order.</summary>
+    public long CompletionSequence { get; private set; }
     public Exception? Error { get { lock (gate) return error; } }
     public object? Value { get { lock (gate) return value; } }
 
@@ -80,11 +82,12 @@ public sealed class BackgroundTask
         pipeline = ps;
         if (IsCancellationRequested) Interrupt();
     }
-    internal void Finish(object? result, Exception? failure)
+    internal void Finish(object? result, Exception? failure, long sequence)
     {
         lock (gate)
         {
             if (outcome.Task.IsCompleted) return;
+            CompletionSequence = sequence;
             if (IsCancellationRequested) { state = "cancelled"; outcome.TrySetCanceled(); }
             else if (failure is not null) { state = "failed"; error = failure; outcome.TrySetException(failure); }
             else { state = "succeeded"; value = result; outcome.TrySetResult(result); }
@@ -117,6 +120,7 @@ internal sealed class BackgroundHost : IDisposable
     private readonly int maxWorkers;
     private RunspacePool? pool;
     private int active;
+    private long completed;
     private bool closed;
     private bool settling;
     private readonly List<Task> running = new();
@@ -188,9 +192,13 @@ internal sealed class BackgroundHost : IDisposable
         }
         catch (PipelineStoppedException) when (item.Task.IsCancellationRequested) { }
         catch (Exception caught) { failure ??= caught is RuntimeException r && r.InnerException is not null ? r.InnerException : caught; }
-        item.Task.Finish(result, failure);
-        lock (gate) { active--; }
-        Enqueue(item);
+        // One critical section: the settlement queue order is exactly the completion order.
+        lock (gate)
+        {
+            item.Task.Finish(result, failure, ++completed);
+            active--;
+            Enqueue(item);
+        }
         Pump();
     }
 

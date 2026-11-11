@@ -531,29 +531,47 @@ try {
         if (-not $failed) { throw 'Cancelled Work.GetResult did not throw' }
     }
 
+    Test-Case 'PSDG1_diagnostics_and_explain' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $w = $app.Open('<style>#a{view-transition-name:x}</style><div id="a">x</div><span id="s">s</span>')
+            try { $w.SetText('/home/someone/missing.css?token=SECRET', 't') } catch { }
+            $r = $w.GetDiagnosticsJson() | ConvertFrom-Json
+            if ($r.schema -ne 1 -or $r.items.Count -lt 1) { throw 'No diagnostics' }
+            $raw = $w.GetDiagnosticsJson()
+            if ($raw -match 'SECRET' -or $raw -match '/home/someone') { throw 'Diagnostics were not redacted' }
+            if ($w.GetDiagnosticsJson($false) -notmatch 'SECRET') { throw 'redact=false lost the content' }
+            $cursor = ($r.items | Measure-Object -Property seq -Maximum).Maximum
+            if (@(($w.GetDiagnosticsJson($true, [uint64]$cursor) | ConvertFrom-Json).items).Count -ne 0) { throw 'since cursor ignored' }
+            if (($w.ExplainJson('s', 'width') | ConvertFrom-Json).status -ne 'not_applicable') { throw 'inline width' }
+            if (($w.ExplainJson('a', 'view-transition-name') | ConvertFrom-Json).status -ne 'unsupported') { throw 'unsupported' }
+            if (($w.ExplainJson('gone', 'color') | ConvertFrom-Json).status -ne 'stale_reference') { throw 'stale' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PSBG1_fifty_background_tasks_settle_on_owner' {
         $r = Invoke-Ui4meApp -Backend headless {
             param($app)
             $rows = (0..1499 | ForEach-Object { "<li id=`"r$_`">row $_</li>" }) -join ''
             $window = New-Ui4meWindow "<ul>$rows</ul>"
-            $finished = [System.Collections.Concurrent.ConcurrentQueue[int]]::new()
-            $state = @{ settled = [System.Collections.Generic.List[int]]::new(); threads = @{}; mutations = 0; finished = $finished }
+            $state = @{ settled = [System.Collections.Generic.List[int]]::new(); threads = @{}; mutations = 0; tasks = [System.Collections.Generic.List[object]]::new() }
             $owner = [Environment]::CurrentManagedThreadId
             $null = $app.Timer(1, { $state.mutations++; $window.SetText("r$($state.mutations % 1500)", "changed $($state.mutations)") }, $true)
             $null = $app.Timer(10000, { $app.Stop() }, $false)
             foreach ($n in 0..49) {
-                $null = $app.RunInBackground({ param($n, $q) Start-Sleep -Milliseconds (2 * ($n % 7)); $q.Enqueue($n); $n * $n },
+                $state.tasks.Add($app.RunInBackground({ param($n) Start-Sleep -Milliseconds (2 * ($n % 7)); $n * $n },
                     { param($value)
                         $state.threads[[Environment]::CurrentManagedThreadId] = $true
                         $state.settled.Add([int]$value)
                         if ($state.settled.Count -eq 50) { $app.Stop() } },
-                    { param($e) throw "unexpected error $e" }, @($n, $finished))
+                    { param($e) throw "unexpected error $e" }, @($n)))
             }
             $null = $app.On('stopped', {
                 if ($state.settled.Count -ne 50) { throw "settled $($state.settled.Count)" }
                 if ($state.threads.Count -ne 1 -or -not $state.threads.ContainsKey($owner)) { throw 'Settled off the owner thread' }
-                $order = @($state.finished.ToArray() | ForEach-Object { $_ * $_ })
-                if (($order -join ',') -ne ($state.settled -join ',')) { throw 'Not in completion order' }
+                $seq = @($state.settled | ForEach-Object { $state.tasks[[int][math]::Sqrt($_)].CompletionSequence })
+                for ($i = 1; $i -lt $seq.Count; $i++) { if ($seq[$i] -le $seq[$i - 1]) { throw 'Not in completion order' } }
+                if ((($state.settled | Sort-Object) -join ',') -ne (((0..49 | ForEach-Object { $_ * $_ }) | Sort-Object) -join ',')) { throw 'Wrong values' }
                 if ($state.mutations -lt 1) { throw 'Owner did not render' }
             })
         }

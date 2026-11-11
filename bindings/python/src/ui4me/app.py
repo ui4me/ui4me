@@ -75,6 +75,7 @@ class Task:
         self._value = None
         self._error: BaseException | None = None
         self.state = "pending"
+        self.sequence = 0  # completion order among tasks that ran to an outcome
         self.delivered = False
         self.callback_error: BaseException | None = None
 
@@ -133,8 +134,10 @@ class Task:
                 self.state, self._error = "failed", error
             else:
                 self.state, self._value = "succeeded", value
+            self.sequence = next(self._app._completion_counter)
             self._event.set()
-        self._app._enqueue_settlement(self)
+            # Same critical section: settlement order is exactly completion order.
+            self._app._enqueue_settlement(self)
 
     def _deliver(self) -> None:
         """Owner thread. Never raises: a failing callback is recorded, not allowed to kill the loop."""
@@ -171,6 +174,7 @@ class App:
         self._background_workers = background_workers
         self._max_background_tasks = max_background_tasks
         self._task_lock = threading.Lock()
+        self._completion_counter = itertools.count(1)
         self._tasks: set[Task] = set()
         self._tasks_closed = False
         self._executor: ThreadPoolExecutor | None = None
@@ -825,6 +829,22 @@ class Window:
         "value", "inherited"} | {"status": "unsupported", "feature"} | {"status": "invalid",
         "reason"}}``."""
         return self._command("get_computed_style", element=element, node=node, properties=list(properties))["properties"]
+
+    def get_diagnostics(self, redact: bool = True, since: int | None = None, kinds=None) -> dict:
+        """Developer diagnostics (schema 1): ``{"schema": 1, "items": [{"seq", "kind", "code",
+        "stage", "message", "count", "feature"?, "element"?}], "dropped"}``. ``kind`` is one of
+        css_unsupported, stale_reference, layout, paint, resource, text, command. ``since`` is the
+        highest ``seq`` already seen. Paths and URL queries are redacted unless ``redact=False``."""
+        return self._command("get_diagnostics", redact=redact, since=since,
+                             kinds=None if kinds is None else list(kinds))
+
+    def explain(self, element: str, property: str | None = None) -> dict:
+        """Why a CSS property has no effect on an element: ``{"schema": 1, "property", "element",
+        "status": "applied" | "unsupported" | "overridden" | "not_applicable" | "unknown_property",
+        "reason", "value"?, "feature"?}``. An unknown or removed element answers
+        ``{"status": "stale_reference", ...}``. Without ``property`` the element state and its
+        inline declarations are explained."""
+        return self._command("explain", element=element, property=property)
 
     def get_files(self, element: str) -> list[str]:
         """The paths the user chose in a file input (its ``change`` event carries them as

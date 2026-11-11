@@ -524,22 +524,49 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+class DiagnosticsTests(unittest.TestCase):
+    def test_get_diagnostics_and_explain(self):
+        with App(backend="headless", handle_sigint=False) as app:
+            window = app.open("<style>#a{view-transition-name:x}#h{display:none}</style>"
+                              "<div id=a>x</div><div id=h><p id=c>c</p></div><span id=s>s</span>")
+            with self.assertRaises(Ui4meError):
+                window.set_text("/home/someone/missing.css?token=SECRET", "t")
+            report = window.get_diagnostics()
+            self.assertEqual(sorted(report), ["dropped", "items", "schema"])
+            self.assertEqual(report["schema"], 1)
+            kinds = {item["kind"] for item in report["items"]}
+            self.assertLessEqual({"stale_reference", "css_unsupported"}, kinds)
+            text = json.dumps(report)
+            self.assertNotIn("/home/someone", text)
+            self.assertNotIn("SECRET", text)
+            self.assertIn("SECRET", json.dumps(window.get_diagnostics(redact=False)))
+            cursor = max(item["seq"] for item in report["items"])
+            self.assertEqual(window.get_diagnostics(since=cursor)["items"], [])
+            only = window.get_diagnostics(kinds=["css_unsupported"])["items"]
+            self.assertTrue(only and all(i["kind"] == "css_unsupported" for i in only))
+            with self.assertRaises(Ui4meError):
+                window.get_diagnostics(kinds=["nope"])
+            self.assertEqual(window.explain("s", "width")["status"], "not_applicable")
+            self.assertEqual(window.explain("a", "view-transition-name")["status"], "unsupported")
+            self.assertEqual(window.explain("c", "color")["status"], "not_applicable")
+            self.assertEqual(window.explain("a", "display")["status"], "applied")
+            stale = window.explain("removed", "color")
+            self.assertEqual((stale["status"], stale["element"]), ("stale_reference", "removed"))
+
+
 class BackgroundTaskTests(unittest.TestCase):
     def app(self, **kw):
         return App(backend="headless", handle_sigint=False, **kw)
 
     def test_fifty_tasks_settle_on_owner_during_heavy_rendering(self):
         owner = threading.get_ident()
-        finished, settled, threads, mutations = [], [], set(), [0]
-        lock = threading.Lock()
+        settled, threads, mutations = [], set(), [0]
         rows = "".join('<li id="r%d">row %d</li>' % (i, i) for i in range(1500))
         with self.app() as app:
             window = app.open("<ul>" + rows + "</ul>")
 
             def work(n):
                 time.sleep(0.002 * (n % 7))
-                with lock:
-                    finished.append(n)
                 return n * n
 
             def done(value):
@@ -557,7 +584,8 @@ class BackgroundTaskTests(unittest.TestCase):
             tasks = [app.run_in_background(work, n, on_done=done) for n in range(50)]
             app.run()
         self.assertEqual(threads, {owner})
-        self.assertEqual(settled, [n * n for n in finished])  # completion order
+        ran = sorted(tasks, key=lambda t: t.sequence)
+        self.assertEqual(settled, [t.result(1) for t in ran])  # settled in completion order
         self.assertEqual(sorted(settled), sorted(n * n for n in range(50)))
         self.assertGreater(mutations[0], 0)
         self.assertTrue(all(t.state == "succeeded" and t.delivered for t in tasks))

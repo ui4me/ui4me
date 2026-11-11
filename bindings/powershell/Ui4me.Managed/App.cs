@@ -585,6 +585,13 @@ public sealed class Window
     /// <summary>The text under a viewport point as JSON (null when there is none).</summary>
     public string TextAtPointJson(double x, double y) { Check(); return app.Command(new { op = "text_at_point", window = Id, x, y }).GetProperty("hit").GetRawText(); }
     /// <summary>Computed values (schema 1) of properties of an element, as JSON.</summary>
+    /// <summary>Developer diagnostics, schema 1 (see DIAGNOSTICS_SCHEMA_V1.md): JSON {schema, items, dropped}.
+    /// Paths and URL queries are redacted unless <paramref name="redact"/> is false; <paramref name="since"/> is the
+    /// highest seq already seen (0 = all); <paramref name="kinds"/> filters by kind.</summary>
+    public string GetDiagnosticsJson(bool redact = true, ulong since = 0, string[]? kinds = null) { Check(); return app.Command(new Dictionary<string, object?> { ["op"] = "get_diagnostics", ["window"] = Id, ["redact"] = redact, ["since"] = since == 0 ? null : since, ["kinds"] = kinds is { Length: > 0 } ? kinds : null }).GetRawText(); }
+    /// <summary>Why a CSS property has no effect on an element: JSON {schema, status, reason, ...}; a removed or unknown
+    /// element answers status "stale_reference".</summary>
+    public string ExplainJson(string element, string? property = null, bool redact = true) { Check(); return app.Command(new Dictionary<string, object?> { ["op"] = "explain", ["window"] = Id, ["element"] = element, ["property"] = property, ["redact"] = redact }).GetRawText(); }
     public string ComputedStyleJson(string element, params string[] properties) { Check(); return app.Command(new { op = "get_computed_style", window = Id, element, properties }).GetRawText(); }
     /// <summary>The paths the user chose in a file input.</summary>
     public string[] GetFiles(string element) { Check(); return app.Command(new { op = "get_files", window = Id, element }).GetProperty("files").EnumerateArray().Select(e => e.GetString()!).ToArray(); }
