@@ -197,6 +197,8 @@ pub struct Document {
     ime_resets: u64,
     blink: Option<CaretBlink>,
     started: Instant,
+    /// The one document clock: smooth scroll and CSS transitions and animations (0.9 F0901).
+    clock: crate::pipeline::clock::SharedClock,
     modifiers: Modifiers,
     pointer_buttons: u16,
     pointer: (f64, f64),
@@ -299,6 +301,8 @@ impl Document {
         pipeline.attach_resources(Arc::new(PipelineResources::new(resources.clone(), id, url)))?;
         let mut interaction = InteractionRuntime::with_event_log_capacity(64);
         pipeline.mutate(|d| interaction.attach_document(d))?;
+        let clock = crate::pipeline::clock::SharedClock::default();
+        pipeline.follow_clock(clock.clone());
         let root = pipeline.document().document_node();
         for event in [
             "click",
@@ -331,6 +335,14 @@ impl Document {
             "beforetoggle",
             "cancel",
             "close",
+            "transitionrun",
+            "transitionstart",
+            "transitionend",
+            "transitioncancel",
+            "animationstart",
+            "animationiteration",
+            "animationend",
+            "animationcancel",
         ] {
             interaction.add_listener(
                 pipeline.document(),
@@ -350,6 +362,7 @@ impl Document {
             ime_resets: 0,
             blink: None,
             started: Instant::now(),
+            clock,
             modifiers: Modifiers::default(),
             pointer_buttons: 0,
             pointer: (0.0, 0.0),
@@ -398,6 +411,7 @@ impl Document {
         // Queued element tasks (dialog `close`, `toggle`) run at the end of each host operation.
         let id = self.id();
         crate::interaction::dialog::dispatch_element_tasks(self, id);
+        self.dispatch_animation_events();
         std::mem::take(&mut self.events)
     }
     /// Recheck before each foreign callback: an earlier callback may have removed
@@ -1397,7 +1411,11 @@ impl Document {
             .scroll_anims
             .active()
             .then_some(Duration::from_millis(16));
-        [resources, blink, anim].into_iter().flatten().min()
+        let css = self
+            .pipeline
+            .next_animation_wake_ms()
+            .map(|ms| Duration::from_secs_f64(ms.max(1.0) / 1000.0));
+        [resources, blink, anim, css].into_iter().flatten().min()
     }
     pub fn poll_resources(&mut self) -> Result<bool> {
         let id = self.id();
@@ -1429,6 +1447,7 @@ impl Document {
             changed = true;
         }
         changed |= self.tick_scroll()?;
+        changed |= self.tick_animations(false);
         self.repaint |= changed;
         Ok(changed)
     }
@@ -1751,6 +1770,10 @@ impl DispatchHost for Document {
         field!("pointer_type", pointer_type);
         field!("is_primary", is_primary);
         field!("pressure", pressure);
+        field!("property_name", property_name);
+        field!("animation_name", animation_name);
+        field!("elapsed_time", elapsed_time);
+        field!("pseudo_element", pseudo_element);
         if data.client_x.is_some() {
             value["buttons"] = json!(event.init.buttons);
         }
@@ -2632,9 +2655,12 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 #[cfg(test)]
 mod a11y_text_tests;
 #[cfg(test)]
+mod animation_tests;
+#[cfg(test)]
 mod bidi_tests;
 #[cfg(test)]
 mod controls_tests;
+mod css_animation;
 mod drag;
 pub(crate) mod editable;
 pub mod file_input;

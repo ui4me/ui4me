@@ -99,7 +99,12 @@ pub const ID: &str = CssFeatureProfile::ID;
 /// (`anchor-name` and `position-anchor` compute under Servo): `css.property.anchor-name` and `position-anchor` On; `anchor()` in
 /// `top`/`right`/`bottom`/`left` positions an out-of-flow box against its anchor's border box (layout, every pass). `position-area` and
 /// `position-try*` stay Off (dropped and reported); `anchor-size()` computes but is not applied.
-pub const VERSION: &str = "1.23.0";
+/// 1.24.0 (F0901): CSS transitions and keyframe animations. `@keyframes`, `transition*` and `animation*` (except `animation-timeline`,
+/// `animation-range*`) are On: the document clock (shared with smooth scroll) ticks Stylo's animation sets while one runs.
+/// F0902: `@starting-style` On (carried Stylo patch P-006-18: the starting style is the before-change style of an inserted or newly
+/// displayed element); `steps()`, `cubic-bezier()`, `linear()`, `transition-behavior` and `animation-composition` ride on the
+/// animation tokens. `display` / `content-visibility` discrete animation (`layout.css.display-animations.enabled`) stays Off.
+pub const VERSION: &str = "1.24.0";
 /// The single Stylo revision of the workspace (engine/Cargo.toml; X-DEPS).
 pub const ENGINE_REVISION: &str = "37c1ed3b707c8f333304de2107c13b68fbc1057c";
 

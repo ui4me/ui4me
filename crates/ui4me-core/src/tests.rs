@@ -2508,3 +2508,57 @@ fn pointer_capture_commands_need_a_press_and_a_known_pointer() {
         json!({"element":null})
     );
 }
+
+#[test]
+fn css_animation_requests_frames_only_while_it_runs() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let html = "<style>body{margin:0}@keyframes fade{from{opacity:0}to{opacity:1}}\
+        #a{width:20px;height:20px;background:#000;animation:fade 150ms 1}\
+        </style><div id='a'></div>";
+    let id = cmd(json!({"op":"open","width":200,"height":120,"html":html})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    // The first frame starts the animation, which then asks for frames.
+    h.session.render(id).unwrap();
+    assert!(
+        h.session.deadline().is_some(),
+        "a running animation wants a wake-up"
+    );
+    let start = std::time::Instant::now();
+    let mut frames = 0;
+    while h.session.deadline().is_some() && start.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(16));
+        h.session.process_work();
+        h.session.render(id).unwrap();
+        frames += 1;
+    }
+    assert!(
+        h.session.deadline().is_none(),
+        "no frame requests once the animation ended"
+    );
+    assert!(
+        (2..=60).contains(&frames),
+        "{frames} frames for a 150 ms animation"
+    );
+    let types: Vec<String> = h
+        .events()
+        .iter()
+        .filter_map(|e| e["type"].as_str().map(str::to_string))
+        .filter(|t| t.starts_with("animation"))
+        .collect();
+    assert_eq!(types, ["animationstart", "animationend"]);
+    // An infinite animation keeps asking, a closed window stops asking.
+    let id = cmd(json!({"op":"open","width":200,"height":120,"html":
+        "<style>@keyframes s{from{opacity:0}to{opacity:1}}#a{width:20px;height:20px;background:#000;animation:s 1s infinite}</style><div id='a'></div>"}))
+    .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    h.session.render(id).unwrap();
+    assert!(h.session.deadline().is_some());
+    cmd(json!({"op":"close","window":id})).unwrap();
+    assert!(
+        h.session.deadline().is_none(),
+        "a closed window drops its animations"
+    );
+}

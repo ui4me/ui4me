@@ -36,8 +36,6 @@ pub(super) struct ScrollAnim {
 #[derive(Debug, Default)]
 pub(super) struct ScrollAnims {
     pub(super) list: Vec<ScrollAnim>,
-    /// A test clock (ms); `None` is monotonic real time.
-    manual: Option<f64>,
 }
 
 impl ScrollAnims {
@@ -130,22 +128,20 @@ pub(super) fn choose(
 
 impl Document {
     fn scroll_now(&self) -> f64 {
-        self.scroll_anims
-            .manual
-            .unwrap_or_else(|| self.started.elapsed().as_secs_f64() * 1000.0)
+        self.clock.now()
     }
-    /// Switch the scroll animation clock to a manual one that only [`Self::advance_scroll_clock`]
-    /// moves (tests and fixtures).
-    pub fn use_manual_scroll_clock(&mut self) {
-        let now = self.scroll_now();
-        self.scroll_anims.manual = Some(now);
+    /// Switch the document clock (smooth scroll and CSS animations) to a manual one that only
+    /// [`Self::advance_clock`] moves (tests and fixtures).
+    pub fn use_manual_clock(&mut self) {
+        self.clock.use_manual();
     }
-    /// Advance the manual scroll clock by `ms` and run the animations. Returns whether any
-    /// offset changed.
-    pub fn advance_scroll_clock(&mut self, ms: f64) -> Result<bool> {
-        let now = self.scroll_now();
-        self.scroll_anims.manual = Some(now + ms.max(0.0));
-        self.tick_scroll()
+    /// Advance the manual document clock by `ms` and run the scroll and CSS animations. Returns
+    /// whether any scroll offset or animated value changed.
+    pub fn advance_clock(&mut self, ms: f64) -> Result<bool> {
+        self.clock.advance(ms);
+        let scrolled = self.tick_scroll()?;
+        let animated = self.tick_animations(true);
+        Ok(scrolled || animated)
     }
     /// Is a smooth scroll of `element` (or the viewport for `None`) running?
     pub fn is_scroll_animating(&self, element: Option<&str>) -> bool {
