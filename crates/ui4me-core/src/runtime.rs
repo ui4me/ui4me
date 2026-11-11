@@ -1098,6 +1098,50 @@ impl Session {
                 target,
                 position,
             } => self.mutate(window, |d| d.move_element(&element, &target, &position))?,
+            Command::GetHtml {
+                window,
+                element,
+                node,
+                outer,
+            } => self.with_window(window, |w| {
+                Ok(json!({"html": w.document.get_html(element.as_deref(), node.as_deref(), outer)?}))
+            })?,
+            Command::AddStylesheet { window, css } => {
+                let mut out = Value::Null;
+                self.mutate(window, |d| {
+                    out = d.add_stylesheet(&css)?;
+                    Ok(())
+                })?;
+                out
+            }
+            Command::ReplaceStylesheet { window, sheet, css } => {
+                let mut out = Value::Null;
+                self.mutate(window, |d| {
+                    out = d.replace_stylesheet(sheet, &css)?;
+                    Ok(())
+                })?;
+                out
+            }
+            Command::RemoveStylesheet { window, sheet } => {
+                self.mutate(window, |d| d.remove_stylesheet(sheet))?
+            }
+            Command::ListStylesheets { window } => self.with_window(window, |w| {
+                Ok(json!({"sheets": w.document.list_stylesheets()}))
+            })?,
+            Command::NodeOf { window, element } => self.with_window(window, |w| {
+                Ok(json!({"node": w.document.node_of(element.as_deref())?}))
+            })?,
+            Command::GetNode { window, node } => {
+                self.with_window(window, |w| Ok(w.document.get_node(&node)?))?
+            }
+            Command::NodeChildren {
+                window,
+                node,
+                offset,
+                limit,
+            } => self.with_window(window, |w| {
+                Ok(w.document.node_children(&node, offset, limit)?)
+            })?,
             Command::GetText { window, element } => self.with_window(window, |w| {
                 Ok(json!({"text": w.document.get_text(&element)?}))
             })?,

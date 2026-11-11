@@ -2426,6 +2426,7 @@ mod a11y_text_tests;
 mod bidi_tests;
 #[cfg(test)]
 mod focus_pointer_tests;
+pub mod public_dom;
 mod selection;
 #[cfg(test)]
 mod tests;

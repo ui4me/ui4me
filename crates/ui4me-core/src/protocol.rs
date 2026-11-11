@@ -69,6 +69,9 @@ fn nearest() -> String {
 fn yes() -> bool {
     true
 }
+fn children_limit() -> usize {
+    256
+}
 fn query_limit() -> usize {
     1024
 }
@@ -167,6 +170,51 @@ pub enum Command {
         element: String,
         target: String,
         position: String,
+    },
+    /// HTML serialization (0.6 F0601): `element` or `node`, or the whole document.
+    GetHtml {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default)]
+        node: Option<String>,
+        #[serde(default)]
+        outer: bool,
+    },
+    /// Author stylesheets (0.6 F0602).
+    AddStylesheet {
+        window: u64,
+        css: String,
+    },
+    ReplaceStylesheet {
+        window: u64,
+        sheet: u64,
+        css: String,
+    },
+    RemoveStylesheet {
+        window: u64,
+        sheet: u64,
+    },
+    ListStylesheets {
+        window: u64,
+    },
+    /// Node references and traversal (0.6 F0604).
+    NodeOf {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+    },
+    GetNode {
+        window: u64,
+        node: String,
+    },
+    NodeChildren {
+        window: u64,
+        node: String,
+        #[serde(default)]
+        offset: usize,
+        #[serde(default = "children_limit")]
+        limit: usize,
     },
     GetText {
         window: u64,

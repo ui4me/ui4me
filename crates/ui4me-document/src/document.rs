@@ -793,6 +793,14 @@ impl Document {
                 }
                 None
             })
+            // Attached author sheets (A-15) follow the document's own sources, in attachment order.
+            .chain(self.attachments.sheets.iter().map(|(_, css)| StyleSource {
+                node: self.arena.document(),
+                line: 0,
+                text: css.clone(),
+                href: None,
+                media: None,
+            }))
             .collect()
     }
 

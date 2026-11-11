@@ -404,6 +404,14 @@ try {
             if ($app.MonitorsJson() -ne '[]') { throw 'Headless should report no monitors' }
             $caps = $app.CapabilitiesJson() | ConvertFrom-Json
             if ($caps.backend -ne 'headless' -or $caps.features.'window.focus'.status -ne 'unavailable' -or -not $caps.features.'window.focus'.reason) { throw "Headless capabilities: $($app.CapabilitiesJson())" }
+            $doc = $app.Open('<div id=box><span>no id</span>žluť</div>')
+            if ($doc.GetHtml('box', $null, $false) -ne '<span>no id</span>žluť') { throw "inner html: $($doc.GetHtml('box', $null, $false))" }
+            $sheet = $doc.AddStylesheet('#box{width:77px}') | ConvertFrom-Json
+            if ($doc.GetRect('box').Width -ne 77) { throw 'stylesheet not applied' }
+            $doc.RemoveStylesheet($sheet.sheet)
+            $kids = $doc.NodeChildrenJson($doc.NodeOf('box'), 0, 256) | ConvertFrom-Json
+            if ($kids.total -ne 2 -or $kids.children[0].name -ne 'span') { throw "children: $($kids | ConvertTo-Json -Compress)" }
+            if (($doc.NodeJson($kids.children[1].node) | ConvertFrom-Json).text -ne 'žluť') { throw 'text node' }
             $styled = $app.Open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>')
             $env = $styled.SetEnvironment('dark', $null) | ConvertFrom-Json
             if ($env.color_scheme -ne 'dark' -or $env.color_scheme_source -ne 'app' -or $styled.GetRect('b').Width -ne 20) { throw "Dark override: $($styled.EnvironmentJson())" }

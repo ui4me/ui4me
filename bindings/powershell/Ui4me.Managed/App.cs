@@ -525,6 +525,18 @@ public sealed class Window
         return Scroll(app.Command(request));
     }
     public void ScrollIntoView(string element, string block = "nearest", string inline = "nearest") { Check(); app.Command(new { op = "scroll_into_view", window = Id, element, block, inline }); }
+    static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
+    /// <summary>Serialize an element (by id), a node reference, or the whole document (both empty).</summary>
+    public string GetHtml(string? element = null, string? node = null, bool outer = false) { Check(); return app.Command(new { op = "get_html", window = Id, element = NullIfEmpty(element), node = NullIfEmpty(node), outer }).GetProperty("html").GetString()!; }
+    /// <summary>Attach an author stylesheet; returns JSON {sheet, diagnostics}.</summary>
+    public string AddStylesheet(string css) { Check(); return app.Command(new { op = "add_stylesheet", window = Id, css }).GetRawText(); }
+    public string ReplaceStylesheet(long sheet, string css) { Check(); return app.Command(new { op = "replace_stylesheet", window = Id, sheet, css }).GetRawText(); }
+    public void RemoveStylesheet(long sheet) { Check(); app.Command(new { op = "remove_stylesheet", window = Id, sheet }); }
+    public string StylesheetsJson() { Check(); return app.Command(new { op = "list_stylesheets", window = Id }).GetProperty("sheets").GetRawText(); }
+    /// <summary>The node reference of an element, or of the document when empty.</summary>
+    public string NodeOf(string? element = null) { Check(); return app.Command(new { op = "node_of", window = Id, element = NullIfEmpty(element) }).GetProperty("node").GetString()!; }
+    public string NodeJson(string node) { Check(); return app.Command(new { op = "get_node", window = Id, node }).GetRawText(); }
+    public string NodeChildrenJson(string node, int offset = 0, int limit = 256) { Check(); return app.Command(new { op = "node_children", window = Id, node, offset, limit }).GetRawText(); }
     /// <summary>Override media preferences (colorScheme light/dark/system, reducedMotion
     /// reduce/no-preference/system; null or empty leaves one as it is — PowerShell passes $null to a
     /// string parameter as ""). Returns the environment JSON.</summary>

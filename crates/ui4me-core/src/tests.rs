@@ -1602,3 +1602,182 @@ fn removing_the_focused_node_or_an_open_modal_in_a_callback_leaves_no_stale_targ
         .values()
         .any(|n| n.html_id.as_deref() == Some("after")));
 }
+
+#[test]
+fn html_serialization_stylesheets_and_node_traversal() {
+    // 0.6 F0601/F0602/F0604.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<div id=box class='a b' data-x=\"1 &amp; 2\"><p>Příliš <b>žluťoučký</b> kůň</p><span>no id</span><!--c--></div><template id=tpl><i>inside</i></template><input id=f value=typed>"})).unwrap()["window"].as_u64().unwrap();
+    // Serialization: inner/outer/document; attributes escaped, Unicode kept, control values not markup.
+    let inner = cmd(json!({"op":"get_html","window":id,"element":"box"})).unwrap()["html"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        inner,
+        "<p>Příliš <b>žluťoučký</b> kůň</p><span>no id</span><!--c-->"
+    );
+    let outer = cmd(json!({"op":"get_html","window":id,"element":"box","outer":true})).unwrap()
+        ["html"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        outer.starts_with("<div id=\"box\" class=\"a b\" data-x=\"1 &amp; 2\">"),
+        "{outer}"
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"element":"tpl"})).unwrap()["html"],
+        "<i>inside</i>"
+    );
+    let doc = cmd(json!({"op":"get_html","window":id})).unwrap()["html"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        doc.starts_with("<html><head></head><body>")
+            && doc.contains("<input id=\"f\" value=\"typed\">"),
+        "{doc}"
+    );
+    // Round trip: inner HTML re-inserted elsewhere yields the same markup.
+    cmd(json!({"op":"insert_html","window":id,"element":"box","position":"afterend","html":format!("<div id=copy>{inner}</div>")})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"element":"copy"})).unwrap()["html"],
+        inner.as_str()
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"element":"nope"}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    // Stylesheets: add (with diagnostics), replace, list order, remove, stale ids.
+    let w = |e: &str| {
+        cmd(json!({"op":"get_rect","window":id,"element":e})).unwrap()["rect"]["width"]
+            .as_f64()
+            .unwrap()
+    };
+    let added =
+        cmd(json!({"op":"add_stylesheet","window":id,"css":"#box{width:120px} p{colr:red}"}))
+            .unwrap();
+    let sheet = added["sheet"].as_u64().unwrap();
+    assert_eq!(w("box"), 120.0);
+    assert!(
+        added["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["line"] == 1),
+        "{added}"
+    );
+    cmd(json!({"op":"replace_stylesheet","window":id,"sheet":sheet,"css":"#box{width:150px}"}))
+        .unwrap();
+    assert_eq!(w("box"), 150.0);
+    let second = cmd(json!({"op":"add_stylesheet","window":id,"css":"#box{width:90px}"})).unwrap()
+        ["sheet"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(w("box"), 90.0, "later sheets win");
+    let list = cmd(json!({"op":"list_stylesheets","window":id})).unwrap()["sheets"].clone();
+    assert_eq!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["kind"] == "attached")
+            .map(|s| s["sheet"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![sheet, second]
+    );
+    cmd(json!({"op":"remove_stylesheet","window":id,"sheet":second})).unwrap();
+    assert_eq!(w("box"), 150.0);
+    assert_eq!(
+        cmd(json!({"op":"remove_stylesheet","window":id,"sheet":second}))
+            .unwrap_err()
+            .code,
+        4
+    );
+    assert_eq!(
+        cmd(json!({"op":"replace_stylesheet","window":id,"sheet":999,"css":""}))
+            .unwrap_err()
+            .code,
+        4
+    );
+    // Traversal: unidentified elements, text, comments, template contents, stale references.
+    let boxref = cmd(json!({"op":"node_of","window":id,"element":"box"})).unwrap()["node"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let kids = cmd(json!({"op":"node_children","window":id,"node":boxref})).unwrap();
+    assert_eq!(kids["total"], 3);
+    let types: Vec<_> = kids["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["type"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(types, ["element", "element", "comment"]);
+    let span = kids["children"][1]["node"].as_str().unwrap().to_owned();
+    let node = cmd(json!({"op":"get_node","window":id,"node":span})).unwrap();
+    assert_eq!(
+        (
+            node["name"].as_str(),
+            node["id"].clone(),
+            node["parent"].as_str()
+        ),
+        (Some("span"), Value::Null, Some(boxref.as_str()))
+    );
+    let text = cmd(json!({"op":"node_children","window":id,"node":span})).unwrap()["children"][0]
+        ["node"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        cmd(json!({"op":"get_node","window":id,"node":text})).unwrap()["text"],
+        "no id"
+    );
+    let tpl = cmd(json!({"op":"get_node","window":id,"node":cmd(json!({"op":"node_of","window":id,"element":"tpl"})).unwrap()["node"]})).unwrap();
+    let content = tpl["content"].as_str().unwrap().to_owned();
+    assert_eq!(
+        cmd(json!({"op":"node_children","window":id,"node":content})).unwrap()["children"][0]
+            ["name"],
+        "i"
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"node":span,"outer":true})).unwrap()["html"],
+        "<span>no id</span>"
+    );
+    let docref = cmd(json!({"op":"node_of","window":id})).unwrap()["node"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        cmd(json!({"op":"get_node","window":id,"node":docref})).unwrap()["type"],
+        "document"
+    );
+    assert_eq!(
+        cmd(json!({"op":"node_children","window":id,"node":boxref,"limit":0}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_node","window":id,"node":"garbage"}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    cmd(json!({"op":"remove_element","window":id,"element":"box"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_node","window":id,"node":span}))
+            .unwrap_err()
+            .code,
+        4
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id,"node":boxref}))
+            .unwrap_err()
+            .code,
+        4
+    );
+}

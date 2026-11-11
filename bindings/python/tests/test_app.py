@@ -302,6 +302,30 @@ class BindingTests(unittest.TestCase):
             app.run()
             self.assertEqual(closes, ["done"])
 
+    def test_document_html_stylesheets_and_nodes(self):
+        with self.app() as app:
+            w = app.open("<div id=box><span>no id</span>žluť</div>")
+            self.assertEqual(w.get_html("box"), "<span>no id</span>žluť")
+            self.assertTrue(w.get_html("box", outer=True).startswith('<div id="box">'))
+            sheet = w.add_stylesheet("#box{width:77px} p{colr:red}")
+            self.assertTrue(sheet["diagnostics"])
+            self.assertEqual(w.get_rect("box")["width"], 77)
+            w.replace_stylesheet(sheet["sheet"], "#box{width:66px}")
+            self.assertEqual(w.get_rect("box")["width"], 66)
+            self.assertEqual([s["kind"] for s in w.stylesheets()], ["attached"])
+            w.remove_stylesheet(sheet["sheet"])
+            with self.assertRaises(Ui4meError):
+                w.remove_stylesheet(sheet["sheet"])
+            ref = w.node_of("box")
+            kids = w.node_children(ref)
+            self.assertEqual((kids["total"], kids["children"][0]["name"]), (2, "span"))
+            text = kids["children"][1]["node"]
+            self.assertEqual(w.get_node(text)["text"], "žluť")
+            self.assertEqual(w.get_html(node=kids["children"][0]["node"], outer=True), "<span>no id</span>")
+            w.remove_element("box")
+            with self.assertRaises(Ui4meError):
+                w.get_node(ref)
+
     def test_window_actions_and_state(self):
         with self.app() as app:
             window = app.open("<p>w</p>")

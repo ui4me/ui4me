@@ -487,6 +487,40 @@ class Window:
     def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest") -> None:
         self._command("scroll_into_view", element=element, block=block, inline=inline)
 
+    def get_html(self, element: str | None = None, *, node: str | None = None, outer: bool = False) -> str:
+        """Serialize an element (by ``id``), a node reference, or the whole document; ``outer``
+        includes the node itself. Control values typed by the user are not markup."""
+        return self._command("get_html", element=element, node=node, outer=outer)["html"]
+
+    def add_stylesheet(self, css: str) -> dict:
+        """Attach an author stylesheet after the document's own; returns ``{"sheet": id,
+        "diagnostics": [...]}`` (invalid rules are reported and dropped)."""
+        return self._command("add_stylesheet", css=css)
+
+    def replace_stylesheet(self, sheet: int, css: str) -> dict:
+        return self._command("replace_stylesheet", sheet=sheet, css=css)
+
+    def remove_stylesheet(self, sheet: int) -> None:
+        self._command("remove_stylesheet", sheet=sheet)
+
+    def stylesheets(self) -> list[dict]:
+        """Stylesheet sources in cascade order: ``style``/``link`` elements, then attached sheets."""
+        return self._command("list_stylesheets")["sheets"]
+
+    def node_of(self, element: str | None = None) -> str:
+        """The node reference (``node:<index>:<generation>``) of an element, or of the document."""
+        return self._command("node_of", element=element)["node"]
+
+    def get_node(self, node: str) -> dict:
+        """One node: ``type``, ``name``, ``id``, ``attributes``, ``text``, ``parent``,
+        ``previous``, ``next``, ``child_count`` (and ``content`` of a template). A removed
+        node's reference is a stale-handle error."""
+        return self._command("get_node", node=node)
+
+    def node_children(self, node: str, *, offset: int = 0, limit: int = 256) -> dict:
+        """``{"children": [{"node", "type", "name", "id"}...], "total"}`` (limit 1..4096)."""
+        return self._command("node_children", node=node, offset=offset, limit=limit)
+
     def set_environment(self, *, color_scheme: str | None = None, reduced_motion: str | None = None) -> dict:
         """Override media preferences: ``color_scheme`` ``light``/``dark``/``system`` and
         ``reduced_motion`` ``reduce``/``no-preference``/``system`` (``None`` leaves one as it is).
