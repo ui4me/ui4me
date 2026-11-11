@@ -976,6 +976,41 @@ impl Session {
                 let from_start = protocol::trim_from_start(&from)?;
                 self.mutate(window, |d| d.trim_children(&element, keep, from_start))?
             }
+            Command::ShowDialog {
+                window,
+                element,
+                modal,
+            } => self.query(window, |d| {
+                d.show_dialog(&element, modal).map(|()| json!({}))
+            })?,
+            Command::CloseDialog {
+                window,
+                element,
+                return_value,
+            } => self.query(window, |d| {
+                d.close_dialog(&element, return_value.as_deref())
+                    .map(|()| json!({}))
+            })?,
+            Command::GetDialog { window, element } => self.with_window(window, |w| {
+                let (open, modal, return_value) = w.document.dialog_state(&element)?;
+                Ok(json!({"open":open,"modal":modal,"return_value":return_value}))
+            })?,
+            Command::GetOptions { window, element } => self.with_window(window, |w| {
+                let options: Vec<Value> = w
+                    .document
+                    .select_options(&element)?
+                    .into_iter()
+                    .map(|(value, label, selected, disabled)| {
+                        json!({"value":value,"label":label,"selected":selected,"disabled":disabled})
+                    })
+                    .collect();
+                Ok(json!({"options": options}))
+            })?,
+            Command::SetSelectedValues {
+                window,
+                element,
+                values,
+            } => self.mutate(window, |d| d.set_selected_values(&element, &values))?,
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {

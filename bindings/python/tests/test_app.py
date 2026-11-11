@@ -281,6 +281,26 @@ class BindingTests(unittest.TestCase):
             window.trim_children("log", 10, from_="end")
             self.assertEqual(window.query("#log > div:last-child"), ["l209"])
 
+    def test_dialog_and_select(self):
+        with self.app() as app:
+            window = app.open('<button id="b">Open</button><dialog id="d"><input id="i"></dialog>'
+                              '<select id="s"><option value="a">A</option><option value="b">B</option></select>'
+                              '<select id="m" multiple><option value="x">X</option><option value="y">Y</option></select>')
+            closes = []
+            window.on("close", lambda e: closes.append(e.get("return_value")), element="d")
+            window.show_dialog("d")
+            self.assertEqual(window.get_dialog("d"), {"open": True, "modal": True, "return_value": ""})
+            self.assertEqual(window.query(":focus"), ["i"])
+            window.close_dialog("d", "done")
+            self.assertFalse(window.get_dialog("d")["open"])
+            window.set_value("s", "b")
+            self.assertEqual(window.get_value("s"), "b")
+            window.set_selected_values("m", ["x", "y"])
+            self.assertEqual([o["selected"] for o in window.get_options("m")], [True, True])
+            app.on("started", lambda _: app.stop())
+            app.run()
+            self.assertEqual(closes, ["done"])
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

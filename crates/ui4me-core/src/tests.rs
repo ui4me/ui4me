@@ -908,3 +908,151 @@ fn scroll_geometry_into_view_and_follow_end() {
     cmd(json!({"op":"set_attribute","window":id,"element":"full","name":"style","value":"display:none"})).unwrap();
     assert_eq!(rect("full"), Value::Null);
 }
+
+#[test]
+fn dialog_details_select_and_labels() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":600,"height":400,"html":"<button id='opener'>Open</button><label id='lbl' for='name'>Name</label><input id='name'>\
+        <dialog id='dlg'><input id='first'><button id='ok'>OK</button></dialog>\
+        <details id='det'><summary id='sum'>More</summary><p>Hidden</p></details>\
+        <select id='pick'><option value='a'>Alpha</option><option value='b'>Beta</option><option value='c' disabled>Gamma</option></select>\
+        <select id='many' multiple><option value='x'>X</option><option value='y'>Y</option><option value='z'>Z</option></select>"})).unwrap()["window"].as_u64().unwrap();
+    let focus =
+        || cmd(json!({"op":"query","window":id,"selector":":focus"})).unwrap()["elements"].clone();
+    let key = |k: &str, shift: bool| {
+        for pressed in [true, false] {
+            h.session
+                .input(
+                    id,
+                    crate::document::Input::Key {
+                        key: k.into(),
+                        code: k.into(),
+                        pressed,
+                        repeat: false,
+                        shift,
+                        ctrl: false,
+                        alt: false,
+                        meta: false,
+                    },
+                )
+                .unwrap();
+        }
+    };
+    let events = |ty: &str| {
+        h.events()
+            .into_iter()
+            .filter(|e| e["type"] == ty)
+            .collect::<Vec<_>>()
+    };
+    // Modal dialog: focus moves in, the rest is inert, Tab stays inside, Escape closes and restores focus.
+    cmd(json!({"op":"focus","window":id,"element":"opener"})).unwrap();
+    cmd(json!({"op":"show_dialog","window":id,"element":"dlg"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_dialog","window":id,"element":"dlg"})).unwrap(),
+        json!({"open":true,"modal":true,"return_value":""})
+    );
+    assert_eq!(focus(), json!(["first"]));
+    assert!(
+        cmd(json!({"op":"focus","window":id,"element":"name"})).is_err(),
+        "outside a modal dialog is inert"
+    );
+    for _ in 0..3 {
+        key("Tab", false);
+        let f = focus();
+        assert!(
+            f == json!(["ok"]) || f == json!(["first"]) || f == json!(["dlg"]),
+            "focus escaped the modal dialog: {f}"
+        );
+    }
+    key("Escape", false);
+    assert_eq!(
+        cmd(json!({"op":"get_dialog","window":id,"element":"dlg"})).unwrap()["open"],
+        false
+    );
+    assert_eq!(focus(), json!(["opener"]), "focus returns to the opener");
+    assert_eq!(events("cancel").len(), 1);
+    assert_eq!(events("close").last().unwrap()["element"], "dlg");
+    // close with a return value; a cancel rule keeps the dialog open on Escape.
+    cmd(json!({"op":"show_dialog","window":id,"element":"dlg"})).unwrap();
+    cmd(json!({"op":"close_dialog","window":id,"element":"dlg","return_value":"ok"})).unwrap();
+    assert_eq!(events("close").last().unwrap()["return_value"], "ok");
+    cmd(json!({"op":"set_default_action","window":id,"element":"dlg","event":"cancel"})).unwrap();
+    cmd(json!({"op":"show_dialog","window":id,"element":"dlg","modal":true})).unwrap();
+    key("Escape", false);
+    assert_eq!(
+        cmd(json!({"op":"get_dialog","window":id,"element":"dlg"})).unwrap()["open"],
+        true
+    );
+    cmd(json!({"op":"close_dialog","window":id,"element":"dlg"})).unwrap();
+    assert!(cmd(json!({"op":"show_dialog","window":id,"element":"opener"})).is_err());
+    // details: activating the summary toggles and reports `toggle`.
+    cmd(json!({"op":"focus","window":id,"element":"sum"})).unwrap();
+    key("Enter", false);
+    assert_eq!(
+        cmd(json!({"op":"get_attribute","window":id,"element":"det","name":"open"})).unwrap()
+            ["value"],
+        ""
+    );
+    assert_eq!(events("toggle").last().unwrap()["new_state"], "open");
+    // select: keyboard changes commit, disabled options are skipped, options are readable.
+    cmd(json!({"op":"focus","window":id,"element":"pick"})).unwrap();
+    key("ArrowDown", false);
+    assert_eq!(
+        cmd(json!({"op":"get_value","window":id,"element":"pick"})).unwrap()["value"],
+        "b"
+    );
+    key("ArrowDown", false);
+    assert_eq!(
+        cmd(json!({"op":"get_value","window":id,"element":"pick"})).unwrap()["value"],
+        "b",
+        "disabled option skipped"
+    );
+    assert!(events("commit")
+        .iter()
+        .any(|e| e["element"] == "pick" && e["value"] == "b"));
+    let options =
+        cmd(json!({"op":"get_options","window":id,"element":"pick"})).unwrap()["options"].clone();
+    assert_eq!(
+        options[2],
+        json!({"value":"c","label":"Gamma","selected":false,"disabled":true})
+    );
+    cmd(json!({"op":"set_selected_values","window":id,"element":"many","values":["x","z"]}))
+        .unwrap();
+    let many: Vec<bool> = cmd(json!({"op":"get_options","window":id,"element":"many"})).unwrap()
+        ["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["selected"].as_bool().unwrap())
+        .collect();
+    assert_eq!(many, vec![true, false, true]);
+    assert!(cmd(
+        json!({"op":"set_selected_values","window":id,"element":"pick","values":["a","b"]})
+    )
+    .is_err());
+    assert!(cmd(
+        json!({"op":"set_selected_values","window":id,"element":"pick","values":["nope"]})
+    )
+    .is_err());
+    // A label click focuses its control.
+    let r = cmd(json!({"op":"get_rect","window":id,"element":"lbl"})).unwrap()["rect"].clone();
+    let (x, y) = (
+        r["x"].as_f64().unwrap() + 3.0,
+        r["y"].as_f64().unwrap() + 3.0,
+    );
+    for pressed in [true, false] {
+        h.session
+            .input(
+                id,
+                crate::document::Input::PointerButton {
+                    pressed,
+                    button: 0,
+                    x,
+                    y,
+                },
+            )
+            .unwrap();
+    }
+    assert_eq!(focus(), json!(["name"]));
+}

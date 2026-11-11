@@ -371,6 +371,26 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21g_dialog_select' {
+        $closes = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<button id="b">Open</button><dialog id="d"><input id="i"></dialog><select id="s"><option value="a">A</option><option value="b">B</option></select><select id="m" multiple><option value="x">X</option><option value="y">Y</option></select>')
+            $seen = [Collections.Generic.List[string]]::new()
+            $null = $window.On('close', { param($e) $seen.Add($e.ReturnValue) }, 'd')
+            $window.ShowDialog('d', $true)
+            $state = $window.GetDialog('d')
+            if (-not $state.Open -or -not $state.Modal) { throw 'Dialog did not open modally' }
+            if (($window.Query(':focus') -join ',') -ne 'i') { throw 'Dialog did not take focus' }
+            $window.CloseDialog('d', 'done')
+            $window.SetValue('s', 'b')
+            if ($window.GetValue('s') -ne 'b') { throw 'Select value is wrong' }
+            $window.SetSelectedValues('m', @('x', 'y'))
+            if (@($window.GetOptions('m') | Where-Object Selected).Count -ne 2) { throw 'Multiple selection is wrong' }
+            $null = $app.On('started', { $app.Stop() })
+            Write-Output -NoEnumerate $seen
+        }
+        if (($closes -join ',') -ne 'done') { throw "Dialog close event return value: $($closes -join ',')" }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)

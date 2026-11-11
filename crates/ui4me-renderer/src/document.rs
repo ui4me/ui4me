@@ -287,6 +287,9 @@ impl Document {
             "compositionend",
             "submit",
             "reset",
+            "toggle",
+            "cancel",
+            "close",
         ] {
             interaction.add_listener(
                 pipeline.document(),
@@ -339,6 +342,9 @@ impl Document {
         self.repaint || self.pipeline.state() == PipelineState::Dirty
     }
     pub fn drain_events(&mut self) -> Vec<Value> {
+        // Queued element tasks (dialog `close`, `toggle`) run at the end of each host operation.
+        let id = self.id();
+        crate::interaction::dialog::dispatch_element_tasks(self, id);
         std::mem::take(&mut self.events)
     }
     /// Recheck before each foreign callback: an earlier callback may have removed
@@ -366,7 +372,11 @@ impl Document {
     }
     pub fn get_value(&self, element: &str) -> Result<String> {
         let n = self.node(element)?;
-        match self.pipeline.document().control_value(n) {
+        let d = self.pipeline.document();
+        if d.local_name(n)? == "select" {
+            return Ok(d.select_value(n));
+        }
+        match d.control_value(n) {
             Some(value) => Ok(value),
             None => Ok(self.pipeline.text_content(n)?),
         }
@@ -872,6 +882,97 @@ impl Document {
             false,
         )
     }
+    /// `dialog.show()` / `dialog.showModal()`: a modal dialog enters the top layer, makes the rest
+    /// of the document inert, and focuses its autofocus or first focusable element; Escape
+    /// requests a close (`cancel`, then `close`) and focus returns to the previous element.
+    pub fn show_dialog(&mut self, element: &str, modal: bool) -> Result<()> {
+        let n = self.node(element)?;
+        if !crate::interaction::dialog::is_dialog(self.pipeline.document(), n) {
+            return Err(arg("show_dialog requires a dialog element"));
+        }
+        let id = self.id();
+        crate::interaction::dialog::show(self, id, n, modal)?;
+        self.repaint = true;
+        Ok(())
+    }
+    /// `dialog.close(returnValue)`; nothing when the dialog is not open.
+    pub fn close_dialog(&mut self, element: &str, return_value: Option<&str>) -> Result<()> {
+        if let Some(v) = return_value {
+            check_text(v)?;
+        }
+        let n = self.node(element)?;
+        if !crate::interaction::dialog::is_dialog(self.pipeline.document(), n) {
+            return Err(arg("close_dialog requires a dialog element"));
+        }
+        let id = self.id();
+        crate::interaction::dialog::close(self, id, n, return_value)?;
+        self.repaint = true;
+        Ok(())
+    }
+    /// `dialog.returnValue` and whether the dialog is open and modal.
+    pub fn dialog_state(&self, element: &str) -> Result<(bool, bool, String)> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        if !crate::interaction::dialog::is_dialog(d, n) {
+            return Err(arg("dialog_state requires a dialog element"));
+        }
+        let open = d.has_attribute(n, "open")?;
+        let modal = d
+            .ui_flags(n)
+            .is_ok_and(|f| f.contains(ui4me_document::ui_state::UiFlags::MODAL));
+        Ok((
+            open,
+            modal,
+            self.interaction.dialog_return_value(self.id(), n),
+        ))
+    }
+    /// Options of a `select` in order: (value, label, selected, disabled).
+    pub fn select_options(&self, element: &str) -> Result<Vec<(String, String, bool, bool)>> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        if d.local_name(n)? != "select" {
+            return Err(arg("select_options requires a select element"));
+        }
+        Ok(d.select_options(n)
+            .into_iter()
+            .map(|o| {
+                (
+                    d.option_value(o),
+                    d.option_label(o),
+                    d.option_selected(o),
+                    d.option_disabled(o),
+                )
+            })
+            .collect())
+    }
+    /// Select exactly the options whose values are in `values` (one at most for a single select).
+    pub fn set_selected_values(&mut self, element: &str, values: &[String]) -> Result<()> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        if d.local_name(n)? != "select" {
+            return Err(arg("set_selected_values requires a select element"));
+        }
+        if !d.select_is_multiple(n) && values.len() > 1 {
+            return Err(arg("A single select takes at most one value"));
+        }
+        let options = d.select_options(n);
+        for v in values {
+            if !options.iter().any(|&o| &d.option_value(o) == v) {
+                return Err(arg(format!("No option with value {v:?}")));
+            }
+        }
+        self.pipeline.mutate(|d| {
+            if values.is_empty() {
+                return d.select_set_selected_index(n, -1);
+            }
+            for &o in &options {
+                d.option_set_selected(o, values.contains(&d.option_value(o)))?;
+            }
+            Ok(())
+        })?;
+        self.after_mutation(false);
+        Ok(())
+    }
     /// Literal text content of `element` (not a control's value).
     pub fn get_text(&self, element: &str) -> Result<String> {
         let n = self.node(element)?;
@@ -1315,6 +1416,9 @@ impl DispatchHost for Document {
                 value["checked"] = json!(checked);
             }
         }
+        if d.local_name(node).is_ok_and(|t| t == "select") {
+            value["value"] = json!(d.select_value(node));
+        }
         let data = &event.init.data;
         macro_rules! field {
             ($name:literal,$field:ident) => {
@@ -1334,6 +1438,11 @@ impl DispatchHost for Document {
         field!("repeat", repeat);
         field!("input_type", input_type);
         field!("is_composing", is_composing);
+        field!("old_state", old_state);
+        field!("new_state", new_state);
+        if inv.event_type == "close" && crate::interaction::dialog::is_dialog(d, node) {
+            value["return_value"] = json!(self.interaction.dialog_return_value(self.id(), node));
+        }
         let m = event.init.modifiers;
         if event.init.cancelable {
             value["default_prevented"] = json!(event.flags.canceled);
@@ -1906,7 +2015,15 @@ impl StoredRule {
             }
     }
 }
-const PREVENTABLE: &[&str] = &["keydown", "click", "mousedown", "wheel", "submit", "reset"];
+const PREVENTABLE: &[&str] = &[
+    "keydown",
+    "click",
+    "mousedown",
+    "wheel",
+    "submit",
+    "reset",
+    "cancel",
+];
 const MAX_PREVENT_RULES: usize = 256;
 const MAX_BATCH_OPS: usize = 1024;
 const STREAM_NODE_BYTES: usize = 4096;

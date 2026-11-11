@@ -509,6 +509,26 @@ class Window:
     def set_clipboard_text(self, text: str) -> None:
         self._command("set_clipboard_text", text=text)
 
+    def show_dialog(self, element: str, *, modal: bool = True) -> None:
+        """Open a ``<dialog>``; a modal one traps focus and makes the rest inert until closed."""
+        self._command("show_dialog", element=element, modal=bool(modal))
+
+    def close_dialog(self, element: str, return_value: str | None = None) -> None:
+        args = {} if return_value is None else {"return_value": return_value}
+        self._command("close_dialog", element=element, **args)
+
+    def get_dialog(self, element: str) -> dict:
+        """``{"open": bool, "modal": bool, "return_value": str}``."""
+        return self._command("get_dialog", element=element)
+
+    def get_options(self, element: str) -> list[dict]:
+        """Options of a ``<select>``: ``value``, ``label``, ``selected``, ``disabled``."""
+        return self._command("get_options", element=element)["options"]
+
+    def set_selected_values(self, element: str, values: list[str]) -> None:
+        """Select exactly these option values (at most one for a single select)."""
+        self._command("set_selected_values", element=element, values=list(values))
+
     @property
     def closed(self) -> bool:
         return self._closed

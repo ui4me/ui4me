@@ -21,6 +21,10 @@ public sealed class UiEvent
     public string Key { get; init; } = "";
     /// <summary>A default-action rule cancelled this cancelable event (0.3).</summary>
     public bool DefaultPrevented { get; init; }
+    /// <summary>The returnValue of a dialog <c>close</c> event (0.4).</summary>
+    public string ReturnValue { get; init; } = "";
+    /// <summary>The <c>open</c>/<c>closed</c> state after a <c>toggle</c> event (0.4).</summary>
+    public string NewState { get; init; } = "";
     public string Backend { get; init; } = "";
     public string AppId { get; init; } = "";
     public IReadOnlyDictionary<string, JsonElement> Details { get; init; } = new Dictionary<string, JsonElement>();
@@ -41,6 +45,7 @@ public sealed class UiEvent
             Width = Number(r, "width"), Height = Number(r, "height"), Scale = Number(r, "scale"),
             Units = Text(r, "units"), Key = Text(r, "key"), Backend = Text(r, "backend"), AppId = Text(r, "app_id"),
             DefaultPrevented = r.TryGetProperty("default_prevented", out var dp) && dp.ValueKind == JsonValueKind.True,
+            ReturnValue = Text(r, "return_value"), NewState = Text(r, "new_state"),
             Details = r.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone()),
             Json = text,
         };
@@ -494,6 +499,29 @@ public sealed class Window
     public string CopySelection() { Check(); return app.Command(new { op = "copy_selection", window = Id }).GetProperty("text").GetString()!; }
     public string? GetClipboardText() { Check(); var t = app.Command(new { op = "get_clipboard_text", window = Id }).GetProperty("text"); return t.ValueKind == JsonValueKind.Null ? null : t.GetString(); }
     public void SetClipboardText(string text) { Check(); app.Command(new { op = "set_clipboard_text", window = Id, text }); }
+    public void ShowDialog(string element, bool modal = true) { Check(); app.Command(new { op = "show_dialog", window = Id, element, modal }); }
+    public void CloseDialog(string element, string? returnValue = null)
+    {
+        Check();
+        var request = Request("close_dialog", element);
+        if (returnValue is not null) request["return_value"] = returnValue;
+        app.Command(request);
+    }
+    public DialogState GetDialog(string element)
+    {
+        Check();
+        var r = app.Command(new { op = "get_dialog", window = Id, element });
+        return new DialogState(r.GetProperty("open").GetBoolean(), r.GetProperty("modal").GetBoolean(), r.GetProperty("return_value").GetString()!);
+    }
+    public SelectOption[] GetOptions(string element)
+    {
+        Check();
+        var list = new System.Collections.Generic.List<SelectOption>();
+        foreach (var o in app.Command(new { op = "get_options", window = Id, element }).GetProperty("options").EnumerateArray())
+            list.Add(new SelectOption(o.GetProperty("value").GetString()!, o.GetProperty("label").GetString()!, o.GetProperty("selected").GetBoolean(), o.GetProperty("disabled").GetBoolean()));
+        return list.ToArray();
+    }
+    public void SetSelectedValues(string element, string[] values) { Check(); app.Command(new { op = "set_selected_values", window = Id, element, values = values ?? Array.Empty<string>() }); }
     public bool IsClosed => Closed;
     public void SetTitle(string title) { Check(); app.Command(new { op = "set_title", window = Id, title }); }
     public void Resize(int width, int height) { Check(); app.Command(new { op = "resize", window = Id, width, height }); }
@@ -502,4 +530,6 @@ public sealed class Window
 }
 
 public sealed record ScrollState(double X, double Y, double MinX, double MinY, double MaxX, double MaxY, double Width, double Height, bool Scrollable);
+public sealed record DialogState(bool Open, bool Modal, string ReturnValue);
+public sealed record SelectOption(string Value, string Label, bool Selected, bool Disabled);
 public sealed record ElementRect(double X, double Y, double Width, double Height);

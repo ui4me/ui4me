@@ -287,6 +287,31 @@ pub enum Command {
         #[serde(default = "start")]
         from: String,
     },
+    ShowDialog {
+        window: u64,
+        element: String,
+        #[serde(default = "yes")]
+        modal: bool,
+    },
+    CloseDialog {
+        window: u64,
+        element: String,
+        #[serde(default)]
+        return_value: Option<String>,
+    },
+    GetDialog {
+        window: u64,
+        element: String,
+    },
+    GetOptions {
+        window: u64,
+        element: String,
+    },
+    SetSelectedValues {
+        window: u64,
+        element: String,
+        values: Vec<String>,
+    },
     Diagnostics {
         window: u64,
     },

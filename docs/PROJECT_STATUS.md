@@ -155,6 +155,8 @@ per work item. Keep long operations off UI callbacks.
 | Selection (0.3) | `get_selection`, `select_text(id=None)`, `clear_selection`, `copy_selection` | `GetSelection`, `SelectText`, `ClearSelection`, `CopySelection` |
 | Clipboard (0.3) | `get_clipboard_text`, `set_clipboard_text(text)` | `GetClipboardText`, `SetClipboardText` |
 | Streaming (0.3) | `append_text(id, chunk)`, `trim_children(id, keep, from_="start")` | `AppendText`, `TrimChildren` |
+| Dialog (0.4) | `show_dialog(id, modal=True)`, `close_dialog(id, return_value=None)`, `get_dialog(id)` | `ShowDialog`, `CloseDialog`, `GetDialog` |
+| Select (0.4) | `get_options(id)`, `set_selected_values(id, values)`; `get_value`/`set_value` for single selects | `GetOptions`, `SetSelectedValues`, `GetValue`/`SetValue` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -223,6 +225,17 @@ frame cost grows with the retained DOM: on the reference Linux host (release
 build), about 10 ms per frame at 300 log lines, 33 ms at 1,000 and 250 ms at 6,000.
 Keep long logs bounded with `batch([insert_html, trim_children])`; a few hundred to
 1,000 lines keep updates smooth.
+HTML semantics (0.4): a modal `<dialog>` enters the top layer and makes the rest of
+the document inert (not hit-testable, not focusable). It focuses its autofocus or first
+focusable element, keeps Tab inside, and Escape requests a close: a cancelable `cancel`,
+then `close` with `return_value`. Prevent `cancel` with a default-action rule to keep it
+open. Focus returns to the previously focused element. `<details>`/`<summary>` toggle
+on click, Enter or Space, with a `toggle` event (`new_state`, `old_state`). A
+drop-down `<select>` opens an in-window popup by mouse, Enter/Space or Alt+Down. Arrows,
+Home/End, PageUp/PageDown and type-ahead skip disabled options; a committed change
+emits `input` and `commit` with `value`. A listbox `<select multiple>` supports
+Ctrl/Shift picking. Clicking a `<label>` focuses or activates its control. PowerShell
+events expose `ReturnValue` and `NewState`.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated
