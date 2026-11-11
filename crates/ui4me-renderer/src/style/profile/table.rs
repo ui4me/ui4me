@@ -73,7 +73,7 @@ bool_prefs! {
     "layout.css.webkit-fill-available.enabled" = true,
     "layout.css.webkit-fill-available.all-size-properties.enabled" = true,
     "layout.css.system-ui.enabled" = true,
-    "layout.css.display-animations.enabled" = false,
+    "layout.css.display-animations.enabled" = false, // 1.24.0: stays Off (F0902): the box tree drops a display:none element at once, so `display` cannot be held by allow-discrete
     "layout.css.font-tech.enabled" = false,
     // §4.2 Gated (release values)
     "layout.css.has-selector.enabled" = true, // 1.5.0: On (G-STYLE-HAS PASS, RESULT-2; owned invalidation driver has.rs)
@@ -90,7 +90,7 @@ bool_prefs! {
     "layout.css.columns.enabled" = true, // 1.7.0: the multicol and break values compute (015 FRAG-2a, lane L-FRAG; P-006-5); 1.9.0: the rows are On (015 MC-1, FRAG-2c, lane L-MC; P-006-7 adds orphans/widows)
     "layout.css.first-line.enabled" = true, // 1.14.0: On (::first-line, ::first-letter laid out; 015 TXT-5, lane L-PSEUDO)
     "layout.css.at-scope.enabled" = true, // 1.5.0: On (@scope; 015 L-HAS)
-    "layout.css.starting-style-at-rules.enabled" = false,
+    "layout.css.starting-style-at-rules.enabled" = true, // 1.24.0: On (@starting-style before-change style for inserted and newly displayed elements; F0902)
     "layout.css.custom-media.enabled" = false,
     "layout.css.nth-child-of.enabled" = true, // 1.5.0: On (:nth-child(An+B of S); 015 L-HAS)
     "layout.css.line-clamp.enabled" = true, // 1.10.0: On (line-clamp, -webkit-line-clamp, -webkit-box-orient; display: -webkit-box; carried patch P-006-6; 015 TXT-4)
@@ -190,7 +190,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.at-rule.font-feature-values", Filtered),
     ("css.at-rule.font-palette-values", Off),
     ("css.at-rule.import", On),
-    ("css.at-rule.keyframes", Off), // Desktop foundation: no animation clock API.
+    ("css.at-rule.keyframes", On), // 1.24.0: F0901, document clock drives transitions and animations
     ("css.at-rule.layer", On),
     ("css.at-rule.media", On),
     ("css.at-rule.namespace", On),
@@ -200,7 +200,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.at-rule.property", On),
     ("css.at-rule.scope", On),
     ("css.at-rule.scope-implicit", Off),
-    ("css.at-rule.starting-style", Off),
+    ("css.at-rule.starting-style", On), // 1.24.0: F0902
     ("css.at-rule.supports", On),
     ("css.at-rule.view-transition", Off),
     ("css.display.-webkit-box", On),
@@ -242,7 +242,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.-webkit-text-stroke", Unavailable),
     ("css.property.accent-color", On),
     ("css.property.anchor-name", On), // 1.23.0: F0808, Stylo patch P-006-17
-    ("css.property.animation", Off),
+    ("css.property.animation", On),   // 1.24.0: F0901 (animation-timeline stays Off)
     ("css.property.animation-timeline", Off),
     ("css.property.appearance", On),
     ("css.property.backdrop-filter", Filtered),
@@ -299,7 +299,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.text-overflow", On),
     ("css.property.text-underline-offset", On),
     ("css.property.text-underline-position", On),
-    ("css.property.transition", Off),
+    ("css.property.transition", On), // 1.24.0: F0901
     ("css.property.view-transition", Off),
     ("css.property.writing-mode", On),
     ("css.property.zoom", Off),
@@ -410,15 +410,10 @@ fn has_function(v: &str, name: &str) -> bool {
 
 /// Exact property name → feature id for parse-time drops (§4.3, §5).
 const PROPERTY_FEATURES: &[(&str, &str)] = &[
-    ("-moz-animation", "css.property.animation"),
-    ("-moz-transition", "css.property.transition"),
-    ("-webkit-animation", "css.property.animation"),
-    ("-webkit-transition", "css.property.transition"),
     (
         "-webkit-text-fill-color",
         "css.property.-webkit-text-fill-color",
     ),
-    ("animation", "css.property.animation"),
     ("animation-range", "css.property.animation-timeline"),
     ("animation-range-end", "css.property.animation-timeline"),
     ("animation-range-start", "css.property.animation-timeline"),
@@ -439,20 +434,13 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
         "text-decoration-skip-ink",
         "css.property.text-decoration-skip-ink",
     ),
-    ("transition", "css.property.transition"),
     ("zoom", "css.property.zoom"),
 ];
 
 /// Property-name prefixes → family feature id.
 const PROPERTY_PREFIX_FEATURES: &[(&str, &str)] = &[
-    ("-moz-animation-", "css.property.animation"),
-    ("-moz-transition-", "css.property.transition"),
-    ("-webkit-animation-", "css.property.animation"),
-    ("-webkit-transition-", "css.property.transition"),
     ("-webkit-text-stroke", "css.property.-webkit-text-stroke"),
-    ("animation-", "css.property.animation"),
     ("corner-", "css.property.corner-shape"),
-    ("transition-", "css.property.transition"),
     ("view-transition-", "css.property.view-transition"),
 ];
 
@@ -519,7 +507,6 @@ pub fn selector_feature(text: &str) -> Option<FeatureId> {
 pub fn at_rule_feature(name: &str) -> Option<FeatureId> {
     let id = match name.trim_start_matches('@').to_ascii_lowercase().as_str() {
         "font-feature-values" => "css.at-rule.font-feature-values",
-        "keyframes" | "-webkit-keyframes" => "css.at-rule.keyframes",
         "scope" => "css.at-rule.scope",
         "starting-style" => "css.at-rule.starting-style",
         "custom-media" => "css.at-rule.custom-media",

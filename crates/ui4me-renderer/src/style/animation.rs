@@ -262,6 +262,26 @@ impl AnimationEngine {
         sets.retain(|k, _| resolve(doc, k).is_some());
     }
 
+    /// Cancel every transition and animation of `nodes` (the next `after_pass` reports them).
+    pub(crate) fn cancel_nodes(&mut self, nodes: &[NodeId]) {
+        let keys: HashSet<usize> = nodes
+            .iter()
+            .map(|&n| ui4me_engine_types::ids::OpaqueStyleKey::of(n).get().get() as usize)
+            .collect();
+        for (k, set) in self.set.sets.write().iter_mut() {
+            if !keys.contains(&k.node.0) {
+                continue;
+            }
+            for a in set.animations.iter_mut() {
+                a.state = AnimationState::Canceled;
+            }
+            for t in set.transitions.iter_mut() {
+                t.state = AnimationState::Canceled;
+            }
+            set.dirty = true;
+        }
+    }
+
     /// Discard the sets of `nodes` (a re-inserted subtree starts afresh), with no events.
     pub(crate) fn discard_nodes(&self, nodes: &[NodeId]) {
         let mut sets = self.set.sets.write();

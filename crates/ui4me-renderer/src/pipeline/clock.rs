@@ -22,6 +22,7 @@ use crate::pipeline::domain::ClockMode;
 use crate::pipeline::reasons::{Reason, Subject};
 use crate::pipeline::state::DocumentPipeline;
 use crate::style::animation::{AnimationEvent, TickOutcome};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use ui4me_engine_types::codes_generated::Code;
 use ui4me_engine_types::stage::Stage;
@@ -29,6 +30,60 @@ use ui4me_engine_types::status::Status;
 
 /// Tick target while ticking (recompute-plan §10).
 pub const TICK_TARGET_MS: f64 = 16.0;
+
+/// The one document clock (0.9 F0901): monotonic real time since the document opened, or a
+/// manual time that only [`SharedClock::advance`] moves. Smooth scrolling and the style
+/// pass's transitions and keyframe animations read the same clock, so a test that advances it
+/// moves both. Clones share the state.
+#[derive(Clone, Debug)]
+pub struct SharedClock(Arc<Mutex<SharedClockState>>);
+
+#[derive(Debug)]
+struct SharedClockState {
+    origin: Instant,
+    manual: Option<f64>,
+}
+
+impl Default for SharedClock {
+    fn default() -> Self {
+        SharedClock(Arc::new(Mutex::new(SharedClockState {
+            origin: Instant::now(),
+            manual: None,
+        })))
+    }
+}
+
+impl PartialEq for SharedClock {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl SharedClock {
+    fn state(&self) -> std::sync::MutexGuard<'_, SharedClockState> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    /// Milliseconds on the document clock.
+    pub fn now(&self) -> f64 {
+        let s = self.state();
+        s.manual
+            .unwrap_or_else(|| s.origin.elapsed().as_secs_f64() * 1000.0)
+    }
+    pub fn is_manual(&self) -> bool {
+        self.state().manual.is_some()
+    }
+    /// Freeze the clock at its present time; only [`Self::advance`] moves it afterwards.
+    pub fn use_manual(&self) {
+        let now = self.now();
+        self.state().manual = Some(now);
+    }
+    /// Move a manual clock by `ms` (a real-time clock is unaffected).
+    pub fn advance(&self, ms: f64) {
+        if let Some(t) = self.state().manual.as_mut() {
+            *t += ms.max(0.0);
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnimationClock {
@@ -46,6 +101,8 @@ pub struct AnimationClock {
     /// Realtime: the monotonic origin (time 0) and whether this turn already sampled it.
     origin: Instant,
     turn_open: bool,
+    /// The document clock the pipeline follows (a `Document`); `None` for a bare pipeline.
+    shared: Option<SharedClock>,
 }
 
 impl AnimationClock {
@@ -68,6 +125,7 @@ impl AnimationClock {
             active: false,
             origin: Instant::now(),
             turn_open: false,
+            shared: None,
         }
     }
 
@@ -86,6 +144,13 @@ impl AnimationClock {
     /// `Manual` in manual mode; in realtime mode `Ticking` while an animation is active, else
     /// `Stopped`.
     pub fn state(&self) -> ClockState {
+        if let Some(c) = &self.shared {
+            return match (c.is_manual(), self.active) {
+                (true, _) => ClockState::Manual,
+                (false, true) => ClockState::Ticking,
+                (false, false) => ClockState::Stopped,
+            };
+        }
         match self.mode {
             ClockMode::Manual => ClockState::Manual,
             ClockMode::Realtime if self.active => ClockState::Ticking,
@@ -99,7 +164,13 @@ impl AnimationClock {
 
     /// Whether the event loop must schedule a tick: realtime and some animation is active.
     pub fn needs_tick(&self) -> bool {
-        self.mode == ClockMode::Realtime && self.active
+        (self.mode == ClockMode::Realtime || self.shared.is_some()) && self.active
+    }
+
+    /// Follow the document clock `shared` (time is sampled from it before each update).
+    pub fn follow(&mut self, shared: SharedClock) {
+        self.time_ms = shared.now();
+        self.shared = Some(shared);
     }
 
     /// 006 reports whether any transition or animation needs ticks.
@@ -145,6 +216,10 @@ impl AnimationClock {
 
     /// An update outside a turn (an API flush) samples time itself, unless the clock is mid-turn.
     pub(crate) fn ensure_sampled(&mut self) {
+        if let Some(c) = &self.shared {
+            self.time_ms = c.now();
+            return;
+        }
         if self.mode == ClockMode::Realtime && !self.turn_open && !self.active {
             self.time_ms = self.monotonic_ms();
         }
@@ -194,6 +269,50 @@ impl AnimationClock {
 }
 
 impl DocumentPipeline {
+    /// Follow the document clock (0.9 F0901): updates sample it, and [`Self::tick_to_clock`]
+    /// runs the animation tick.
+    pub fn follow_clock(&mut self, shared: SharedClock) {
+        self.clock.follow(shared);
+    }
+
+    /// The document clock's tick (0.9 F0901): when a transition or animation is in flight, move
+    /// the animation time to the clock and tick once. A real-time clock ticks at most every
+    /// 16 ms unless `force`; a manual clock ticks when its time moved. Returns whether a tick ran.
+    pub fn tick_to_clock(&mut self, force: bool) -> bool {
+        let Some(shared) = self.clock.shared.clone() else {
+            return false;
+        };
+        if self.is_closing() || !self.clock.active {
+            return false;
+        }
+        let now = shared.now();
+        let due = match self.clock.last_tick_ms {
+            None => true,
+            Some(last) if shared.is_manual() => now != last,
+            Some(last) => force || now - last >= TICK_TARGET_MS - 1.0,
+        };
+        if !due {
+            return false;
+        }
+        self.clock.time_ms = now;
+        self.clock.note_tick();
+        self.run_tick();
+        true
+    }
+
+    /// Milliseconds until the next animation tick is due, or `None` while nothing animates (no
+    /// wake-ups). A manual clock always answers one frame.
+    pub fn next_animation_wake_ms(&self) -> Option<f64> {
+        let shared = self.clock.shared.as_ref()?;
+        if !self.clock.active {
+            return None;
+        }
+        if shared.is_manual() {
+            return Some(TICK_TARGET_MS);
+        }
+        self.clock.next_tick_deadline_ms(shared.now())
+    }
+
     pub fn clock(&self) -> &AnimationClock {
         &self.clock
     }

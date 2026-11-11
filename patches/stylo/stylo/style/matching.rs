@@ -715,9 +715,33 @@ trait PrivateMatchMethods: TElement {
             pseudo_element,
         );
 
+        // The before-change style is the starting style (`@starting-style` rules included) for
+        // an element with no previous style or one that stops being `display: none`
+        // (P-006-18; Gecko resolves it in `maybe_resolve_starting_style`).
+        let mut starting_style: Option<Arc<ComputedValues>> = None;
+        if pseudo_element.is_none()
+            && new_values.get_ui().specifies_transitions()
+            && !new_values.get_display().is_none()
+            && old_values
+                .as_deref()
+                .is_none_or(|old| old.get_display().is_none())
+        {
+            let mut resolver = StyleResolverForElement::new(
+                *self,
+                context,
+                RuleInclusion::All,
+                PseudoElementResolution::IfApplicable,
+            );
+            starting_style = resolver
+                .resolve_starting_style(new_values)
+                .map(|s| s.0)
+                .filter(|s| !s.get_display().is_none());
+        }
+        let before_change = starting_style.as_ref().or(old_values.as_ref());
+
         let might_need_transitions_update = self.might_need_transitions_update(
             context,
-            old_values.as_deref(),
+            before_change.map(|s| &**s),
             new_values,
             pseudo_element,
         );
@@ -758,7 +782,7 @@ trait PrivateMatchMethods: TElement {
         animation_set.update_transitions_for_new_style(
             might_need_transitions_update,
             &shared_context,
-            old_values.as_ref(),
+            before_change,
             after_change_style.as_ref().unwrap_or(new_values),
         );
 

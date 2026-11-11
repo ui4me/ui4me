@@ -1258,6 +1258,7 @@ impl Session {
             if let Some(delay) = o
                 .windows
                 .values()
+                .filter(|w| !w.info.closing)
                 .filter_map(|w| w.document.next_wake_in())
                 .min()
             {

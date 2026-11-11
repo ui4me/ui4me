@@ -678,5 +678,6 @@ fn at_rule_supported(name: &str) -> bool {
                 | "property"
                 | "charset"
                 | "scope"
+                | "starting-style"
         )
 }

@@ -810,6 +810,7 @@ impl StyleBridge {
 
         // Transitions the pass started or cancelled generate their events now (queued only).
         self.anim.after_pass(doc);
+        self.cancel_hidden_animations(doc);
 
         self.report_until_found(doc, dom_revision);
         self.report_lh_normal(doc, dom_revision);
@@ -837,6 +838,41 @@ impl StyleBridge {
     }
 
     /// Gather the styled elements into a new immutable snapshot (when anything changed).
+    /// An element whose computed `display` is `none` loses its transitions and animations (CSS
+    /// Animations 1 section 3: no box, no animation); `animationcancel` / `transitioncancel` are
+    /// queued and the element is re-cascaded without them (0.9 F0901).
+    fn cancel_hidden_animations(&mut self, doc: &Document) {
+        let animating = self.anim.animating(doc);
+        if animating.is_empty() {
+            return;
+        }
+        let hidden: Vec<NodeId> = {
+            let lock = self.sidecars.lock.clone();
+            let _guard = lock.read();
+            with_pass(doc, &self.sidecars, |pass| {
+                animating
+                    .iter()
+                    .copied()
+                    .filter(|&id| {
+                        let h = pass.handle(id);
+                        TElement::borrow_data(&h).is_some_and(|d| {
+                            d.styles.primary().get_box().display
+                                == style::values::specified::Display::None
+                        })
+                    })
+                    .collect()
+            })
+        };
+        if hidden.is_empty() {
+            return;
+        }
+        self.anim.cancel_nodes(&hidden);
+        self.anim.after_pass(doc);
+        for node in hidden {
+            self.add_hint(doc, node, RestyleHint::RECASCADE_SELF);
+        }
+    }
+
     fn collect_snapshot(
         &self,
         doc: &Document,

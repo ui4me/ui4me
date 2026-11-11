@@ -243,18 +243,20 @@ fn nested_button_content_keeps_its_subscription_path_and_identity() {
 }
 
 #[test]
-fn unpromoted_motion_and_paging_are_reported_and_static_styles_apply() {
+fn paging_is_reported_and_motion_is_promoted() {
     let mut d = Document::parse(r#"<!doctype html><style>
         @page invoice { size:20px 20px; }
         @keyframes fade { from{opacity:0}to{opacity:1} }
         body{margin:0}#box{width:24px;height:24px;background:#ff0000;transition:background-color 1s;animation:fade 2s;-webkit-transition:background-color 1s;-webkit-animation:fade 2s;page:invoice}
         #box.on{background:#0000ff}
         </style><div id=box></div>"#).unwrap();
-    assert_eq!(d.render(100, 80, 1.0).unwrap()[5 * 100 + 5], 0x00ff0000);
+    // The fade-in animation starts at opacity 0 (0.9 F0901).
+    assert_eq!(d.render(100, 80, 1.0).unwrap()[5 * 100 + 5], 0x00ffffff);
     d.add_class("box", "on").unwrap();
-    assert_eq!(d.render(100, 80, 1.0).unwrap()[5 * 100 + 5], 0x000000ff);
+    // Transitions are promoted (0.9 F0901): the change is a transition, not an instant swap.
+    assert_eq!(d.render(100, 80, 1.0).unwrap()[5 * 100 + 5], 0x00ffffff);
     assert!(
-        d.diagnostics()
+        !d.diagnostics()
             .iter()
             .any(|e| e["feature"] == "css.property.transition")
     );

@@ -13,7 +13,7 @@ fn page(box_css: &str, section_css: &str) -> Document {
          .s{{height:150px;{section_css}}}</style><div id=box>{sections}</div>"
     ))
     .unwrap();
-    d.use_manual_scroll_clock();
+    d.use_manual_clock();
     d.render(400, 300, 1.0).unwrap();
     d
 }
@@ -45,7 +45,7 @@ fn smooth_scroll_reaches_the_target_exactly_with_monotonic_steps() {
     let mut last = 0.0;
     let mut steps = 0;
     for _ in 0..40 {
-        d.advance_scroll_clock(16.0).unwrap();
+        d.advance_clock(16.0).unwrap();
         let s = d.scroll_state(Some("box")).unwrap();
         assert!(s.y >= last, "monotonic: {} after {last}", s.y);
         last = s.y;
@@ -68,7 +68,7 @@ fn intermediate_positions_are_reported_and_the_host_is_asked_for_frames() {
     d.scroll_to_behavior(Some("box"), None, Some(300.0), "smooth")
         .unwrap();
     assert_eq!(d.next_wake_in(), Some(Duration::from_millis(16)));
-    d.advance_scroll_clock(100.0).unwrap();
+    d.advance_clock(100.0).unwrap();
     let s = d.scroll_state(Some("box")).unwrap();
     assert!(
         s.animating && s.y > 0.0 && s.y < 300.0,
@@ -107,24 +107,24 @@ fn a_new_request_replaces_the_running_one() {
     let mut d = page("", "");
     d.scroll_to_behavior(Some("box"), None, Some(600.0), "smooth")
         .unwrap();
-    d.advance_scroll_clock(100.0).unwrap();
+    d.advance_clock(100.0).unwrap();
     let mid = y(&mut d);
     d.scroll_to_behavior(Some("box"), None, Some(50.0), "smooth")
         .unwrap();
     assert_eq!(d.scroll_anims.list.len(), 1, "one animation per container");
     for _ in 0..40 {
-        d.advance_scroll_clock(16.0).unwrap();
+        d.advance_clock(16.0).unwrap();
     }
     assert!(mid > 0.0);
     assert_eq!(y(&mut d), 50.0);
     // scrollBy is relative to the current position, also while animating.
     d.scroll_by_behavior(Some("box"), 0.0, 100.0, "smooth")
         .unwrap();
-    d.advance_scroll_clock(60.0).unwrap();
+    d.advance_clock(60.0).unwrap();
     d.scroll_by_behavior(Some("box"), 0.0, 100.0, "smooth")
         .unwrap();
     assert_eq!(d.scroll_anims.list.len(), 1);
-    d.advance_scroll_clock(1000.0).unwrap();
+    d.advance_clock(1000.0).unwrap();
     assert!(y(&mut d) > 200.0);
 }
 
@@ -133,12 +133,12 @@ fn a_user_wheel_cancels_the_animation() {
     let mut d = page("", "");
     d.scroll_to_behavior(Some("box"), None, Some(600.0), "smooth")
         .unwrap();
-    d.advance_scroll_clock(100.0).unwrap();
+    d.advance_clock(100.0).unwrap();
     let mid = y(&mut d);
     wheel(&mut d, 40.0);
     assert!(!d.is_scroll_animating(Some("box")));
     assert!((y(&mut d) - (mid + 40.0)).abs() < 0.1);
-    d.advance_scroll_clock(1000.0).unwrap();
+    d.advance_clock(1000.0).unwrap();
     assert!(
         (y(&mut d) - (mid + 40.0)).abs() < 0.1,
         "stays where the user left it"
@@ -146,7 +146,7 @@ fn a_user_wheel_cancels_the_animation() {
     // A keyboard scroll cancels as well.
     d.scroll_to_behavior(Some("box"), None, Some(0.0), "smooth")
         .unwrap();
-    d.advance_scroll_clock(50.0).unwrap();
+    d.advance_clock(50.0).unwrap();
     d.handle_input(Input::PointerMoved { x: 50.0, y: 50.0 })
         .unwrap();
     d.focus_box_for_keys();
@@ -193,7 +193,7 @@ fn removing_the_element_leaves_no_animation_behind() {
     d.scroll_to_behavior(Some("box"), None, Some(300.0), "smooth")
         .unwrap();
     d.remove_element("box").unwrap();
-    d.advance_scroll_clock(100.0).unwrap();
+    d.advance_clock(100.0).unwrap();
     assert!(!d.scroll_anims.active());
     assert_eq!(d.next_wake_in(), None);
 }
@@ -204,7 +204,7 @@ fn scroll_into_view_honors_the_behavior() {
     d.scroll_into_view_behavior("s4", "start", "nearest", "smooth")
         .unwrap();
     assert!(d.is_scroll_animating(Some("box")));
-    d.advance_scroll_clock(1000.0).unwrap();
+    d.advance_clock(1000.0).unwrap();
     assert_eq!(y(&mut d), 600.0);
     d.scroll_into_view_behavior("s0", "start", "nearest", "instant")
         .unwrap();
@@ -218,10 +218,10 @@ fn follow_end_does_not_fight_a_smooth_scroll_away() {
     assert_eq!(y(&mut d), 700.0);
     d.scroll_to_behavior(Some("box"), None, Some(0.0), "smooth")
         .unwrap();
-    d.advance_scroll_clock(50.0).unwrap();
+    d.advance_clock(50.0).unwrap();
     let mid = y(&mut d);
     assert!(mid < 700.0);
-    d.advance_scroll_clock(1000.0).unwrap();
+    d.advance_clock(1000.0).unwrap();
     assert_eq!(y(&mut d), 0.0);
 }
 
@@ -355,7 +355,7 @@ fn inline_axis_snaps_too() {
          .c{{flex:none;width:150px;height:40px;scroll-snap-align:start}}</style><div id=box>{cells}</div>"
     ))
     .unwrap();
-    d.use_manual_scroll_clock();
+    d.use_manual_clock();
     d.render(400, 300, 1.0).unwrap();
     assert_eq!(
         d.scroll_to(Some("box"), Some(200.0), None).unwrap().x,
@@ -379,7 +379,7 @@ fn smooth_snap_after_a_wheel_step_is_animated() {
     wheel(&mut d, 40.0);
     assert!(d.is_scroll_animating(Some("box")));
     assert_eq!(y(&mut d), 0.0);
-    d.advance_scroll_clock(1000.0).unwrap();
+    d.advance_clock(1000.0).unwrap();
     assert_eq!(y(&mut d), 150.0);
     d.set_app_environment(None, Some(Some(true))).unwrap();
     wheel(&mut d, 40.0);
@@ -398,7 +398,7 @@ fn nested_scrollers_keep_their_own_snap_areas() {
          <div class=s><div id=inner>{marks}</div></div><div class=s>2</div></div>"
     ))
     .unwrap();
-    d.use_manual_scroll_clock();
+    d.use_manual_clock();
     d.render(400, 300, 1.0).unwrap();
     // The inner marks (every 40px) are not snap areas of the outer scroller.
     assert_eq!(d.scroll_to(Some("box"), None, Some(130.0)).unwrap().y, 0.0);
@@ -425,7 +425,7 @@ fn the_viewport_snaps_from_the_root_element() {
          .s{{height:250px;scroll-snap-align:start}}</style>{sections}"
     ))
     .unwrap();
-    d.use_manual_scroll_clock();
+    d.use_manual_clock();
     d.render(400, 300, 1.0).unwrap();
     assert_eq!(d.scroll_to(None, None, Some(300.0)).unwrap().y, 240.0);
 }
@@ -469,7 +469,7 @@ fn nested(inner_css: &str) -> Document {
          <div id=outer><div id=inner>{rows}</div><div class=pad></div></div>"
     ))
     .unwrap();
-    d.use_manual_scroll_clock();
+    d.use_manual_clock();
     d.render(400, 300, 1.0).unwrap();
     d
 }
