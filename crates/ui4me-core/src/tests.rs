@@ -1781,3 +1781,77 @@ fn html_serialization_stylesheets_and_node_traversal() {
         4
     );
 }
+
+#[test]
+fn text_range_geometry_and_point_to_text() {
+    // 0.6 F0603: wrapped multilingual text, offsets in UTF-16, hidden/clipped text, hit to text.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<style>body{margin:0;font:16px sans-serif}#p{width:120px}#clip{height:20px;overflow:hidden}</style><p id=p>Příliš žluťoučký kůň 😀 úpěl ďábelské ódy שלום</p><div id=clip><div>one</div><div id=below>two</div></div><p id=gone style='display:none'>hidden</p>"})).unwrap()["window"].as_u64().unwrap();
+    let all = cmd(json!({"op":"text_rects","window":id,"element":"p"})).unwrap();
+    let total = all["length"].as_u64().unwrap();
+    assert_eq!(
+        total,
+        "Příliš žluťoučký kůň 😀 úpěl ďábelské ódy שלום"
+            .encode_utf16()
+            .count() as u64
+    );
+    let rects = all["rects"].as_array().unwrap();
+    let lines: std::collections::BTreeSet<i64> = rects
+        .iter()
+        .map(|r| r["y"].as_f64().unwrap() as i64)
+        .collect();
+    assert!(lines.len() >= 3, "wrapped over several lines: {rects:?}");
+    assert!(rects
+        .iter()
+        .all(|r| r["width"].as_f64().unwrap() > 0.0 && r["visible"] == true));
+    // The emoji is two UTF-16 units; its range has one rectangle.
+    let emoji = "Příliš žluťoučký kůň ".encode_utf16().count() as u64;
+    let e = cmd(json!({"op":"text_rects","window":id,"element":"p","start":emoji,"end":emoji + 2}))
+        .unwrap();
+    assert_eq!(e["rects"].as_array().unwrap().len(), 1, "{e}");
+    assert_eq!(
+        cmd(json!({"op":"text_rects","window":id,"element":"p","start":0,"end":total + 1}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    // Clipped text is reported, marked not visible; display:none text has no geometry.
+    let below = cmd(json!({"op":"text_rects","window":id,"element":"below"})).unwrap();
+    assert_eq!(below["rects"][0]["visible"], false);
+    assert_eq!(
+        cmd(json!({"op":"text_rects","window":id,"element":"gone"})).unwrap()["rects"],
+        json!([])
+    );
+    // Hit to text: the middle of the first character's right half is offset 1.
+    let r0 = &rects[0];
+    let first = cmd(json!({"op":"text_rects","window":id,"element":"p","start":0,"end":1}))
+        .unwrap()["rects"][0]
+        .clone();
+    let x = first["x"].as_f64().unwrap() + first["width"].as_f64().unwrap() * 0.75;
+    let hit =
+        cmd(json!({"op":"text_at_point","window":id,"x":x,"y":r0["y"].as_f64().unwrap() + 4.0}))
+            .unwrap()["hit"]
+            .clone();
+    assert_eq!(
+        (hit["element"].as_str(), hit["offset"].as_u64()),
+        (Some("p"), Some(1)),
+        "{hit}"
+    );
+    assert!(hit["block"].as_str().unwrap().starts_with("node:"));
+    // A stale node reference is an error.
+    let text = cmd(json!({"op":"node_children","window":id,"node":cmd(json!({"op":"node_of","window":id,"element":"p"})).unwrap()["node"]})).unwrap()["children"][0]["node"].as_str().unwrap().to_owned();
+    assert!(
+        !cmd(json!({"op":"text_rects","window":id,"node":text})).unwrap()["rects"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    cmd(json!({"op":"remove_element","window":id,"element":"p"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"text_rects","window":id,"node":text}))
+            .unwrap_err()
+            .code,
+        4
+    );
+}

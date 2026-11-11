@@ -528,6 +528,15 @@ public sealed class Window
     static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
     /// <summary>Serialize an element (by id), a node reference, or the whole document (both empty).</summary>
     public string GetHtml(string? element = null, string? node = null, bool outer = false) { Check(); return app.Command(new { op = "get_html", window = Id, element = NullIfEmpty(element), node = NullIfEmpty(node), outer }).GetProperty("html").GetString()!; }
+    /// <summary>Rendered text and range rectangles of an element (start/end are UTF-16 offsets
+    /// into that text; a negative value means the beginning / the end). Returns JSON.</summary>
+    public string TextRectsJson(string? element = null, string? node = null, int start = -1, int end = -1)
+    {
+        Check();
+        return app.Command(new { op = "text_rects", window = Id, element = NullIfEmpty(element), node = NullIfEmpty(node), start = start < 0 ? (int?)null : start, end = end < 0 ? (int?)null : end }).GetRawText();
+    }
+    /// <summary>The text under a viewport point as JSON (null when there is none).</summary>
+    public string TextAtPointJson(double x, double y) { Check(); return app.Command(new { op = "text_at_point", window = Id, x, y }).GetProperty("hit").GetRawText(); }
     /// <summary>Attach an author stylesheet; returns JSON {sheet, diagnostics}.</summary>
     public string AddStylesheet(string css) { Check(); return app.Command(new { op = "add_stylesheet", window = Id, css }).GetRawText(); }
     public string ReplaceStylesheet(long sheet, string css) { Check(); return app.Command(new { op = "replace_stylesheet", window = Id, sheet, css }).GetRawText(); }

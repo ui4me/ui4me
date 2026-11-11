@@ -19,6 +19,8 @@ const MAX_CSS: usize = 1024 * 1024;
 const MAX_SHEET_DIAGNOSTICS: usize = 50;
 /// Children listed per call.
 pub const MAX_CHILDREN: usize = 4096;
+/// Rectangles returned by one `text_rects` call.
+const MAX_TEXT_RECTS: usize = 4096;
 
 fn stale(message: impl Into<String>) -> Error {
     Error {
@@ -301,5 +303,49 @@ impl Document {
             })
             .collect();
         Ok(json!({"children": page, "total": kids.len()}))
+    }
+
+    /// The rendered text of `element`/`node` (the text a selection of it copies: its text
+    /// blocks joined with `\n`) and the rectangles of its UTF-16 range `start..end` (default: all),
+    /// viewport CSS px. An inline element resolves to its containing text block.
+    pub fn text_rects(
+        &mut self,
+        element: Option<&str>,
+        node: Option<&str>,
+        start: Option<u32>,
+        end: Option<u32>,
+    ) -> Result<Value> {
+        let n = self.target_of(element, node)?;
+        let range = match (start, end) {
+            (None, None) => None,
+            (s, e) => Some((s.unwrap_or(0), e.unwrap_or(u32::MAX))),
+        };
+        let range = match range {
+            Some((s, u32::MAX)) => {
+                let (text, _) = self.text_range_rects(n, Some((0, 0)), 1)?;
+                Some((s, text.encode_utf16().count() as u32))
+            }
+            r => r,
+        };
+        let (text, rects) = self.text_range_rects(n, range, MAX_TEXT_RECTS)?;
+        Ok(json!({
+            "text": text,
+            "length": text.encode_utf16().count(),
+            "rects": rects.iter().map(|&(x, y, w, h, v)| json!({"x": x, "y": y, "width": w, "height": h, "visible": v})).collect::<Vec<_>>(),
+        }))
+    }
+
+    /// The text under a viewport point: the nearest identified element containing it and the
+    /// UTF-16 offset in that element's rendered text a click would place a selection at.
+    pub fn text_at_point(&mut self, x: f64, y: f64) -> Result<Value> {
+        let Some((root, offset, owner)) = self.text_position_at(x, y)? else {
+            return Ok(Value::Null);
+        };
+        let d = self.pipeline.document();
+        Ok(json!({
+            "element": owner.and_then(|o| d.get_attribute(o, "id").ok().flatten().map(str::to_owned)),
+            "offset": offset,
+            "block": node_ref(root),
+        }))
     }
 }

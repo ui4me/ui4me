@@ -492,6 +492,18 @@ class Window:
         includes the node itself. Control values typed by the user are not markup."""
         return self._command("get_html", element=element, node=node, outer=outer)["html"]
 
+    def text_rects(self, element: str | None = None, *, node: str | None = None,
+                   start: int | None = None, end: int | None = None) -> dict:
+        """The rendered ``text`` of an element (what selecting it copies), its ``length`` in
+        UTF-16 units and the viewport ``rects`` (``x``, ``y``, ``width``, ``height``,
+        ``visible``) of the range ``start..end`` of that text (default: all of it)."""
+        return self._command("text_rects", element=element, node=node, start=start, end=end)
+
+    def text_at_point(self, x: float, y: float) -> dict | None:
+        """The text under a viewport point: ``element`` (nearest identified ancestor), ``offset``
+        (UTF-16, in that element's rendered text) and ``block``; ``None`` without text."""
+        return self._command("text_at_point", x=x, y=y)["hit"]
+
     def add_stylesheet(self, css: str) -> dict:
         """Attach an author stylesheet after the document's own; returns ``{"sheet": id,
         "diagnostics": [...]}`` (invalid rules are reported and dropped)."""

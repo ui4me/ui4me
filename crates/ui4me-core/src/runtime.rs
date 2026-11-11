@@ -1106,6 +1106,22 @@ impl Session {
             } => self.with_window(window, |w| {
                 Ok(json!({"html": w.document.get_html(element.as_deref(), node.as_deref(), outer)?}))
             })?,
+            Command::TextRects {
+                window,
+                element,
+                node,
+                start,
+                end,
+            } => self.with_window(window, |w| {
+                Ok(w.document
+                    .text_rects(element.as_deref(), node.as_deref(), start, end)?)
+            })?,
+            Command::TextAtPoint { window, x, y } => {
+                if !x.is_finite() || !y.is_finite() {
+                    return Err(Error::arg("x and y must be finite"));
+                }
+                self.with_window(window, |w| Ok(json!({"hit": w.document.text_at_point(x, y)?})))?
+            }
             Command::AddStylesheet { window, css } => {
                 let mut out = Value::Null;
                 self.mutate(window, |d| {

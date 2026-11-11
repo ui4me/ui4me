@@ -181,6 +181,23 @@ pub enum Command {
         #[serde(default)]
         outer: bool,
     },
+    /// Text geometry (0.6 F0603): UTF-16 offsets over the text content of `element`/`node`.
+    TextRects {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default)]
+        node: Option<String>,
+        #[serde(default)]
+        start: Option<u32>,
+        #[serde(default)]
+        end: Option<u32>,
+    },
+    TextAtPoint {
+        window: u64,
+        x: f64,
+        y: f64,
+    },
     /// Author stylesheets (0.6 F0602).
     AddStylesheet {
         window: u64,

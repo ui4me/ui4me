@@ -322,6 +322,12 @@ class BindingTests(unittest.TestCase):
             text = kids["children"][1]["node"]
             self.assertEqual(w.get_node(text)["text"], "žluť")
             self.assertEqual(w.get_html(node=kids["children"][0]["node"], outer=True), "<span>no id</span>")
+            geo = w.text_rects("box")
+            self.assertEqual((geo["text"], geo["length"]), ("no idžluť", 9))
+            self.assertTrue(geo["rects"] and all(r["width"] > 0 for r in geo["rects"]))
+            r0 = w.text_rects("box", start=0, end=1)["rects"][0]
+            hit = w.text_at_point(r0["x"] + r0["width"] * 0.75, r0["y"] + r0["height"] / 2)
+            self.assertEqual((hit["element"], hit["offset"]), ("box", 1))
             w.remove_element("box")
             with self.assertRaises(Ui4meError):
                 w.get_node(ref)

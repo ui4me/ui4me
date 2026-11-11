@@ -78,13 +78,13 @@ fn in_control(d: &Model, n: NodeId) -> bool {
     })
 }
 
+fn is_control(c: char) -> bool {
+    matches!(c, '\u{200B}' | '\u{200E}' | '\u{200F}' | '\u{FEFF}'
+        | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
 fn strip_controls(text: &str) -> String {
-    text.chars()
-        .filter(|c| {
-            !matches!(c, '\u{200B}' | '\u{200E}' | '\u{200F}' | '\u{FEFF}'
-                | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
-        })
-        .collect()
+    text.chars().filter(|c| !is_control(*c)).collect()
 }
 
 fn floor_boundary(text: &str, byte: usize) -> usize {
@@ -747,6 +747,170 @@ impl Document {
             }
         }
         Ok(out)
+    }
+    /// The rendered text of `scope` for text geometry (0.6 F0603): its paragraphs (inline roots
+    /// inside it, or the one paragraph containing it) in layout order, joined with `\n`, controls
+    /// removed: the text a selection of it copies. Returns the paragraphs and the text.
+    fn scoped_paragraphs(
+        tree: &FragmentTree,
+        index: &TextIndex,
+        d: &Model,
+        scope: NodeId,
+    ) -> Vec<usize> {
+        let inside: Vec<usize> = index
+            .order
+            .iter()
+            .copied()
+            .filter(|p| d.arena().is_inclusive_ancestor(scope, index.paras[p].root))
+            .collect();
+        if !inside.is_empty() {
+            return inside;
+        }
+        // An inline element: the paragraph whose root contains it.
+        let _ = tree;
+        index
+            .order
+            .iter()
+            .copied()
+            .filter(|p| d.arena().is_inclusive_ancestor(index.paras[p].root, scope))
+            .last()
+            .into_iter()
+            .collect()
+    }
+    /// Map a UTF-16 offset in the control-stripped text of `text` to a byte offset of `text`.
+    fn byte_of_visible(text: &str, mut u: u32) -> usize {
+        for (b, c) in text.char_indices() {
+            if is_control(c) {
+                continue;
+            }
+            if u == 0 {
+                return b;
+            }
+            u = u.saturating_sub(c.len_utf16() as u32);
+        }
+        text.len()
+    }
+    fn visible_len(text: &str) -> u32 {
+        text.chars()
+            .filter(|c| !is_control(*c))
+            .map(|c| c.len_utf16() as u32)
+            .sum()
+    }
+    /// Rendered text, rectangles of its UTF-16 range `start..end` (viewport CSS px, with whether
+    /// each is inside its scrollports) for `scope` (0.6 F0603). At most `limit` rectangles.
+    #[allow(clippy::type_complexity)]
+    pub(super) fn text_range_rects(
+        &mut self,
+        scope: NodeId,
+        range: Option<(u32, u32)>,
+        limit: usize,
+    ) -> Result<(String, Vec<(f64, f64, f64, f64, bool)>)> {
+        let Some(c) = self.committed_tree()? else {
+            return Ok((String::new(), Vec::new()));
+        };
+        let tree = &c.layout.fragments;
+        let index = TextIndex::build(tree, self.pipeline.document());
+        let paras = Self::scoped_paragraphs(tree, &index, self.pipeline.document(), scope);
+        let mut text = String::new();
+        let mut spans = Vec::new(); // (para, utf16 start of the para in `text`)
+        for (i, &p) in paras.iter().enumerate() {
+            if i > 0 {
+                text.push('\n');
+            }
+            spans.push((p, Self::visible_len(&text)));
+            text.push_str(&strip_controls(tree.paragraphs[p].text()));
+        }
+        let total = Self::visible_len(&text);
+        let (start, end) = range.unwrap_or((0, total));
+        if start > end || end > total {
+            return Err(arg(format!("range {start}..{end} is outside 0..{total}")));
+        }
+        let mut scroll = HashMap::new();
+        let mut clips: HashMap<Option<NodeId>, Option<Area>> = HashMap::new();
+        let mut out = Vec::new();
+        for &(para, at) in &spans {
+            let p = &tree.paragraphs[para];
+            let plen = Self::visible_len(p.text());
+            let (a, b) = (start.max(at), end.min(at + plen));
+            if a >= b {
+                continue;
+            }
+            let (a, b) = (
+                Self::byte_of_visible(p.text(), a - at),
+                Self::byte_of_visible(p.text(), b - at),
+            );
+            for &f in &index.paras[&para].frags {
+                let FragmentKind::Text(tf) = &tree.get(f).kind else {
+                    continue;
+                };
+                let (s, e) = (a.max(tf.text_range.start), b.min(tf.text_range.end));
+                if s >= e {
+                    continue;
+                }
+                let Some((fx, fy, _, fh, base, _)) = self.frag_geometry(tree, f, &mut scroll)
+                else {
+                    continue;
+                };
+                let container = Self::container_of(tree, f);
+                let clip = *clips
+                    .entry(container)
+                    .or_insert_with(|| self.clip_for(container));
+                for (x0, x1) in p.selection_spans(tf.line_index, s..e) {
+                    let r = (fx + f64::from(x0) - base, fy, f64::from(x1 - x0), fh);
+                    out.push((r.0, r.1, r.2, r.3, intersect(r, clip).is_some()));
+                    if out.len() >= limit {
+                        return Ok((text, out));
+                    }
+                }
+            }
+        }
+        Ok((text, out))
+    }
+    /// The text block and UTF-16 offset in its rendered text nearest to a viewport point, as a
+    /// click would place a selection (0.6 F0603): (inline root, offset in the nearest identified
+    /// inclusive ancestor's rendered text, that ancestor).
+    pub(super) fn text_position_at(
+        &mut self,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<(NodeId, u32, Option<NodeId>)>> {
+        let Some(c) = self.committed_tree()? else {
+            return Ok(None);
+        };
+        let tree = &c.layout.fragments;
+        let index = TextIndex::build(tree, self.pipeline.document());
+        let scope = self.text_scope(&index, x, y)?;
+        let Some(r) = self.position_at(tree, &index, scope, x, y) else {
+            return Ok(None);
+        };
+        let d = self.pipeline.document();
+        let root = index.paras[&r.para].root;
+        let owner = d.arena().inclusive_ancestors(root).into_iter().find(|&a| {
+            d.get_attribute(a, "id")
+                .ok()
+                .flatten()
+                .is_some_and(|i| !i.is_empty())
+        });
+        let in_para = {
+            let t = tree.paragraphs[r.para].text();
+            Self::visible_len(&t[..floor_boundary(t, r.byte)])
+        };
+        let offset = match owner {
+            Some(o) => {
+                let paras = Self::scoped_paragraphs(tree, &index, d, o);
+                let mut at = 0u32;
+                for (i, &p) in paras.iter().enumerate() {
+                    if p == r.para {
+                        break;
+                    }
+                    at += Self::visible_len(tree.paragraphs[p].text())
+                        + u32::from(i + 1 < paras.len());
+                }
+                at + in_para
+            }
+            None => in_para,
+        };
+        Ok(Some((root, offset, owner)))
     }
     fn clip_for(&self, container: Option<NodeId>) -> Option<(f64, f64, f64, f64)> {
         let mut clip = (

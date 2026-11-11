@@ -412,6 +412,8 @@ try {
             $kids = $doc.NodeChildrenJson($doc.NodeOf('box'), 0, 256) | ConvertFrom-Json
             if ($kids.total -ne 2 -or $kids.children[0].name -ne 'span') { throw "children: $($kids | ConvertTo-Json -Compress)" }
             if (($doc.NodeJson($kids.children[1].node) | ConvertFrom-Json).text -ne 'žluť') { throw 'text node' }
+            $geo = $doc.TextRectsJson('box', $null, -1, -1) | ConvertFrom-Json
+            if ($geo.length -ne 9 -or $geo.rects.Count -lt 1) { throw "text rects: $($geo | ConvertTo-Json -Compress)" }
             $styled = $app.Open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>')
             $env = $styled.SetEnvironment('dark', $null) | ConvertFrom-Json
             if ($env.color_scheme -ne 'dark' -or $env.color_scheme_source -ne 'app' -or $styled.GetRect('b').Width -ne 20) { throw "Dark override: $($styled.EnvironmentJson())" }
