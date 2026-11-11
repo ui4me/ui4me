@@ -1,4 +1,4 @@
-# UI4ME Core 0.4: implementation status and contract
+# UI4ME Core 0.5: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
@@ -6,6 +6,17 @@ are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
 Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
+
+**Core 0.5.0 is a local candidate, not published** (input, international text and
+accessibility hardening; roadmap [`core-roadmap/versions/0_5.md`](core-roadmap/versions/0_5.md),
+ledger [`core-roadmap/PROGRESS.md`](core-roadmap/PROGRESS.md)). It qualifies real
+keyboard layouts, dead keys, AltGr and IME composition on KDE/KWin Wayland and
+Windows, exposes text-field caret/selection/geometry to screen readers, adds a
+capability report and live media-environment changes, and fixes the defects these
+journeys found (IME double commit on a focus move, a stale preedit after a host write,
+canceled compositions, RTL click mapping, wrapped-line Home, presses surviving window
+focus loss, stale hover after removal, events after a requested close).
+Publication needs a separate authorization.
 
 **Core 0.4.0 is released (2026-11-11):** [GitHub v0.4.0](https://github.com/ui4me/ui4me/releases/tag/v0.4.0), PyPI `ui4me==0.4.0` (`manylinux_2_35_x86_64`, `win_amd64`) and PowerShell Gallery `Ui4me 0.4.0`, built by the release workflow from `8138e78`. Clean public installs were verified on Linux (Python and PowerShell) and on Windows (Python). Core 0.3
 (programmable document, scroll and selection) and Core 0.4 (HTML controls, native
@@ -23,17 +34,17 @@ It has one fixed, compiled renderer profile. Python and PowerShell call the same
 C ABI and own application logic; there is no embedded JavaScript engine, browser,
 HTTP resource loader, out-of-process UI broker or plugin system.
 
-| Area | Core 0.4 | Practical boundary |
+| Area | Core 0.5 | Practical boundary |
 | --- | --- | --- |
 | Documents | Nested HTML, unique public IDs, local file base; insert/remove/move, text/attribute reads, selector queries, atomic batches, streaming text | Script, iframe/object/embed and inline handlers are rejected. Up to 65,536 nodes per document; the whole document is re-laid-out per change, so keep long logs bounded |
 | CSS and layout | Cascade/selectors, custom properties, block/inline/flex/grid, positioning incl. sticky, media queries, overflow/ellipsis | An application subset, not browser conformance |
 | Painting | Backgrounds, borders, clipping, shaped text, raster images, scrollbars | Advanced effects/SVG breadth, animations and printing are not promised |
-| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face`; IME composition plumbing | Bidi selection is logical-order; system font changes are not live; real IME, dead-key and AltGr input has not been qualified on KDE/Windows desktops |
+| Text | Unicode shaping/wrapping, fallback, system fonts, local `@font-face`; IME composition (qualified: KWin text-input-v3 with a scripted input method; Microsoft Japanese and Korean IMEs); keyboard layouts, dead keys, AltGr, repeat (qualified: us, cz, us-intl, de on both hosts); bidi-aware caret, hit testing and highlight | Selection is logical (copy is logical, highlight visual); visual arrow movement may skip a direction-boundary offset; no surrounding text to the input method (winit 0.30); system font changes are not live; a Chinese IME was exercised only through the scripted Linux input method |
 | Controls | Text/password/textarea, buttons, checkbox/radio, labels, `select` (drop-down/listbox), `dialog`, `details` | No custom-element or rich-text editing component |
 | Interaction | Keyboard/focus/Tab order, document selection + copy + `selectionchange`, declarative default-action rules, scroll API, follow-end | Binding callbacks run after dispatch (use rules to cancel) |
-| Windows | Multiple windows; show/hide, focus, min/max/fullscreen, constraints, icon, state, monitors | Wayland forbids focus/activation, show/hide, client icons, un-minimize; these report `unsupported` |
+| Windows | Multiple windows; show/hide, focus, min/max/fullscreen, constraints, icon, state, monitors; `capabilities()` report; OS colour scheme and app media overrides (`set_environment`) | Wayland forbids focus/activation, show/hide, client icons, un-minimize; these report `unsupported`; OS theme changes are reported by winit on Windows only |
 | OS services | Native clipboard; open/save/folder dialogs; file drops (Windows/X11) | Linux dialogs need xdg-desktop-portal; Wayland drops are not delivered (winit 0.30) |
-| Accessibility | AccessKit bridge: AT-SPI (Linux) and UI Automation (Windows); keyboard operation | No WCAG claim; caret/range navigation in fields beyond value is not exposed |
+| Accessibility | AccessKit bridge: AT-SPI (Linux) and UI Automation (Windows); keyboard operation; text fields as per-line text runs with character geometry, caret/selection, set-selection and replace-selection actions | No WCAG claim; Orca/Narrator speech was not run (automated AT-SPI/UIA clients only); `prefers-contrast`/`forced-colors` are not evaluated |
 | Delivery | One version authority, native-inclusive Python wheel (`manylinux_2_35` in release builds), PowerShell module, native SDK, sdist | Only both-platform release builds with installed/native evidence qualify publication |
 
 ## Architecture and ownership
@@ -168,6 +179,29 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
 | App operations | `on`, `timer`, `post`, `stop`, `stats`, `run`, `close` | `On`, `Timer`, `Post`, `Work`, `Stop`, `StatsJson`, `Run`, `Dispose` |
+| Capabilities (0.5) | `app.capabilities()` | `$app.CapabilitiesJson()` |
+| Environment (0.5) | `set_environment(color_scheme=, reduced_motion=)`, `environment()`; event `environment_changed` | `SetEnvironment(colorScheme, reducedMotion)`, `EnvironmentJson()` |
+
+**0.5 contract.** `capabilities` (wire op, no window) returns `platform` (`wayland`,
+`x11`, `windows`, `headless`, or `pending` before `run()` starts the native backend),
+`backend` and `features`: each feature is `{"status", "reason"}` with status
+`supported`, `unsupported` (the platform or Core does not offer it), `denied` (refused
+by the user or a policy), `unavailable` (a required service or device is missing now)
+or `unknown`, and a reason for everything not plainly supported. Features include
+`window.focus`, `window.show_hide`, `window.icon`, `window.minimize`,
+`window.minimized_state`, `window.position`, `window.monitors`, `clipboard.text`,
+`file_dialogs`, `file_drop`, `ime`, `ime.surrounding_text`, `accessibility`,
+`keyboard.layouts`, `environment.*` and the 0.7 services (reported unsupported).
+`set_environment` (`window`, optional `color_scheme` `light`/`dark`/`system`,
+optional `reduced_motion` `reduce`/`no-preference`/`system`) restyles in place; the
+app choice wins over later OS signals until set back to `system`. `get_environment`
+reports `color_scheme`, `color_scheme_source` (`app`, `system`, `default`),
+`system_color_scheme`, `reduced_motion`, `reduced_motion_source` and `scale`.
+`environment_changed` (same fields) is emitted when an OS theme change alters the
+scheme in force. `get_accessibility_tree` now reports a text field's `selection`
+(`value`: anchor and focus as UTF-16 offsets) and one text-run child per laid-out
+line with its UTF-16 `offsets`. A close requested for a window ends delivery of its
+events at once; input to a closing window is refused.
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.
@@ -259,7 +293,7 @@ Native file dialogs (0.4) never block the UI.
 - **File drops:** dropped files arrive as `file_drop` events (`paths`), and hover as `file_hover`/`file_hover_cancelled`, where winit supports them (Windows and X11). On Wayland, winit 0.30 delivers no drops.
 Accessibility (0.4, measured scope):
 - **Keyboard:** ordinary interactions are keyboard-operable. Tab/Shift+Tab follow document and `tabindex` order, skip disabled and inert content, and wrap; keyboard focus matches `:focus-visible`. Enter/Space activate buttons and links, Space toggles checkboxes, arrows move through radio groups and selects, Escape closes modal dialogs, and a modal dialog traps focus.
-- **Screen readers:** each native window exposes its document through AccessKit (accesskit 0.25 / accesskit_winit 0.34): AT-SPI on Linux, UI Automation on Windows. The tree is built only while an assistive technology is attached. It has roles from HTML and ARIA, accessible names (label, `aria-label`/`labelledby`, content, `title`, `placeholder`), states (checked, disabled, expanded, selected, focused, modal), control values, bounds and focus, and excludes `display:none`, `visibility:hidden` and `aria-hidden` content. Assistive actions (focus, click/default action, set value, increment/decrement) run as trusted user input. Measured: a Linux AT-SPI client read heading, button, labelled entry, checkbox state and link names and invoked a button. `accessibility_tree()` / `AccessibilityTreeJson()` return the same tree for tests. Not claimed: WCAG conformance or full Orca/Narrator journeys; text-caret/range navigation inside text fields beyond value. On Linux, `aria-expanded`/`aria-invalid` states come from a carried patch to accesskit_atspi_common 0.21.1 (`patches/accesskit_atspi_common/verify.sh`).
+- **Screen readers:** each native window exposes its document through AccessKit (accesskit 0.25 / accesskit_winit 0.34): AT-SPI on Linux, UI Automation on Windows. The tree is built only while an assistive technology is attached. It has roles from HTML and ARIA, accessible names (label, `aria-label`/`labelledby`, content, `title`, `placeholder`), states (checked, disabled, expanded, selected, focused, modal), control values, bounds and focus, and excludes `display:none`, `visibility:hidden` and `aria-hidden` content. Assistive actions (focus, click/default action, set value, increment/decrement) run as trusted user input. Text fields (0.5) are one text run per laid-out line with grapheme characters, positions/widths, word starts, direction and hard line breaks, plus the field's caret/selection; set-selection and replace-selection actions edit through the editing engine. Measured: a Linux AT-SPI client read heading, button, labelled entry, checkbox state and link names and invoked a button; read field text and lines, moved the caret, read character extents, selected and replaced text, and reconnected; a Windows UIA client did the TextPattern/ValuePattern equivalents, and the native COM client read a selection back. `accessibility_tree()` / `AccessibilityTreeJson()` return the same tree for tests. Not claimed: WCAG conformance or Orca/Narrator speech journeys (the clients were automated). The managed System.Windows.Automation client crashes reading text from a `GetSelection()` range under PowerShell 7; the native COM client is not affected. On Linux, `aria-expanded`/`aria-invalid` states come from a carried patch to accesskit_atspi_common 0.21.1 (`patches/accesskit_atspi_common/verify.sh`).
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated
