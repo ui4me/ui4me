@@ -116,6 +116,18 @@ pub trait ImageSource: Send + Sync + std::fmt::Debug {
     ) -> ImageLookup;
     /// The image of an `<img>` element whose `src` attribute is `src`.
     fn img_element(&self, node: NodeId, src: &str) -> ImageLookup;
+    /// The picture of an inline `<svg>` element (F0907): `markup` is its serialised standalone
+    /// document; `targets` maps the element ids written in it to the DOM elements (hit testing).
+    /// The default treats it as the `data:` image it is equivalent to.
+    fn inline_svg(
+        &self,
+        node: NodeId,
+        markup: &str,
+        targets: std::sync::Arc<crate::pipeline::inline_svg::Targets>,
+    ) -> ImageLookup {
+        let _ = targets;
+        self.img_element(node, &crate::pipeline::inline_svg::data_url(markup))
+    }
     /// The image of an `<img>` element with its `src`, `srcset` and `sizes` attributes: the
     /// provider selects the source for the document's device pixel ratio and viewport (HTML
     /// "select an image source") and returns its image at the selected density. `None` when the

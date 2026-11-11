@@ -792,7 +792,9 @@ pub(crate) fn node_reads_images(
 ) -> bool {
     use crate::style::view::PseudoKind as P;
     use crate::style::view::generated::{Content, ContentItem};
-    if doc.local_name(node).is_ok_and(|n| n == "img") {
+    // An inline `<svg>` paints its whole subtree (and the rules matching it), which change without a
+    // change of the element's own style (F0907).
+    if doc.local_name(node).is_ok_and(|n| n == "img" || n == "svg") {
         return true;
     }
     let Some(v) = style.view(node) else {
@@ -939,6 +941,39 @@ pub(crate) fn extras_of(
                 offset: paint.outline.offset,
                 auto: false,
             });
+        }
+    }
+
+    // The picture of an inline <svg> (F0907): its subtree serialised and rasterised as a vector image.
+    if doc.local_name(node).is_ok_and(|n| n == "svg")
+        && doc
+            .namespace_uri(node)
+            .ok()
+            .flatten()
+            .is_some_and(|ns| ns.ends_with("/2000/svg"))
+    {
+        match crate::pipeline::inline_svg::serialize(doc, node, view) {
+            Ok(s) => {
+                e.unsupported.extend(s.unsupported.iter().copied());
+                e.replaced = match images {
+                    Some(provider) => {
+                        let lookup =
+                            provider.inline_svg(node, &s.markup, std::sync::Arc::new(s.targets));
+                        Some(lookup_to_replaced(
+                            lookup,
+                            &paint,
+                            ObjectFit::Fill,
+                            (LenPct::frac(0.5), LenPct::frac(0.5)),
+                        ))
+                    }
+                    None => None,
+                };
+                if matches!(e.replaced, Some(Replaced::Broken(_))) {
+                    e.unsupported.push("svg.inline.rejected");
+                }
+            }
+            Err("svg.inline.nested") => {}
+            Err(feature) => e.unsupported.push(feature),
         }
     }
 
