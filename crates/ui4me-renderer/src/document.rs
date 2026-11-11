@@ -1806,11 +1806,15 @@ impl DispatchHost for Document {
                 include_scrollbars: false,
             },
         );
-        Ok(hit
+        let candidates: Vec<NodeId> = hit
             .hits
             .iter()
             .map(|h| h.element)
-            .find(|&n| !self.pipeline.document().is_inert(n)))
+            .filter(|&n| !self.pipeline.document().is_inert(n))
+            .collect();
+        Ok(candidates
+            .into_iter()
+            .find_map(|n| self.inline_svg_target(n, x, y)))
     }
     fn scrollbar_hit(
         &mut self,
@@ -2648,6 +2652,9 @@ mod scroll_anim;
 #[cfg(test)]
 mod scroll_tests;
 mod selection;
+mod svg_hit;
+#[cfg(test)]
+mod svg_tests;
 #[cfg(test)]
 mod tests;
 

@@ -13,6 +13,7 @@ pub mod fault;
 pub mod feedback;
 pub mod font_faces;
 pub mod frame;
+pub mod inline_svg;
 pub mod lifecycle;
 pub mod oracle;
 pub mod paged;

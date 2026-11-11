@@ -546,7 +546,17 @@ impl<'a> Builder<'a> {
         }
         if !e.is_html() {
             // SVG/MathML: an image only when labelled (icons are usually aria-hidden or unlabelled).
-            let label = e.attr("aria-label").map(collapse).unwrap_or_default();
+            let mut label = e.attr("aria-label").map(collapse).unwrap_or_default();
+            // F0907: an inline `<svg>` is named by its `<title>` child when it has no `aria-label`.
+            if label.is_empty() && e.local_name() == "svg" {
+                for &c in self.children(n) {
+                    if self.el(c).is_some_and(|t| t.local_name() == "title") {
+                        label =
+                            collapse(&self.d.text_content(c).ok().flatten().unwrap_or_default());
+                        break;
+                    }
+                }
+            }
             let explicit = e.attr("role").map(|r| r.trim().to_ascii_lowercase());
             if !label.is_empty() || matches!(explicit.as_deref(), Some("img" | "image")) {
                 let id = node_key(n);

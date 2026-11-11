@@ -71,6 +71,20 @@ struct State {
     /// generation changes with the size and with the entry (007's per-size raster cache).
     sized: HashMap<(ResourceRef, u64), Arc<ImageData>>,
     next_id: u64,
+    /// The serialised document and element table of each inline `<svg>` last painted (F0907).
+    inline: HashMap<NodeId, InlineEntry>,
+    /// The last ready picture of each inline `<svg>`: shown while the next one rasterises.
+    inline_last: HashMap<NodeId, Arc<ImageData>>,
+}
+
+/// Most inline SVG documents kept for hit testing.
+const MAX_INLINE: usize = 256;
+
+struct InlineEntry {
+    markup: Arc<str>,
+    targets: Arc<crate::pipeline::inline_svg::Targets>,
+    /// Built on the first hit test; `Some(None)` = it has no usable table.
+    shapes: Option<Option<Arc<ui4me_assets::svg::hit::HitShapes>>>,
 }
 
 /// Most sized rasters whose `ImageData` is kept; beyond it the map starts over (007 owns the
@@ -194,6 +208,8 @@ impl PipelineResources {
                 css_refs: HashMap::new(),
                 sized: HashMap::new(),
                 next_id: 0,
+                inline: HashMap::new(),
+                inline_last: HashMap::new(),
             })),
         }
     }
@@ -386,7 +402,90 @@ impl PipelineResources {
     }
 }
 
+impl PipelineResources {
+    /// Whether the inline `<svg>` `node` has `pointer-events: none` (it is transparent to hits).
+    pub fn inline_svg_transparent(&self, node: NodeId) -> bool {
+        use ui4me_assets::svg::hit::PointerMode;
+        lock(&self.state).inline.get(&node).is_some_and(|e| {
+            e.targets
+                .values()
+                .any(|(n, mode)| *n == node && *mode == PointerMode::None)
+        })
+    }
+
+    /// The element of the inline `<svg>` `node` under the point `(x, y)` (CSS px relative to its
+    /// `w` x `h` content box), by the shape geometry of the picture last painted. `None` when no
+    /// shape reacts there (the `<svg>` itself is then the target).
+    pub fn inline_svg_hit(&self, node: NodeId, x: f32, y: f32, w: f32, h: f32) -> Option<NodeId> {
+        use ui4me_assets::svg::hit::{HitShapes, PointerMode};
+        let (markup, targets, cached) = {
+            let s = lock(&self.state);
+            let e = s.inline.get(&node)?;
+            (e.markup.clone(), e.targets.clone(), e.shapes.clone())
+        };
+        let shapes: Option<Arc<HitShapes>> = match cached {
+            Some(c) => c,
+            None => {
+                let built = HitShapes::build(&markup).map(Arc::new);
+                if let Some(e) = lock(&self.state).inline.get_mut(&node)
+                    && Arc::ptr_eq(&e.markup, &markup)
+                {
+                    e.shapes = Some(built.clone());
+                }
+                built
+            }
+        };
+        let shapes = shapes?;
+        let mode_of = |id: &str| targets.get(id).map_or(PointerMode::None, |t| t.1);
+        let id = shapes.hit(x, y, w, h, &mode_of)?;
+        targets.get(id).map(|t| t.0)
+    }
+}
+
 impl ImageSource for PipelineResources {
+    fn inline_svg(
+        &self,
+        node: NodeId,
+        markup: &str,
+        targets: Arc<crate::pipeline::inline_svg::Targets>,
+    ) -> ImageLookup {
+        {
+            let mut s = lock(&self.state);
+            if !s.inline.get(&node).is_some_and(|e| *e.markup == *markup) {
+                if s.inline.len() >= MAX_INLINE {
+                    s.inline.clear();
+                }
+                s.inline.insert(
+                    node,
+                    InlineEntry {
+                        markup: Arc::from(markup),
+                        targets,
+                        shapes: None,
+                    },
+                );
+            }
+        }
+        let lookup = self.img_element(node, &crate::pipeline::inline_svg::data_url(markup));
+        let mut s = lock(&self.state);
+        match lookup {
+            ImageLookup::Ready(image) => {
+                if s.inline_last.len() >= MAX_INLINE {
+                    s.inline_last.clear();
+                }
+                s.inline_last.insert(node, image.clone());
+                ImageLookup::Ready(image)
+            }
+            ImageLookup::Pending => match s.inline_last.get(&node) {
+                Some(last) => ImageLookup::Ready(last.clone()),
+                None => ImageLookup::Pending,
+            },
+            broken => {
+                s.inline_last.remove(&node);
+                broken
+            }
+        }
+    }
+
     fn css_image(
         &self,
         node: NodeId,
