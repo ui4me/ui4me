@@ -1056,3 +1056,92 @@ fn dialog_details_select_and_labels() {
     }
     assert_eq!(focus(), json!(["name"]));
 }
+
+#[test]
+fn window_actions_constraints_icon_and_state() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<p>w</p>"})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let state = || cmd(json!({"op":"get_window_state","window":id})).unwrap();
+    assert_eq!(state()["platform"], "headless");
+    assert_eq!(state()["width"], 640.0);
+    for (action, key, value) in [
+        ("maximize", "maximized", true),
+        ("minimize", "minimized", true),
+        ("fullscreen", "fullscreen", true),
+        ("hide", "visible", false),
+        ("show", "visible", true),
+        ("focus", "focused", true),
+    ] {
+        assert_eq!(
+            cmd(json!({"op":"window_action","window":id,"action":action})).unwrap()["applied"],
+            true
+        );
+        assert_eq!(state()[key], value, "{action}");
+    }
+    cmd(json!({"op":"window_action","window":id,"action":"restore"})).unwrap();
+    assert_eq!(
+        (state()["minimized"].clone(), state()["maximized"].clone()),
+        (json!(false), json!(false))
+    );
+    assert!(cmd(json!({"op":"window_action","window":id,"action":"spin"})).is_err());
+    cmd(json!({"op":"set_window_constraints","window":id,"min_width":300,"min_height":200,"max_width":900,"max_height":700,"resizable":false})).unwrap();
+    assert_eq!(state()["min_size"], json!([300, 200]));
+    assert_eq!(state()["resizable"], false);
+    assert_eq!(
+        cmd(json!({"op":"resize","window":id,"width":200,"height":1000})).unwrap(),
+        json!({"width":300,"height":700}),
+        "resize clamps to constraints"
+    );
+    assert_eq!(
+        (state()["width"].clone(), state()["height"].clone()),
+        (json!(300.0), json!(700.0))
+    );
+    assert!(cmd(json!({"op":"set_window_constraints","window":id,"min_width":800,"min_height":800,"max_width":400,"max_height":400})).is_err());
+    assert!(cmd(json!({"op":"set_window_constraints","window":id,"min_width":300})).is_err());
+    // Icon: a real PNG decodes; junk and oversized images are rejected.
+    let dir = std::env::temp_dir().join(format!("ui4me-icon-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png_path = dir.join("icon ž.png");
+    {
+        let file = std::fs::File::create(&png_path).unwrap();
+        let mut e = png::Encoder::new(std::io::BufWriter::new(file), 16, 16);
+        e.set_color(png::ColorType::Rgba);
+        e.set_depth(png::BitDepth::Eight);
+        e.write_header()
+            .unwrap()
+            .write_image_data(&[200u8; 16 * 16 * 4])
+            .unwrap();
+    }
+    cmd(json!({"op":"set_window_icon","window":id,"path":png_path})).unwrap();
+    std::fs::write(dir.join("bad.png"), b"not a png").unwrap();
+    assert_eq!(
+        cmd(json!({"op":"set_window_icon","window":id,"path":dir.join("bad.png")}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    cmd(json!({"op":"set_window_icon","window":id})).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"list_monitors"})).unwrap()["monitors"],
+        json!([])
+    );
+    // Platform rules: Wayland reports unsupported operations instead of pretending.
+    assert!(crate::runtime::unsupported("wayland", &crate::runtime::WindowOp::Focus).is_some());
+    assert!(crate::runtime::unsupported("windows", &crate::runtime::WindowOp::Focus).is_none());
+    assert_eq!(
+        cmd(json!({"op":"get_window_state","window":id + 1000}))
+            .unwrap_err()
+            .code,
+        4
+    );
+    assert_eq!(
+        cmd(json!({"op":"window_action","window":id + 1000,"action":"focus"}))
+            .unwrap_err()
+            .code,
+        4
+    );
+}

@@ -206,6 +206,7 @@ public sealed class App : IDisposable
         }
         return work;
     }
+    public string MonitorsJson() => Command(new { op = "list_monitors" }).GetProperty("monitors").GetRawText();
     public string StatsJson()
     {
         OwnerOnly();
@@ -499,6 +500,39 @@ public sealed class Window
     public string CopySelection() { Check(); return app.Command(new { op = "copy_selection", window = Id }).GetProperty("text").GetString()!; }
     public string? GetClipboardText() { Check(); var t = app.Command(new { op = "get_clipboard_text", window = Id }).GetProperty("text"); return t.ValueKind == JsonValueKind.Null ? null : t.GetString(); }
     public void SetClipboardText(string text) { Check(); app.Command(new { op = "set_clipboard_text", window = Id, text }); }
+    /// <summary>show, hide, focus, minimize, maximize, restore, fullscreen or exit_fullscreen.</summary>
+    public WindowActionResult WindowAction(string action)
+    {
+        Check();
+        var r = app.Command(new { op = "window_action", window = Id, action });
+        return new WindowActionResult(r.GetProperty("applied").GetBoolean(), r.TryGetProperty("unsupported", out var u) ? u.GetString() : null, r.GetProperty("platform").GetString()!);
+    }
+    public WindowActionResult Show() => WindowAction("show");
+    public WindowActionResult Hide() => WindowAction("hide");
+    public WindowActionResult Activate() => WindowAction("focus");
+    public WindowActionResult Minimize() => WindowAction("minimize");
+    public WindowActionResult Maximize() => WindowAction("maximize");
+    public WindowActionResult Restore() => WindowAction("restore");
+    public WindowActionResult SetFullscreen(bool fullscreen = true) => WindowAction(fullscreen ? "fullscreen" : "exit_fullscreen");
+    public void SetConstraints(int? minWidth = null, int? minHeight = null, int? maxWidth = null, int? maxHeight = null, bool resizable = true)
+    {
+        Check();
+        var request = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = "set_window_constraints", ["window"] = Id, ["resizable"] = resizable };
+        if (minWidth is not null) request["min_width"] = minWidth;
+        if (minHeight is not null) request["min_height"] = minHeight;
+        if (maxWidth is not null) request["max_width"] = maxWidth;
+        if (maxHeight is not null) request["max_height"] = maxHeight;
+        app.Command(request);
+    }
+    public void SetIcon(string? path)
+    {
+        Check();
+        var request = new System.Collections.Generic.Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = "set_window_icon", ["window"] = Id };
+        if (!string.IsNullOrEmpty(path)) request["path"] = System.IO.Path.GetFullPath(path);
+        app.Command(request);
+    }
+    /// <summary>Observed state as JSON: visible, focused, minimized, maximized, fullscreen (null when unknown), size, scale, monitor.</summary>
+    public string StateJson() { Check(); return app.Command(new { op = "get_window_state", window = Id }).GetRawText(); }
     public void ShowDialog(string element, bool modal = true) { Check(); app.Command(new { op = "show_dialog", window = Id, element, modal }); }
     public void CloseDialog(string element, string? returnValue = null)
     {
@@ -530,6 +564,7 @@ public sealed class Window
 }
 
 public sealed record ScrollState(double X, double Y, double MinX, double MinY, double MaxX, double MaxY, double Width, double Height, bool Scrollable);
+public sealed record WindowActionResult(bool Applied, string? Unsupported, string Platform);
 public sealed record DialogState(bool Open, bool Modal, string ReturnValue);
 public sealed record SelectOption(string Value, string Label, bool Selected, bool Disabled);
 public sealed record ElementRect(double X, double Y, double Width, double Height);

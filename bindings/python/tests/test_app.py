@@ -301,6 +301,19 @@ class BindingTests(unittest.TestCase):
             app.run()
             self.assertEqual(closes, ["done"])
 
+    def test_window_actions_and_state(self):
+        with self.app() as app:
+            window = app.open("<p>w</p>")
+            self.assertTrue(window.maximize()["applied"])
+            self.assertTrue(window.state()["maximized"])
+            window.restore()
+            self.assertFalse(window.state()["maximized"])
+            window.set_constraints(min_size=(300, 200), resizable=False)
+            self.assertEqual(window.state()["min_size"], [300, 200])
+            self.assertEqual(app.monitors(), [])
+            with self.assertRaises(Ui4meError):
+                window.window_action("spin")
+
     def test_rejected_fragment_preserves_previous_subtree(self):
         with self.app() as app:
             window = app.open('<div id="rows"><input id="old" value="Keep"></div><p id="outside">Outside</p>')

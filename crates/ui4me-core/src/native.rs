@@ -1,7 +1,7 @@
 //! Retained winit 0.30 host. Native objects never leave their owning thread.
 //! This layer translates OS input and presents pixels; document semantics live in the renderer.
 use crate::document::{Clipboard, ImeState, Input, MAX_PIXELS};
-use crate::runtime::{lock, Session, WindowInfo};
+use crate::runtime::{lock, Observed, Session, WindowInfo, WindowOp};
 use crate::{Error, Result};
 use serde_json::json;
 use softbuffer::{Context, Surface};
@@ -222,6 +222,53 @@ impl Desktop {
         self.windows.remove(&id);
         self.session.closed(id);
     }
+    /// Report the platform's view of a window (emits `window_state` on change).
+    fn observe(&mut self, id: u64) {
+        let Some(native) = self.windows.get(&id) else {
+            return;
+        };
+        let w = &native.window;
+        let observed = Observed {
+            visible: w.is_visible(),
+            focused: Some(w.has_focus()),
+            minimized: w.is_minimized(),
+            maximized: Some(w.is_maximized()),
+            fullscreen: Some(w.fullscreen().is_some()),
+            monitor: w.current_monitor().and_then(|m| m.name()),
+        };
+        self.session.observe_window(id, observed);
+    }
+    fn enumerate(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "linux")]
+        let platform =
+            if winit::platform::wayland::ActiveEventLoopExtWayland::is_wayland(event_loop) {
+                "wayland"
+            } else {
+                "x11"
+            };
+        #[cfg(target_os = "windows")]
+        let platform = "windows";
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        let platform = "other";
+        *lock(&self.session.platform) = platform;
+        let primary = event_loop.primary_monitor();
+        let monitors = event_loop
+            .available_monitors()
+            .take(16)
+            .map(|m| {
+                let size = m.size();
+                let position = (platform != "wayland").then(|| {
+                    let p = m.position();
+                    json!([p.x, p.y])
+                });
+                json!({"name": m.name(), "width": size.width, "height": size.height,
+                    "scale": m.scale_factor(), "position": position,
+                    "refresh_millihertz": m.refresh_rate_millihertz(),
+                    "primary": primary.as_ref() == Some(&m)})
+            })
+            .collect();
+        *lock(&self.session.monitors) = monitors;
+    }
     fn synchronize(&mut self, event_loop: &ActiveEventLoop) {
         if !self.resumed || self.session.should_stop() {
             return;
@@ -270,6 +317,15 @@ impl Desktop {
             }
             if let Some(size) = applied_size {
                 self.resized(id, size);
+            }
+            let ops = self.session.take_window_ops(id);
+            if !ops.is_empty() {
+                if let Some(native) = self.windows.get_mut(&id) {
+                    for op in ops {
+                        apply_op(native, op, current.hidden);
+                    }
+                }
+                self.observe(id);
             }
             self.update_input_state(id);
             let shown = self.windows.get_mut(&id).is_some_and(|w| {
@@ -327,7 +383,8 @@ impl Desktop {
         buffer
             .present()
             .map_err(|e| Error::native(format!("present software buffer: {e}")))?;
-        if !native.visible {
+        let hidden = self.session.window_info(id).is_some_and(|i| i.hidden);
+        if !native.visible && !hidden {
             native.window.set_visible(true);
             native.visible = true;
             native.shown_pending = true;
@@ -469,6 +526,7 @@ impl Desktop {
 impl ApplicationHandler<()> for Desktop {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.resumed = true;
+        self.enumerate(event_loop);
         self.synchronize(event_loop);
         if !self.started && !self.session.should_stop() {
             self.started = true;
@@ -512,7 +570,11 @@ impl ApplicationHandler<()> for Desktop {
                     self.session.report_document_error(id, error);
                 }
             }
-            WindowEvent::Resized(size) => self.resized(id, size),
+            WindowEvent::Resized(size) => {
+                self.resized(id, size);
+                self.observe(id);
+            }
+            WindowEvent::Moved(_) | WindowEvent::Occluded(_) => self.observe(id),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(native) = self.windows.get(&id) {
                     let size = native.window.inner_size();
@@ -522,6 +584,8 @@ impl ApplicationHandler<()> for Desktop {
                     self.session
                         .emit(json!({"type":"scale_changed","window":id,"scale":scale_factor}));
                 }
+                self.enumerate(event_loop);
+                self.observe(id);
             }
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(native) = self.windows.get_mut(&id) {
@@ -588,6 +652,7 @@ impl ApplicationHandler<()> for Desktop {
                     }
                 }
                 self.send_input(id, Input::Focus(focused));
+                self.observe(id);
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 if let Some(native) = self.windows.get_mut(&id) {
@@ -631,5 +696,47 @@ impl ApplicationHandler<()> for Desktop {
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.windows.clear();
+    }
+}
+
+fn apply_op(native: &mut NativeWindow, op: WindowOp, hidden: bool) {
+    let w = &native.window;
+    match op {
+        WindowOp::Show => {
+            if native.visible || !hidden {
+                w.set_visible(true);
+                native.visible = true;
+            }
+        }
+        WindowOp::Hide => {
+            w.set_visible(false);
+            native.visible = false;
+        }
+        WindowOp::Focus => w.focus_window(),
+        WindowOp::Minimize => w.set_minimized(true),
+        WindowOp::Maximize => w.set_maximized(true),
+        WindowOp::Restore => {
+            w.set_minimized(false);
+            w.set_maximized(false);
+        }
+        WindowOp::Fullscreen(on) => {
+            w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)))
+        }
+        WindowOp::Constraints {
+            min,
+            max,
+            resizable,
+        } => {
+            let (min, max) = (min.unwrap_or((160, 120)), max.unwrap_or((4096, 4096)));
+            w.set_min_inner_size(Some(LogicalSize::new(min.0 as f64, min.1 as f64)));
+            w.set_max_inner_size(Some(LogicalSize::new(max.0 as f64, max.1 as f64)));
+            w.set_resizable(resizable);
+        }
+        WindowOp::Icon(icon) => {
+            let icon = icon.and_then(|(rgba, width, height)| {
+                winit::window::Icon::from_rgba(rgba, width, height).ok()
+            });
+            w.set_window_icon(icon);
+        }
     }
 }

@@ -53,11 +53,43 @@ pub struct WindowInfo {
     pub closing: bool,
     pub dirty: bool,
     pub resize_revision: u64,
+    /// The application asked to hide the window (`window_action hide`).
+    pub hidden: bool,
+}
+/// A native window operation queued on the owner and applied by the event loop.
+#[derive(Clone, Debug, PartialEq)]
+pub enum WindowOp {
+    Show,
+    Hide,
+    Focus,
+    Minimize,
+    Maximize,
+    Restore,
+    Fullscreen(bool),
+    Constraints {
+        min: Option<(u32, u32)>,
+        max: Option<(u32, u32)>,
+        resizable: bool,
+    },
+    Icon(Option<(Vec<u8>, u32, u32)>),
+}
+/// Window state as last observed from the platform (`None`: the platform does not report it).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Observed {
+    pub visible: Option<bool>,
+    pub focused: Option<bool>,
+    pub minimized: Option<bool>,
+    pub maximized: Option<bool>,
+    pub fullscreen: Option<bool>,
+    pub monitor: Option<String>,
 }
 struct WindowState {
     info: WindowInfo,
     document: Document,
     last_error: Option<(i32, String)>,
+    ops: VecDeque<WindowOp>,
+    observed: Observed,
+    constraints: (Option<(u32, u32)>, Option<(u32, u32)>, bool),
 }
 struct Timer {
     due: Instant,
@@ -108,6 +140,10 @@ pub struct Session {
     callback_depth: AtomicUsize,
     #[cfg(feature = "native")]
     pub proxy: Mutex<Option<winit::event_loop::EventLoopProxy<()>>>,
+    /// Platform of the native backend once running (`wayland`, `x11`, `windows`), else `headless`.
+    pub platform: Mutex<&'static str>,
+    /// Monitors as last enumerated by the native event loop.
+    pub monitors: Mutex<Vec<Value>>,
 }
 struct RunLease<'a>(&'a Session);
 impl Drop for RunLease<'_> {
@@ -185,8 +221,26 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         callback_depth: AtomicUsize::new(0),
         #[cfg(feature = "native")]
         proxy: Mutex::new(None),
+        platform: Mutex::new("headless"),
+        monitors: Mutex::new(Vec::new()),
     }));
     Ok(id)
+}
+
+/// Why `op` cannot be honoured on `platform` (the compositor or OS forbids or ignores it).
+pub fn unsupported(platform: &str, op: &WindowOp) -> Option<&'static str> {
+    match (platform, op) {
+        ("wayland", WindowOp::Focus) => {
+            Some("Wayland compositors activate a window only with a user-provided activation token")
+        }
+        ("wayland", WindowOp::Hide) | ("wayland", WindowOp::Show) => {
+            Some("Wayland has no client-side show/hide of a toplevel; close or minimize instead")
+        }
+        ("wayland", WindowOp::Icon(_)) => {
+            Some("Wayland takes the icon from the desktop entry named by app_id")
+        }
+        _ => None,
+    }
 }
 
 impl Session {
@@ -357,6 +411,27 @@ impl Session {
     pub fn window_ids(&self) -> Vec<u64> {
         self.with_owner(|o| Ok(o.windows.keys().copied().collect()))
             .unwrap_or_default()
+    }
+    /// Native window operations queued since the last call (owner/event loop).
+    pub fn take_window_ops(&self, id: u64) -> Vec<WindowOp> {
+        self.with_window(id, |w| Ok(w.ops.drain(..).collect()))
+            .unwrap_or_default()
+    }
+    /// Record platform-observed window state; emits `window_state` when it changed.
+    pub fn observe_window(&self, id: u64, observed: Observed) {
+        let changed = self
+            .with_window(id, |w| {
+                let changed = w.observed != observed;
+                w.observed = observed.clone();
+                Ok(changed)
+            })
+            .unwrap_or(false);
+        if changed {
+            let mut event = observed_json(&observed);
+            event["type"] = json!("window_state");
+            event["window"] = json!(id);
+            self.emit(event);
+        }
     }
     pub fn window_info(&self, id: u64) -> Option<WindowInfo> {
         self.with_window(id, |w| Ok(w.info.clone())).ok()
@@ -1011,6 +1086,78 @@ impl Session {
                 element,
                 values,
             } => self.mutate(window, |d| d.set_selected_values(&element, &values))?,
+            Command::WindowAction { window, action } => {
+                let op = match action.as_str() {
+                    "show" => WindowOp::Show,
+                    "hide" => WindowOp::Hide,
+                    "focus" => WindowOp::Focus,
+                    "minimize" => WindowOp::Minimize,
+                    "maximize" => WindowOp::Maximize,
+                    "restore" => WindowOp::Restore,
+                    "fullscreen" => WindowOp::Fullscreen(true),
+                    "exit_fullscreen" => WindowOp::Fullscreen(false),
+                    _ => return Err(Error::arg(
+                        "action must be show, hide, focus, minimize, maximize, restore, fullscreen or exit_fullscreen",
+                    )),
+                };
+                self.queue_window_op(window, op)?
+            }
+            Command::SetWindowConstraints {
+                window,
+                min_width,
+                min_height,
+                max_width,
+                max_height,
+                resizable,
+            } => {
+                let pair = |w: Option<u32>, h: Option<u32>| -> Result<Option<(u32, u32)>> {
+                    match (w, h) {
+                        (None, None) => Ok(None),
+                        (Some(w), Some(h)) => {
+                            protocol::validate_size(w, h)?;
+                            Ok(Some((w, h)))
+                        }
+                        _ => Err(Error::arg("give both width and height of a size constraint")),
+                    }
+                };
+                let min = pair(min_width, min_height)?;
+                let max = pair(max_width, max_height)?;
+                if let (Some(a), Some(b)) = (min, max) {
+                    if a.0 > b.0 || a.1 > b.1 {
+                        return Err(Error::arg("minimum size exceeds maximum size"));
+                    }
+                }
+                self.queue_window_op(
+                    window,
+                    WindowOp::Constraints {
+                        min,
+                        max,
+                        resizable,
+                    },
+                )?
+            }
+            Command::SetWindowIcon { window, path } => {
+                let icon = match path {
+                    Some(path) => Some(read_icon(&path)?),
+                    None => None,
+                };
+                self.queue_window_op(window, WindowOp::Icon(icon))?
+            }
+            Command::GetWindowState { window } => self.with_window(window, |w| {
+                let mut v = observed_json(&w.observed);
+                let i = &w.info;
+                v["width"] = json!(i.pixel_width as f64 / i.scale);
+                v["height"] = json!(i.pixel_height as f64 / i.scale);
+                v["pixel_width"] = json!(i.pixel_width);
+                v["pixel_height"] = json!(i.pixel_height);
+                v["scale"] = json!(i.scale);
+                v["min_size"] = json!(w.constraints.0);
+                v["max_size"] = json!(w.constraints.1);
+                v["resizable"] = json!(w.constraints.2);
+                v["platform"] = json!(*lock(&self.platform));
+                Ok(v)
+            })?,
+            Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
             Command::Diagnostics { window } => self.with_window(window, |w| {
                 let mut diagnostics = w.document.diagnostics();
                 if let Some((code, message)) = &w.last_error {
@@ -1041,6 +1188,12 @@ impl Session {
                         .resize_revision
                         .checked_add(1)
                         .ok_or_else(|| Error::limit("resize revision exhausted"))?;
+                    // Size constraints apply to programmatic resizes too (on Wayland the
+                    // compositor treats them only as hints for the user's own resizing).
+                    let (min, max, _) = w.constraints;
+                    let (lo, hi) = (min.unwrap_or((160, 120)), max.unwrap_or((4096, 4096)));
+                    let width = width.clamp(lo.0, hi.0);
+                    let height = height.clamp(lo.1, hi.1);
                     w.info.width = width;
                     w.info.height = height;
                     w.info.resize_revision = revision;
@@ -1050,7 +1203,7 @@ impl Session {
                         w.info.pixel_height = height;
                         w.document.set_viewport(width, height, w.info.scale)?;
                     }
-                    Ok(json!({}))
+                    Ok(json!({"width": width, "height": height}))
                 })?
             }
             Command::Snapshot { window, path } => self.snapshot(window, &path)?,
@@ -1157,6 +1310,16 @@ impl Session {
                 WindowState {
                     document,
                     last_error: None,
+                    ops: VecDeque::new(),
+                    observed: Observed {
+                        visible: Some(!self.native),
+                        focused: Some(!self.native),
+                        minimized: Some(false),
+                        maximized: Some(false),
+                        fullscreen: Some(false),
+                        monitor: None,
+                    },
+                    constraints: (None, None, true),
                     info: WindowInfo {
                         title,
                         width,
@@ -1167,6 +1330,7 @@ impl Session {
                         closing: false,
                         dirty: true,
                         resize_revision: 0,
+                        hidden: false,
                     },
                 },
             );
@@ -1189,6 +1353,57 @@ impl Session {
         })?;
         self.emit_document_events(id, events);
         Ok(value)
+    }
+    fn queue_window_op(&self, id: u64, op: WindowOp) -> Result<Value> {
+        let platform = *lock(&self.platform);
+        if let Some(reason) = unsupported(platform, &op) {
+            // Still validated against the window, so a stale ID is an error, not "unsupported".
+            self.with_window(id, |_| Ok(()))?;
+            return Ok(json!({"applied": false, "unsupported": reason, "platform": platform}));
+        }
+        let native = self.native;
+        self.with_window(id, |w| {
+            if w.ops.len() >= 32 {
+                return Err(Error::limit("too many pending window operations"));
+            }
+            if let WindowOp::Constraints {
+                min,
+                max,
+                resizable,
+                ..
+            } = &op
+            {
+                w.constraints = (*min, *max, *resizable);
+            }
+            match &op {
+                WindowOp::Hide => w.info.hidden = true,
+                WindowOp::Show => w.info.hidden = false,
+                _ => {}
+            }
+            if native {
+                w.ops.push_back(op);
+                w.info.dirty = true;
+            } else {
+                // Headless: a deterministic model of the requested state.
+                let o = &mut w.observed;
+                match op {
+                    WindowOp::Show => o.visible = Some(true),
+                    WindowOp::Hide => o.visible = Some(false),
+                    WindowOp::Focus => o.focused = Some(true),
+                    WindowOp::Minimize => o.minimized = Some(true),
+                    WindowOp::Maximize => o.maximized = Some(true),
+                    WindowOp::Restore => {
+                        o.minimized = Some(false);
+                        o.maximized = Some(false);
+                    }
+                    WindowOp::Fullscreen(f) => o.fullscreen = Some(f),
+                    WindowOp::Constraints { .. } | WindowOp::Icon(_) => {}
+                }
+            }
+            Ok(())
+        })?;
+        self.wake();
+        Ok(json!({"applied": true, "platform": platform}))
     }
     fn mutate(
         &self,
@@ -1298,4 +1513,49 @@ pub fn poison_active() {
 fn scroll_json(s: ui4me_renderer::ScrollState) -> Value {
     json!({"x":s.x,"y":s.y,"min_x":s.min_x,"min_y":s.min_y,"max_x":s.max_x,"max_y":s.max_y,
         "width":s.width,"height":s.height,"scrollable":s.scrollable})
+}
+fn observed_json(o: &Observed) -> Value {
+    json!({"visible":o.visible,"focused":o.focused,"minimized":o.minimized,
+        "maximized":o.maximized,"fullscreen":o.fullscreen,"monitor":o.monitor})
+}
+/// Read a PNG window icon (at most 1 MiB and 256×256) as RGBA8.
+fn read_icon(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
+    let meta = std::fs::metadata(path).map_err(|e| Error::io(format!("icon: {e}")))?;
+    if meta.len() > 1024 * 1024 {
+        return Err(Error::limit("icon file exceeds 1 MiB"));
+    }
+    let file = std::fs::File::open(path).map_err(|e| Error::io(format!("icon: {e}")))?;
+    let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder
+        .read_info()
+        .map_err(|e| Error::arg(format!("icon is not a readable PNG: {e}")))?;
+    let (w, h) = (reader.info().width, reader.info().height);
+    if w == 0 || h == 0 || w > 256 || h > 256 {
+        return Err(Error::arg("icon must be 1..256 pixels on each side"));
+    }
+    let mut buf = vec![
+        0;
+        reader
+            .output_buffer_size()
+            .ok_or_else(|| Error::limit("icon too large"))?
+    ];
+    let frame = reader
+        .next_frame(&mut buf)
+        .map_err(|e| Error::arg(format!("icon decode: {e}")))?;
+    let data = &buf[..frame.buffer_size()];
+    let rgba: Vec<u8> = match frame.color_type {
+        png::ColorType::Rgba => data.to_vec(),
+        png::ColorType::Rgb => data
+            .chunks(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        png::ColorType::GrayscaleAlpha => data
+            .chunks(2)
+            .flat_map(|p| [p[0], p[0], p[0], p[1]])
+            .collect(),
+        png::ColorType::Grayscale => data.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        png::ColorType::Indexed => return Err(Error::arg("indexed icon was not expanded")),
+    };
+    Ok((rgba, w, h))
 }

@@ -302,16 +302,49 @@ def journey(out: Path, command: list[str]) -> dict:
             "command": command, "status": "passed" if statuses == {"passed"} else "failed", "cases": cases}
 
 
+def run_plain(out: Path, command: list[str]) -> int:
+    """Run any command on a private virtual KWin (for probes that check themselves)."""
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    sock = f"ui4me-plain-{os.getpid()}"
+    log = runtime / f"{sock}.log"
+    env = dict(os.environ, KWIN_WAYLAND_NO_PERMISSION_CHECKS="1")
+    env.pop("DISPLAY", None)
+    kwin = subprocess.Popen(["kwin_wayland", "--virtual", "--no-lockscreen", "--socket", sock, "--width", "1280", "--height", "900"],
+                            env=env, stdout=log.open("w"), stderr=subprocess.STDOUT)
+    try:
+        for _ in range(100):
+            if (runtime / sock).exists():
+                break
+            time.sleep(0.1)
+        time.sleep(1.0)
+        env["WAYLAND_DISPLAY"] = sock
+        with (out / "command.log").open("w") as output:
+            return subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=300).returncode
+    finally:
+        kwin.terminate()
+        try:
+            kwin.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            kwin.kill()
+        if log.exists():
+            shutil.copy(log, out / "kwin.log")
+            log.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--plain", action="store_true", help="run COMMAND on the virtual KWin and return its exit code")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.inner:
-        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", "--out", str(args.out), "--", *command])
+        plain = ["--plain"] if args.plain else []
+        return subprocess.call(["dbus-run-session", "--", sys.executable, __file__, "--inner", *plain, "--out", str(args.out), "--", *command])
+    if args.plain:
+        return run_plain(args.out.resolve(), command)
     result = journey(args.out.resolve(), command)
     (args.out / "journey.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     for c in result["cases"]:

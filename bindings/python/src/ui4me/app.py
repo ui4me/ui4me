@@ -287,6 +287,11 @@ class App:
             for future, _ in pending:
                 future.cancel()
 
+    def monitors(self) -> list[dict]:
+        """Monitors seen by the native backend (empty for headless): name, physical size,
+        scale, position (None on Wayland), refresh rate and primary flag."""
+        return self._command({"op": "list_monitors"})["monitors"]
+
     def stats(self) -> dict:
         self._owner_only()
         if self._state == "closed":
@@ -508,6 +513,53 @@ class Window:
 
     def set_clipboard_text(self, text: str) -> None:
         self._command("set_clipboard_text", text=text)
+
+    def window_action(self, action: str) -> dict:
+        """``show``, ``hide``, ``focus``, ``minimize``, ``maximize``, ``restore``, ``fullscreen``
+        or ``exit_fullscreen``. Returns ``{"applied": bool, "platform": ...}``; where the
+        platform forbids it (for example focus or hide on Wayland) ``applied`` is False and
+        ``unsupported`` gives the reason. Observe the outcome with :meth:`state`."""
+        return self._command("window_action", action=action)
+
+    def show(self) -> dict:
+        return self.window_action("show")
+
+    def hide(self) -> dict:
+        return self.window_action("hide")
+
+    def activate(self) -> dict:
+        return self.window_action("focus")
+
+    def minimize(self) -> dict:
+        return self.window_action("minimize")
+
+    def maximize(self) -> dict:
+        return self.window_action("maximize")
+
+    def restore(self) -> dict:
+        return self.window_action("restore")
+
+    def set_fullscreen(self, fullscreen: bool = True) -> dict:
+        return self.window_action("fullscreen" if fullscreen else "exit_fullscreen")
+
+    def set_constraints(self, *, min_size: tuple[int, int] | None = None,
+                        max_size: tuple[int, int] | None = None, resizable: bool = True) -> dict:
+        args: dict = {"resizable": bool(resizable)}
+        if min_size:
+            args.update(min_width=int(min_size[0]), min_height=int(min_size[1]))
+        if max_size:
+            args.update(max_width=int(max_size[0]), max_height=int(max_size[1]))
+        return self._command("set_window_constraints", **args)
+
+    def set_icon(self, path=None) -> dict:
+        """Window icon from a PNG (≤ 256×256, ≤ 1 MiB); ``None`` clears it."""
+        args = {} if path is None else {"path": str(Path(path).absolute())}
+        return self._command("set_window_icon", **args)
+
+    def state(self) -> dict:
+        """Observed state: visible, focused, minimized, maximized, fullscreen (None when the
+        platform does not report it), size in CSS px and pixels, scale, monitor, constraints."""
+        return self._command("get_window_state")
 
     def show_dialog(self, element: str, *, modal: bool = True) -> None:
         """Open a ``<dialog>``; a modal one traps focus and makes the rest inert until closed."""

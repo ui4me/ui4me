@@ -165,6 +165,7 @@ It is not published. Ledger: `docs/core-foundation/PROGRESS.md`.
 | Streaming (0.3) | `append_text(id, chunk)`, `trim_children(id, keep, from_="start")` | `AppendText`, `TrimChildren` |
 | Dialog (0.4) | `show_dialog(id, modal=True)`, `close_dialog(id, return_value=None)`, `get_dialog(id)` | `ShowDialog`, `CloseDialog`, `GetDialog` |
 | Select (0.4) | `get_options(id)`, `set_selected_values(id, values)`; `get_value`/`set_value` for single selects | `GetOptions`, `SetSelectedValues`, `GetValue`/`SetValue` |
+| Native window (0.4) | `window_action(a)`, `show`, `hide`, `activate`, `minimize`, `maximize`, `restore`, `set_fullscreen`, `set_constraints(min_size=, max_size=, resizable=)`, `set_icon(path)`, `state()`; `app.monitors()` | `WindowAction`, `Show`, `Hide`, `Activate`, `Minimize`, `Maximize`, `Restore`, `SetFullscreen`, `SetConstraints`, `SetIcon`, `StateJson`; `$app.MonitorsJson()` |
 | Read (0.3) | `get_text`, `get_attribute` (None if absent), `get_attributes`, `has_element`, `query(selector)` | `GetText`, `GetAttribute`, `GetAttributes`, `HasElement`, `Query` |
 | Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
 | Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
@@ -244,6 +245,12 @@ Home/End, PageUp/PageDown and type-ahead skip disabled options; a committed chan
 emits `input` and `commit` with `value`. A listbox `<select multiple>` supports
 Ctrl/Shift picking. Clicking a `<label>` focuses or activates its control. PowerShell
 events expose `ReturnValue` and `NewState`.
+Window services (0.4): actions are queued and applied by the native event loop.
+- **Results:** `window_action` returns `applied`. Where the platform forbids an action it returns `applied: false` with an `unsupported` reason, never a fake success. On Wayland: focus/activation (needs an activation token), show/hide, and the window icon (it comes from the app_id desktop entry); Wayland also cannot un-minimize.
+- **State:** `state()` reports what the platform observed: `visible`, `focused`, `minimized`, `maximized` and `fullscreen` are `null` when unknown (for example, minimized on Wayland). It also reports size in CSS px and pixels, `scale`, `monitor`, constraints and `platform`. A `window_state` event fires when the state changes.
+- **Constraints:** they apply to user resizing and also clamp `resize`.
+- **Monitors:** `monitors()` lists name, physical size, scale, refresh rate and primary flag. Position is null on Wayland. The list is empty in headless sessions.
+- **Headless:** actions update a deterministic model.
 New applications should use `set_value` for form controls. `replace_children_html`
 parses and validates a fragment before committing it. Duplicate IDs, unsupported
 active content and limits cannot leave a half-replaced subtree. Unrelated

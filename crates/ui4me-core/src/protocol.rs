@@ -312,6 +312,32 @@ pub enum Command {
         element: String,
         values: Vec<String>,
     },
+    WindowAction {
+        window: u64,
+        action: String,
+    },
+    SetWindowConstraints {
+        window: u64,
+        #[serde(default)]
+        min_width: Option<u32>,
+        #[serde(default)]
+        min_height: Option<u32>,
+        #[serde(default)]
+        max_width: Option<u32>,
+        #[serde(default)]
+        max_height: Option<u32>,
+        #[serde(default = "yes")]
+        resizable: bool,
+    },
+    SetWindowIcon {
+        window: u64,
+        #[serde(default)]
+        path: Option<PathBuf>,
+    },
+    GetWindowState {
+        window: u64,
+    },
+    ListMonitors,
     Diagnostics {
         window: u64,
     },

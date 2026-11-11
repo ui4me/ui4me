@@ -391,6 +391,20 @@ try {
         }
         if (($closes -join ',') -ne 'done') { throw "Dialog close event return value: $($closes -join ',')" }
     }
+    Test-Case 'PS21h_window_actions' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<p>w</p>')
+            if (-not $window.Maximize().Applied) { throw 'Maximize was not applied' }
+            if (-not ($window.StateJson() | ConvertFrom-Json).maximized) { throw 'State does not report maximized' }
+            $null = $window.Restore()
+            $window.SetConstraints(300, 200, $null, $null, $false)
+            $state = $window.StateJson() | ConvertFrom-Json
+            if ($state.resizable -or $state.min_size[0] -ne 300) { throw 'Constraints were not recorded' }
+            if ($app.MonitorsJson() -ne '[]') { throw 'Headless should report no monitors' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS22_cancel_completed_work_before_delivery' {
         $worker = Invoke-Ui4meApp -Backend headless {
             param($app)
