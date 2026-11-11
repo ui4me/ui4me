@@ -73,6 +73,14 @@ pub enum WindowOp {
     },
     Icon(Option<(Vec<u8>, u32, u32)>),
     FileDialog(FileDialogRequest),
+    /// Native menu bar (0.7 F0703).
+    Menu(Option<Vec<crate::services::MenuItem>>),
+    /// Context menu at CSS px (0.7 F0703).
+    ContextMenu {
+        x: f64,
+        y: f64,
+        menu: Vec<crate::services::MenuItem>,
+    },
 }
 /// A native open/save/folder dialog request.
 #[derive(Clone, Debug, PartialEq)]
@@ -168,6 +176,12 @@ pub struct Session {
     pub link_policy: Mutex<LinkPolicy>,
     /// File-input pickers in flight: dialog token -> (window, input) (0.6 F0606).
     input_pickers: Mutex<BTreeMap<u64, (u64, ui4me_renderer::NodeId)>>,
+    /// Events from the desktop services adapter, delivered on the owner thread (0.7).
+    service_events: Arc<Mutex<VecDeque<Value>>>,
+    /// Menu accelerators per window: (accelerator, command) (0.7 F0703).
+    menu_accelerators: Mutex<BTreeMap<u64, Vec<(crate::services::Accelerator, String)>>>,
+    /// Registered global shortcut ids (0.7 F0705).
+    hotkeys: Mutex<std::collections::BTreeSet<String>>,
 }
 
 #[cfg(test)]
@@ -369,6 +383,9 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         clipboard: Mutex::new(None),
         link_policy: Mutex::new(LinkPolicy::default()),
         input_pickers: Mutex::new(BTreeMap::new()),
+        service_events: Arc::new(Mutex::new(VecDeque::new())),
+        menu_accelerators: Mutex::new(BTreeMap::new()),
+        hotkeys: Mutex::new(Default::default()),
     }));
     Ok(id)
 }
@@ -401,6 +418,107 @@ pub fn unsupported(platform: &str, op: &WindowOp) -> Option<&'static str> {
 }
 
 impl Session {
+    /// The sink through which the services adapter posts events (any thread): queued, then the
+    /// loop wakes and the owner delivers them.
+    pub fn service_sink(&self) -> crate::services::Sink {
+        let queue = self.service_events.clone();
+        let id = self.id;
+        Arc::new(move |event: Value| {
+            {
+                let mut q = lock(&queue);
+                if q.len() >= 256 {
+                    return; // bounded: a flood of OS events is dropped, not buffered without limit
+                }
+                q.push_back(event);
+            }
+            if let Ok(s) = get(id) {
+                s.wake();
+            }
+        })
+    }
+    /// Deliver queued service events; OS preference changes update every window first.
+    fn deliver_service_events(&self) {
+        loop {
+            let next = lock(&self.service_events).pop_front();
+            let Some(mut event) = next else { break };
+            if self.should_stop() {
+                break;
+            }
+            if event["type"] == "system_preferences" {
+                let dark = event["dark"].as_bool();
+                let contrast = event["high_contrast"].as_bool();
+                for id in self.window_ids() {
+                    if event.get("dark").is_some() {
+                        self.system_color_scheme(id, dark);
+                    }
+                    if event.get("high_contrast").is_some() {
+                        let _ = self.with_window(id, |w| {
+                            w.document.set_system_high_contrast(contrast);
+                            Ok(())
+                        });
+                    }
+                }
+            }
+            if event["type"] == "menu_command" {
+                if let Some(w) = event["window"].as_u64() {
+                    if self.window_info(w).is_none() {
+                        continue;
+                    }
+                }
+            }
+            if event["type"] == "hotkey"
+                && !lock(&self.hotkeys).contains(event["id"].as_str().unwrap_or(""))
+            {
+                continue;
+            }
+            event.as_object_mut().map(|o| o.remove("_internal"));
+            self.emit(event);
+        }
+    }
+    /// The menu command of a window accelerator matching this key, if any (0.7 F0703).
+    #[allow(clippy::too_many_arguments)]
+    pub fn menu_accelerator(
+        &self,
+        window: u64,
+        key: &str,
+        code: &str,
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+        meta: bool,
+    ) -> Option<String> {
+        lock(&self.menu_accelerators)
+            .get(&window)?
+            .iter()
+            .find(|(a, _)| a.matches(key, code, ctrl, alt, shift, meta))
+            .map(|(_, c)| c.clone())
+    }
+    /// Run a desktop-services request (owner thread): headless sessions have none.
+    fn with_services<R>(
+        &self,
+        f: impl FnOnce(&mut dyn crate::services::PlatformServices) -> R,
+    ) -> std::result::Result<R, crate::services::Refusal> {
+        if !self.native {
+            return Err(crate::services::Refusal::Unavailable(
+                "the headless backend has no desktop services".into(),
+            ));
+        }
+        self.assert_owner()
+            .map_err(|e| crate::services::Refusal::Unavailable(e.message))?;
+        let sink = self.service_sink();
+        Ok(crate::services::with(&sink, f))
+    }
+    fn service_result(
+        r: std::result::Result<
+            std::result::Result<(), crate::services::Refusal>,
+            crate::services::Refusal,
+        >,
+    ) -> Value {
+        match r.and_then(|x| x) {
+            Ok(()) => json!({"status": "ok"}),
+            Err(refusal) => refusal.to_json(),
+        }
+    }
     /// The language-neutral platform capability report (0.5 F0508): what this backend and platform
     /// offer, with exact causes for everything that is not simply supported.
     fn capabilities(&self) -> Value {
@@ -484,7 +602,7 @@ impl Session {
                 &format!("not offered by Core yet (planned for {version})"),
             )
         };
-        json!({
+        let caps = json!({
             "platform": if pending { "pending" } else { platform },
             "backend": if headless { "headless" } else { "native" },
             "features": {
@@ -508,12 +626,30 @@ impl Session {
                 "environment.contrast": capability("unsupported", "prefers-contrast and forced-colors are not evaluated"),
                 "environment.locale": capability("unsupported", "Core does not read the OS locale; set lang in the document"),
                 "environment.font_changes": capability("unsupported", "system font changes are not observed; restart the app or reopen the window"),
-                "notifications": later("0.7"),
-                "system_tray": later("0.7"),
-                "global_hotkeys": later("0.7"),
-                "native_menus": later("0.7"),
+                "native_menus.accelerators": if headless { capability("unavailable", "the headless backend has no keyboard") } else { ok() },
             },
-        })
+        });
+        let _ = later;
+        // The desktop services adapter reports notifications, tray, menus, shortcuts, theme and
+        // contrast (0.7); headless sessions have none.
+        let services: Vec<(&'static str, Value)> = match self.with_services(|s| s.capabilities()) {
+            Ok(list) => list,
+            Err(r) => [
+                "notifications",
+                "system_tray",
+                "native_menus",
+                "native_menus.context",
+                "global_hotkeys",
+            ]
+            .into_iter()
+            .map(|f| (f, r.to_json()))
+            .collect(),
+        };
+        let mut caps = caps;
+        for (k, v) in services {
+            caps["features"][k] = v;
+        }
+        caps
     }
     pub fn assert_owner(&self) -> Result<()> {
         if self.owner == thread::current().id() {
@@ -971,6 +1107,7 @@ impl Session {
     }
     pub fn process_work(&self) {
         lock(&self.control).stats.loop_turns += 1;
+        self.deliver_service_events();
         loop {
             let next = {
                 let mut state = lock(&self.control);
@@ -1154,6 +1291,10 @@ impl Session {
             self.closed(id);
         }
         lock(&self.control).phase = Phase::Stopped;
+        // Tray icon, shortcuts and notifications end with the session.
+        crate::services::shutdown();
+        lock(&self.hotkeys).clear();
+        lock(&self.menu_accelerators).clear();
         self.emit(json!({"type":"stopped"}));
         #[cfg(feature = "native")]
         {
@@ -1736,6 +1877,121 @@ impl Session {
             })?,
             Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
             Command::Capabilities => self.capabilities(),
+            Command::Notify {
+                token,
+                title,
+                body,
+                icon,
+                urgency,
+                actions,
+            } => {
+                let n = crate::services::validate_notification(token, title, body, icon, urgency, actions)
+                    .map_err(Error::arg)?;
+                let mut out = Self::service_result(self.with_services(|s| s.notify(&n)));
+                if out["status"] == "ok" {
+                    out["status"] = json!("sent");
+                }
+                out["token"] = json!(token);
+                out
+            }
+            Command::CloseNotification { token } => {
+                let _ = self.with_services(|s| s.close_notification(token));
+                json!({})
+            }
+            Command::SetTray { icon, tooltip, menu } => {
+                if tooltip.len() > 256 || tooltip.contains('\0') {
+                    return Err(Error::arg("tooltip is at most 256 bytes without NUL"));
+                }
+                crate::services::validate_menu(&menu).map_err(Error::arg)?;
+                let icon = match icon {
+                    Some(p) => Some(read_icon(&p)?),
+                    None => None,
+                };
+                let tray = crate::services::Tray { icon, tooltip, menu };
+                Self::service_result(self.with_services(|s| s.set_tray(Some(&tray))))
+            }
+            Command::RemoveTray => Self::service_result(self.with_services(|s| s.set_tray(None))),
+            Command::SetMenu { window, menu } => {
+                let accels = match &menu {
+                    Some(m) => crate::services::validate_menu(m).map_err(Error::arg)?,
+                    None => Vec::new(),
+                };
+                self.with_window(window, |_| Ok(()))?;
+                lock(&self.menu_accelerators).insert(window, accels);
+                let native = self.native;
+                if native {
+                    self.with_window(window, |w| {
+                        w.ops.push_back(WindowOp::Menu(menu.clone()));
+                        Ok(())
+                    })?;
+                    self.wake();
+                }
+                // Accelerators work everywhere (Core matches them); the native bar where supported.
+                let mut v = match self.with_services(|s| {
+                    s.capabilities().into_iter().find(|(k, _)| *k == "native_menus").map(|(_, v)| v)
+                }) {
+                    Ok(Some(c)) => c,
+                    Ok(None) => json!({"status":"unsupported","reason":"no native menu bar"}),
+                    Err(r) => r.to_json(),
+                };
+                v["accelerators"] = json!(true);
+                v
+            }
+            Command::ShowContextMenu { window, x, y, menu } => {
+                crate::services::validate_menu(&menu).map_err(Error::arg)?;
+                if !x.is_finite() || !y.is_finite() {
+                    return Err(Error::arg("x and y must be finite"));
+                }
+                self.with_window(window, |_| Ok(()))?;
+                if !self.native {
+                    crate::services::Refusal::Unavailable("the headless backend shows no menus".into()).to_json()
+                } else {
+                    let supported = self.with_services(|s| {
+                        s.capabilities().into_iter().find(|(k, _)| *k == "native_menus.context").map(|(_, v)| v)
+                    });
+                    match supported {
+                        Ok(Some(c)) if c["status"] == "supported" => {
+                            self.with_window(window, |w| {
+                                w.ops.push_back(WindowOp::ContextMenu { x, y, menu });
+                                Ok(())
+                            })?;
+                            self.wake();
+                            json!({"status":"ok"})
+                        }
+                        Ok(Some(c)) => c,
+                        Ok(None) => json!({"status":"unsupported","reason":"no native context menus"}),
+                        Err(r) => r.to_json(),
+                    }
+                }
+            }
+            Command::RegisterHotkey { id, accelerator } => {
+                if id.is_empty() || id.len() > 64 {
+                    return Err(Error::arg("hotkey id is 1..64 bytes"));
+                }
+                let a = crate::services::Accelerator::parse(&accelerator).map_err(Error::arg)?;
+                if !(a.ctrl || a.alt || a.meta) && !a.key.starts_with('F') {
+                    return Err(Error::arg("a global shortcut needs Ctrl, Alt or Super (or a function key)"));
+                }
+                if lock(&self.hotkeys).len() >= 32 && !lock(&self.hotkeys).contains(&id) {
+                    return Err(Error::limit("at most 32 global shortcuts"));
+                }
+                let result = Self::service_result(self.with_services(|s| {
+                    s.unregister_hotkey(&id);
+                    s.register_hotkey(&id, &a)
+                }));
+                if result["status"] == "ok" {
+                    lock(&self.hotkeys).insert(id.clone());
+                    json!({"status":"registered","id":id,"accelerator":a.display()})
+                } else {
+                    lock(&self.hotkeys).remove(&id);
+                    result
+                }
+            }
+            Command::UnregisterHotkey { id } => {
+                lock(&self.hotkeys).remove(&id);
+                let _ = self.with_services(|s| s.unregister_hotkey(&id));
+                json!({})
+            }
             Command::SetLinkPolicy {
                 schemes,
                 hosts,
@@ -2054,7 +2310,11 @@ impl Session {
                         o.maximized = Some(false);
                     }
                     WindowOp::Fullscreen(f) => o.fullscreen = Some(f),
-                    WindowOp::Constraints { .. } | WindowOp::Icon(_) | WindowOp::FileDialog(_) => {}
+                    WindowOp::Constraints { .. }
+                    | WindowOp::Icon(_)
+                    | WindowOp::FileDialog(_)
+                    | WindowOp::Menu(_)
+                    | WindowOp::ContextMenu { .. } => {}
                 }
             }
             Ok(())

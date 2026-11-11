@@ -4006,7 +4006,9 @@ dependencies = [
  "softbuffer",
  "ui4me-renderer",
  "url",
+ "windows-sys 0.59.0",
  "winit",
+ "zbus",
 ]
 
 [[package]]

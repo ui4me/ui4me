@@ -1183,7 +1183,7 @@ fn window_actions_constraints_icon_and_state() {
     }
     assert_eq!(features["window.focus"]["status"], "unavailable");
     assert_eq!(features["clipboard.text"]["status"], "supported");
-    assert_eq!(features["system_tray"]["status"], "unsupported");
+    assert_eq!(features["system_tray"]["status"], "unavailable");
     // Platform rules: Wayland reports unsupported operations instead of pretending.
     assert!(crate::runtime::unsupported("wayland", &crate::runtime::WindowOp::Focus).is_some());
     assert!(crate::runtime::unsupported("windows", &crate::runtime::WindowOp::Focus).is_none());
@@ -2279,4 +2279,86 @@ fn accept_lists_map_to_picker_filters() {
     assert!(f[0].1.contains(&"png".to_string()));
     assert!(crate::runtime::accept_filters_for_tests(&["application/x-unknown".into()]).is_empty());
     assert!(crate::runtime::accept_filters_for_tests(&[]).is_empty());
+}
+
+#[test]
+fn desktop_services_validate_and_refuse_honestly_in_headless_sessions() {
+    // 0.7: headless sessions have no desktop services; requests are validated, refused with a
+    // status and reason, and menu accelerators still work (Core matches them).
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<p>x</p>"})).unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let n = cmd(json!({"op":"notify","token":1,"title":"Hi","body":"there"})).unwrap();
+    assert_eq!(
+        (n["status"].as_str(), n["token"].as_u64()),
+        (Some("unavailable"), Some(1))
+    );
+    assert!(n["reason"].as_str().unwrap().contains("headless"));
+    assert_eq!(
+        cmd(json!({"op":"notify","token":1,"title":""}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    assert_eq!(
+        cmd(json!({"op":"set_tray","tooltip":"t"})).unwrap()["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        cmd(json!({"op":"remove_tray"})).unwrap()["status"],
+        "unavailable"
+    );
+    let menu = json!([{"label":"File","items":[{"id":"save","label":"Save","accelerator":"Ctrl+S"},{"separator":true},{"id":"quit","label":"Quit","accelerator":"Ctrl+Q"}]}]);
+    let r = cmd(json!({"op":"set_menu","window":id,"menu":menu})).unwrap();
+    assert_eq!(
+        (r["status"].as_str(), r["accelerators"].as_bool()),
+        (Some("unavailable"), Some(true))
+    );
+    assert_eq!(
+        h.session
+            .menu_accelerator(id, "s", "KeyS", true, false, false, false)
+            .as_deref(),
+        Some("save")
+    );
+    assert_eq!(
+        h.session
+            .menu_accelerator(id, "s", "KeyS", false, false, false, false),
+        None
+    );
+    let bad = json!([{"id":"a","label":"A","accelerator":"Ctrl+S"},{"id":"b","label":"B","accelerator":"Ctrl+S"}]);
+    assert_eq!(
+        cmd(json!({"op":"set_menu","window":id,"menu":bad}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    cmd(json!({"op":"set_menu","window":id})).unwrap();
+    assert_eq!(
+        h.session
+            .menu_accelerator(id, "s", "KeyS", true, false, false, false),
+        None
+    );
+    assert_eq!(cmd(json!({"op":"show_context_menu","window":id,"x":1,"y":2,"menu":[{"id":"c","label":"Copy"}]})).unwrap()["status"], "unavailable");
+    assert_eq!(
+        cmd(json!({"op":"register_hotkey","id":"k","accelerator":"Ctrl+Alt+K"})).unwrap()["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        cmd(json!({"op":"register_hotkey","id":"k","accelerator":"K"}))
+            .unwrap_err()
+            .code,
+        1,
+        "a bare letter is not a global shortcut"
+    );
+    let caps = cmd(json!({"op":"capabilities"})).unwrap();
+    for f in [
+        "notifications",
+        "system_tray",
+        "native_menus",
+        "global_hotkeys",
+    ] {
+        assert_eq!(caps["features"][f]["status"], "unavailable", "{f}");
+    }
 }

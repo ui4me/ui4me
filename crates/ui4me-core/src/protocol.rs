@@ -439,6 +439,49 @@ pub enum Command {
     ListMonitors,
     /// The platform capability report (0.5 F0508).
     Capabilities,
+    /// Native desktop services (0.7).
+    Notify {
+        token: u64,
+        title: String,
+        #[serde(default)]
+        body: String,
+        #[serde(default)]
+        icon: Option<PathBuf>,
+        #[serde(default)]
+        urgency: Option<String>,
+        #[serde(default)]
+        actions: Vec<crate::services::NotificationAction>,
+    },
+    CloseNotification {
+        token: u64,
+    },
+    SetTray {
+        #[serde(default)]
+        icon: Option<PathBuf>,
+        #[serde(default)]
+        tooltip: String,
+        #[serde(default)]
+        menu: Vec<crate::services::MenuItem>,
+    },
+    RemoveTray,
+    SetMenu {
+        window: u64,
+        #[serde(default)]
+        menu: Option<Vec<crate::services::MenuItem>>,
+    },
+    ShowContextMenu {
+        window: u64,
+        x: f64,
+        y: f64,
+        menu: Vec<crate::services::MenuItem>,
+    },
+    RegisterHotkey {
+        id: String,
+        accelerator: String,
+    },
+    UnregisterHotkey {
+        id: String,
+    },
     /// External link policy (0.6 F0608).
     SetLinkPolicy {
         #[serde(default)]

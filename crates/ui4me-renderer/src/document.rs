@@ -659,6 +659,11 @@ impl Document {
         self.env.system_dark = dark;
         self.apply_environment()
     }
+    /// The OS high-contrast mode (0.7 F0701): reported in the environment; Core does not apply
+    /// `forced-colors` (apps may restyle on `environment_changed`).
+    pub fn set_system_high_contrast(&mut self, on: Option<bool>) {
+        self.env.system_high_contrast = on;
+    }
     /// The app's media preferences: `Some(Some(v))` overrides, `Some(None)` returns to the system
     /// value, `None` leaves it. Returns whether anything in force changed.
     pub fn set_app_environment(
@@ -694,6 +699,7 @@ impl Document {
             "reduced_motion": if self.env.app_reduced_motion.unwrap_or(false) { "reduce" } else { "no-preference" },
             "reduced_motion_source": if self.env.app_reduced_motion.is_some() { "app" } else { "default" },
             "scale": self.pipeline.config.scale,
+            "high_contrast": self.env.system_high_contrast,
         })
     }
     pub fn set_viewport(&mut self, width: u32, height: u32, scale: f64) -> Result<()> {
@@ -2529,6 +2535,8 @@ struct Environment {
     system_dark: Option<bool>,
     app_dark: Option<bool>,
     app_reduced_motion: Option<bool>,
+    /// The OS high-contrast mode (reported; `forced-colors` is not evaluated).
+    system_high_contrast: Option<bool>,
 }
 
 /// Style and layout answers for the accessibility builder, read from the committed state.

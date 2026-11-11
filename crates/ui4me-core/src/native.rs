@@ -50,6 +50,8 @@ pub fn run(session: Arc<Session>) -> Result<()> {
             {
                 use winit::platform::windows::EventLoopBuilderExtWindows;
                 builder.with_any_thread(session.allow_any_thread);
+                // Menu commands of app windows reach the desktop services adapter (0.7 F0703).
+                builder.with_msg_hook(|msg| crate::services::windows_msg_hook(msg as *const std::ffi::c_void));
             }
             #[cfg(target_os = "linux")]
             {
@@ -503,6 +505,8 @@ impl Desktop {
                 for op in ops {
                     match op {
                         WindowOp::FileDialog(request) => self.spawn_file_dialog(id, request),
+                        WindowOp::Menu(menu) => self.apply_menu(id, menu),
+                        WindowOp::ContextMenu { x, y, menu } => self.context_menu(id, x, y, menu),
                         op => {
                             if let Some(native) = self.windows.get_mut(&id) {
                                 apply_op(native, op, current.hidden);
@@ -690,6 +694,25 @@ impl Desktop {
             PhysicalKey::Unidentified(_) => "Unidentified".into(),
         };
         let pressed = event.state == ElementState::Pressed;
+        // A window menu accelerator is the menu's command, not a key for the document (0.7 F0703).
+        if pressed && !composing {
+            if let Some(command) = self.session.menu_accelerator(
+                id,
+                &key,
+                &code,
+                m.control_key(),
+                m.alt_key(),
+                m.shift_key(),
+                m.super_key(),
+            ) {
+                if !event.repeat {
+                    (self.session.service_sink())(
+                        json!({"type":"menu_command","source":"accelerator","window":id,"command":command}),
+                    );
+                }
+                return;
+            }
+        }
         self.send_input(
             id,
             Input::Key {
@@ -729,6 +752,44 @@ impl Desktop {
             self.send_input(id, Input::ImeDisabled);
         }
     }
+    fn raw_handle(&self, id: u64) -> Option<winit::raw_window_handle::RawWindowHandle> {
+        use winit::raw_window_handle::HasWindowHandle;
+        let native = self.windows.get(&id)?;
+        native.window.window_handle().ok().map(|h| h.as_raw())
+    }
+    /// Apply a native menu bar (0.7 F0703); a refusal is reported as a `menu_status` event.
+    fn apply_menu(&mut self, id: u64, menu: Option<Vec<crate::services::MenuItem>>) {
+        let handle = self.raw_handle(id);
+        let sink = self.session.service_sink();
+        let result =
+            crate::services::with(&sink, |s| s.set_window_menu(id, handle, menu.as_deref()));
+        if let Err(r) = result {
+            if menu.is_some() {
+                let mut v = r.to_json();
+                v["type"] = json!("menu_status");
+                v["window"] = json!(id);
+                sink(v);
+            }
+        }
+    }
+    /// Show a context menu at CSS px of window `id` (0.7 F0703).
+    fn context_menu(&mut self, id: u64, x: f64, y: f64, menu: Vec<crate::services::MenuItem>) {
+        let handle = self.raw_handle(id);
+        let scale = self
+            .windows
+            .get(&id)
+            .map_or(1.0, |w| w.window.scale_factor());
+        let sink = self.session.service_sink();
+        let result = crate::services::with(&sink, |s| {
+            s.show_context_menu(id, handle, x * scale, y * scale, &menu)
+        });
+        if let Err(r) = result {
+            let mut v = r.to_json();
+            v["type"] = json!("menu_status");
+            v["window"] = json!(id);
+            sink(v);
+        }
+    }
     /// Whether IME text events are the tail of a composition the document already ended and reset.
     fn ime_quiet(&mut self, id: u64) -> bool {
         let Some(native) = self.windows.get_mut(&id) else {
@@ -756,6 +817,19 @@ impl Desktop {
 impl ApplicationHandler<()> for Desktop {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.resumed = true;
+        // The OS colour/contrast preference as the services adapter reads it (0.7 F0701).
+        let sink = self.session.service_sink();
+        let (dark, contrast) = crate::services::with(&sink, |s| s.system_preferences());
+        if dark.is_some() || contrast.is_some() {
+            let mut v = json!({"type":"system_preferences"});
+            if let Some(d) = dark {
+                v["dark"] = json!(d);
+            }
+            if let Some(c) = contrast {
+                v["high_contrast"] = json!(c);
+            }
+            sink(v);
+        }
         self.enumerate(event_loop);
         self.synchronize(event_loop);
         if !self.started && !self.session.should_stop() {
@@ -991,7 +1065,7 @@ fn apply_op(native: &mut NativeWindow, op: WindowOp, hidden: bool) {
             w.set_max_inner_size(Some(LogicalSize::new(max.0 as f64, max.1 as f64)));
             w.set_resizable(resizable);
         }
-        WindowOp::FileDialog(_) => {}
+        WindowOp::FileDialog(_) | WindowOp::Menu(_) | WindowOp::ContextMenu { .. } => {}
         WindowOp::Icon(icon) => {
             let icon = icon.and_then(|(rgba, width, height)| {
                 winit::window::Icon::from_rgba(rgba, width, height).ok()

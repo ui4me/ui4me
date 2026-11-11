@@ -4,6 +4,7 @@ mod document;
 mod native;
 mod protocol;
 mod runtime;
+pub(crate) mod services;
 #[cfg(test)]
 mod tests;
 
