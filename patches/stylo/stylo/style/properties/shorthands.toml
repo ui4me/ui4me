@@ -282,7 +282,7 @@ rule_types_allowed = ["style", "keyframe", "scope", "position-try"]
 kind = "two_properties"
 
 [contain-intrinsic-size]
-engine = "gecko"
+servo_pref = "layout.css.contain-intrinsic-size.enabled"
 sub_properties = ["contain-intrinsic-width", "contain-intrinsic-height"]
 spec = "https://drafts.csswg.org/css-sizing-4/#intrinsic-size-override"
 kind = "two_properties"

@@ -513,12 +513,38 @@ pub struct Containment {
     pub container_type: ContainerType,
     /// `container-name` (empty for `none`).
     pub container_names: Vec<String>,
+    /// `content-visibility: hidden` (0.9 F0903): the element's contents are skipped.
+    pub skips_contents: bool,
+    /// `contain-intrinsic-width` / `-height` in CSS px × 64 (`<length>` and `auto <length>`; the
+    /// remembered size of `auto` is not kept): the size a size-contained box has as if it held
+    /// content of that size.
+    pub intrinsic: (Option<i32>, Option<i32>),
+}
+
+fn longhand_text(cv: &ComputedValues, name: &str) -> String {
+    crate::style::computed::longhand_by_name(name)
+        .map(|id| {
+            cv.computed_value_to_string(style::properties::PropertyDeclarationId::Longhand(id))
+        })
+        .unwrap_or_default()
+}
+
+/// `none`, `auto none` → None; `<n>px` / `auto <n>px` → n × 64.
+fn intrinsic_px64(text: &str) -> Option<i32> {
+    let t = text.trim().strip_prefix("auto").unwrap_or(text).trim();
+    let px: f64 = t.strip_suffix("px")?.parse().ok()?;
+    (px.is_finite() && px >= 0.0).then(|| (px.min(1.0e7) * 64.0).round() as i32)
 }
 
 impl Containment {
     /// Any containment type is in effect.
     pub fn any(&self) -> bool {
-        self.size_inline || self.size_block || self.layout || self.paint || self.style
+        self.size_inline
+            || self.size_block
+            || self.layout
+            || self.paint
+            || self.style
+            || self.skips_contents
     }
 }
 
@@ -536,12 +562,24 @@ pub(crate) fn containment(cv: &ComputedValues) -> Containment {
         ContainerType::Normal
     };
     let implied = container_type != ContainerType::Normal;
+    // `content-visibility` (CSS Containment 2 section 4): `hidden` implies size, layout, style and
+    // paint containment and skips the contents; `auto` implies layout, style and paint
+    // containment (its contents are never skipped here, so size containment never applies).
+    let cvis = longhand_text(cv, "content-visibility");
+    let (hidden, auto) = (cvis == "hidden", cvis == "auto");
     Containment {
-        size_inline: contain.contains(C::INLINE_SIZE) || implied,
-        size_block: contain.contains(C::BLOCK_SIZE) || container_type == ContainerType::Size,
-        layout: contain.contains(C::LAYOUT) || implied,
-        paint: contain.contains(C::PAINT),
-        style: contain.contains(C::STYLE) || implied,
+        size_inline: contain.contains(C::INLINE_SIZE) || implied || hidden,
+        size_block: contain.contains(C::BLOCK_SIZE)
+            || container_type == ContainerType::Size
+            || hidden,
+        layout: contain.contains(C::LAYOUT) || implied || hidden || auto,
+        paint: contain.contains(C::PAINT) || hidden || auto,
+        style: contain.contains(C::STYLE) || implied || hidden || auto,
+        skips_contents: hidden,
+        intrinsic: (
+            intrinsic_px64(&longhand_text(cv, "contain-intrinsic-width")),
+            intrinsic_px64(&longhand_text(cv, "contain-intrinsic-height")),
+        ),
         container_type,
         container_names: b
             .get_container_name()

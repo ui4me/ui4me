@@ -93,6 +93,10 @@
 "layout.css.writing-mode.sideways.enabled" = false
 "layout.css.writing-mode.text-orientation.enabled" = false
 "layout.css.zoom.enabled" = false
+"layout.css.field-sizing.enabled" = false
+"layout.css.content-visibility.enabled" = false
+"layout.css.contain-intrinsic-size.enabled" = false
+"layout.css.resize.enabled" = false
 # Negative means auto, 0 disables the thread-pool (main-thread styling),
 # other numbers override as specified.
 "layout.threads" = -1

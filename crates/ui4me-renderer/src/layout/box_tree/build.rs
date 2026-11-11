@@ -560,6 +560,11 @@ impl<S: StyledSource> Builder<'_, S> {
     /// FR-007, FR-008).
     pub(crate) fn children(&mut self, parent: NodeId, parent_style: &BoxStyle) -> Vec<Proto> {
         let mut out = Vec::new();
+        // `content-visibility: hidden` (0.9 F0903): no contents (their boxes, pseudo-elements,
+        // paint, hit testing and accessibility are skipped).
+        if parent_style.containment.skips_contents {
+            return out;
+        }
         self.pseudo_element(parent, super::PseudoKind::Before, parent_style, &mut out);
         let kids = std::rc::Rc::new(html_rendering::rendered_children(self.src, parent));
         // A closed `details`: everything but its first `summary` goes to the hidden slot.
@@ -2532,6 +2537,7 @@ pub(super) mod map {
             containment: containment_style(&v.containment()),
             table: table_style(v, &bm),
             native_control: false,
+            field_sizing_content: v.serialize("field-sizing").is_some_and(|s| s == "content"),
             original_inline: matches!(df.original_display.outside, g::DisplayOutside::Inline),
             generated: Arc::new(v.generated()),
             marker_outside: false,
@@ -2587,6 +2593,8 @@ pub(super) mod map {
                 T::Size => bt::ContainerKind::Size,
                 T::InlineSize => bt::ContainerKind::InlineSize,
             },
+            skips_contents: c.skips_contents,
+            intrinsic: c.intrinsic,
         }
     }
 

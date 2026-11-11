@@ -624,6 +624,10 @@ pub struct Containment {
     /// Style containment: counters and quotes are scoped to the subtree (`counters.rs`).
     pub style: bool,
     pub container: ContainerKind,
+    /// `content-visibility: hidden`: the contents are not boxed (0.9 F0903).
+    pub skips_contents: bool,
+    /// `contain-intrinsic-width` / `-height` (CSS px × 64) of a size-contained box.
+    pub intrinsic: (Option<i32>, Option<i32>),
 }
 
 impl Containment {
@@ -634,6 +638,8 @@ impl Containment {
         paint: false,
         style: false,
         container: ContainerKind::Normal,
+        skips_contents: false,
+        intrinsic: (None, None),
     };
     /// Layout or paint containment: an independent formatting context, the containing block of
     /// `absolute` and `fixed` descendants and a stacking context.
@@ -926,6 +932,8 @@ pub struct BoxStyle {
     /// border or background and decides the dropdown's 1px inner block padding (L-GEO-r9).
     /// For `input`, this records whether `appearance` is not `none`.
     pub native_control: bool,
+    /// `field-sizing: content` (0.9 F0903): a text control is sized to its value.
+    pub field_sizing_content: bool,
     /// The box's `display` before `position: absolute | fixed` or `float` blockified it was
     /// inline-level: an out-of-flow box of this kind sits at its inline position in the line (its
     /// static position, CSS 2.1 section 10.3.7 and 10.6.4: the hypothetical inline box).
@@ -1090,6 +1098,7 @@ impl BoxStyle {
             containment: Containment::NONE,
             table: TableStyle::inheriting(&parent.table),
             native_control: false,
+            field_sizing_content: false,
             original_inline: false,
             generated: Arc::new(crate::style::view::generated::Generated {
                 quotes: parent.generated.quotes.clone(),
@@ -1169,6 +1178,7 @@ impl BoxStyle {
             containment: Containment::NONE,
             table: TableStyle::initial(),
             native_control: false,
+            field_sizing_content: false,
             original_inline: false,
             generated: Arc::new(crate::style::view::generated::Generated::initial()),
             marker_outside: false,

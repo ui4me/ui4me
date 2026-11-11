@@ -209,6 +209,8 @@ pub struct Document {
     drag: drag::DragState,
     /// Plain-text editing hosts (0.8 F0801).
     editable: editable::EditableState,
+    /// CSS `resize` drags (0.9 F0903).
+    resize: resize::ResizeState,
     input_files: HashMap<NodeId, Vec<String>>,
     repaint: bool,
     prevent: Vec<StoredRule>,
@@ -358,6 +360,7 @@ impl Document {
             file_requests: Vec::new(),
             drag: Default::default(),
             editable: Default::default(),
+            resize: Default::default(),
             input_files: HashMap::new(),
             repaint: true,
             prevent: Vec::new(),
@@ -1466,6 +1469,9 @@ impl Document {
             self.apply_follow()?;
         }
         let probe = input.clone();
+        if self.resize_input(&probe)? {
+            return Ok(self.drain_events());
+        }
         if self.drag_input(&probe) {
             // Pointer moves of a running drag (and the Escape that cancels it) stay out of the page.
             if follow {
@@ -2643,6 +2649,7 @@ mod focus_pointer_tests;
 #[cfg(test)]
 mod popover_tests;
 pub mod public_dom;
+mod resize;
 pub mod rich_clipboard;
 mod scroll_anim;
 #[cfg(test)]
@@ -2686,6 +2693,15 @@ impl crate::a11y::RenderInfo for A11yInfo<'_> {
                 Some(f) if f.display.is_none() => return Rendering::NotRendered,
                 None if x == element => return Rendering::NotRendered,
                 _ => {}
+            }
+            // The contents of a `content-visibility: hidden` element are skipped (0.9 F0903).
+            if x != element
+                && self
+                    .committed
+                    .and_then(|c| c.style.view(x))
+                    .is_some_and(|v| v.containment().skips_contents)
+            {
+                return Rendering::NotRendered;
             }
             at = arena.get(x).and_then(|n| n.parent());
         }

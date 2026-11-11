@@ -1644,3 +1644,125 @@ fn editing_host_interop_scroll_a11y_mutation_bidi_and_removed_selection() {
     assert_eq!(d.selection_text().unwrap(), "");
     d.render(300, 300, 1.0).unwrap();
 }
+
+#[test]
+fn content_visibility_hidden_skips_contents_and_contain_intrinsic_size_sizes_it() {
+    // 0.9 F0903.
+    let html = "<!doctype html><style>body{margin:0}#h{content-visibility:hidden;width:100px}#s{contain:size;contain-intrinsic-size:80px 30px;display:inline-block}#a{content-visibility:auto}</style>\
+        <div id=h><p id=inner style='height:50px;background:red'>x</p><button id=b>b</button></div>\
+        <div id=s><p style='height:200px;width:300px'>big</p></div><div id=a><p id=ap>auto</p></div>";
+    let mut d = Document::parse(html).unwrap();
+    d.render(400, 400, 1.0).unwrap();
+    let h = d.viewport_rect(d.node("h").unwrap()).unwrap();
+    assert_eq!(h.3, 0.0, "size containment: no content height");
+    assert!(
+        d.viewport_rect(d.node("inner").unwrap()).is_none(),
+        "contents are not boxed"
+    );
+    let s = d.viewport_rect(d.node("s").unwrap()).unwrap();
+    assert_eq!((s.2, s.3), (80.0, 30.0), "contain-intrinsic-size");
+    assert!(
+        d.viewport_rect(d.node("ap").unwrap()).is_some(),
+        "auto renders its contents"
+    );
+    let t = d.accessibility_tree().unwrap();
+    assert!(
+        !t.nodes.values().any(|n| n.html_id.as_deref() == Some("b")),
+        "skipped contents are not exposed"
+    );
+    d.handle_input(Input::Focus(true)).unwrap();
+    press(&mut d, "Tab");
+    assert_ne!(
+        d.interaction.focused_element(d.id()),
+        d.node("b").ok(),
+        "skipped contents are not focusable"
+    );
+    // Toggling it off renders the contents.
+    d.set_attribute("h", "style", Some("content-visibility:visible"))
+        .unwrap();
+    d.render(400, 400, 1.0).unwrap();
+    assert!(d.viewport_rect(d.node("inner").unwrap()).is_some());
+}
+
+#[test]
+fn field_sizing_content_fits_text_controls_to_their_value() {
+    // 0.9 F0903.
+    let html = "<!doctype html><style>body{margin:0;font:16px sans-serif}input,textarea{field-sizing:content;padding:0;border:0}</style>\
+        <input id=i value=ab><input id=f style='field-sizing:fixed'><input id=p placeholder='a longer placeholder'><textarea id=t>one\ntwo\nthree</textarea>";
+    let mut d = Document::parse(html).unwrap();
+    d.render(800, 400, 1.0).unwrap();
+    let w = |d: &mut Document, id: &str| d.viewport_rect(d.node(id).unwrap()).unwrap();
+    let small = w(&mut d, "i");
+    let fixed = w(&mut d, "f");
+    assert!(small.2 < 30.0 && small.2 > 10.0, "fits 'ab': {small:?}");
+    assert!(
+        fixed.2 > 100.0,
+        "field-sizing: fixed keeps the size attribute default: {fixed:?}"
+    );
+    assert!(
+        w(&mut d, "p").2 > small.2 * 3.0,
+        "the placeholder sizes an empty control"
+    );
+    d.set_value("i", "a much longer value here").unwrap();
+    d.render(800, 400, 1.0).unwrap();
+    assert!(w(&mut d, "i").2 > small.2 * 4.0, "grows with the value");
+    let t = w(&mut d, "t");
+    d.set_value("t", "one").unwrap();
+    d.render(800, 400, 1.0).unwrap();
+    let t1 = w(&mut d, "t");
+    assert!(
+        (t.3 - 3.0 * t1.3).abs() < 2.0,
+        "a textarea fits its lines: {t:?} vs {t1:?}"
+    );
+}
+
+#[test]
+fn css_resize_corner_drag_sets_the_inline_size() {
+    // 0.9 F0903.
+    let html = "<!doctype html><style>body{margin:0}#r{resize:both;overflow:auto;width:100px;height:60px;padding:5px;border:2px solid}#n{resize:none;overflow:auto;width:100px;height:60px}</style><div id=r>x</div><div id=n>y</div>";
+    let mut d = Document::parse(html).unwrap();
+    d.render(400, 400, 1.0).unwrap();
+    let (x, y, w, h) = d.viewport_rect(d.node("r").unwrap()).unwrap();
+    assert_eq!((w, h), (114.0, 74.0));
+    let ev = d
+        .handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: x + w - 3.0,
+            y: y + h - 3.0,
+        })
+        .unwrap();
+    assert!(
+        !ev.iter().any(|e| e["type"] == "mousedown"),
+        "the resize press stays out of the page"
+    );
+    d.handle_input(Input::PointerMoved {
+        x: x + w + 37.0,
+        y: y + h + 17.0,
+    })
+    .unwrap();
+    d.handle_input(Input::PointerButton {
+        pressed: false,
+        button: 0,
+        x: x + w + 37.0,
+        y: y + h + 17.0,
+    })
+    .unwrap();
+    d.render(400, 400, 1.0).unwrap();
+    assert_eq!(
+        d.get_attribute("r", "style").unwrap().as_deref(),
+        Some("width: 140px; height: 80px")
+    );
+    assert_eq!(d.viewport_rect(d.node("r").unwrap()).unwrap().2, 154.0);
+    // resize: none: a press in the corner is an ordinary press.
+    let (x, y, w, h) = d.viewport_rect(d.node("n").unwrap()).unwrap();
+    let ev = d
+        .handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: x + w - 3.0,
+            y: y + h - 3.0,
+        })
+        .unwrap();
+    assert!(ev.iter().any(|e| e["type"] == "mousedown"));
+}

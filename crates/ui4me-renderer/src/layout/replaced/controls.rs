@@ -91,6 +91,57 @@ pub fn text_width(text: &mut TextServices, doc: DocumentId, style: &TextStyle, l
     text.shape(&src).content_widths().max
 }
 
+/// `field-sizing: content` (CSS UI 4; 0.9 F0903): a text control's natural content box fits
+/// its value (else its placeholder) plus the caret, one line for an `input`, every line for a
+/// `textarea` (at least one); the `size`/`cols`/`rows` attributes no longer apply.
+pub fn field_content_natural(
+    multiline: bool,
+    password: bool,
+    value: &str,
+    placeholder: &str,
+    text: &mut TextServices,
+    doc: DocumentId,
+    style: &TextStyle,
+) -> Natural {
+    let shown = if value.is_empty() { placeholder } else { value };
+    let masked;
+    let shown = if password && !value.is_empty() {
+        masked = "\u{2022}".repeat(value.chars().count());
+        masked.as_str()
+    } else {
+        shown
+    };
+    let (lh, base) = line_box(text, doc, style);
+    let lines: Vec<&str> = if multiline {
+        shown.split('\n').collect()
+    } else {
+        vec![shown]
+    };
+    let widest = lines
+        .iter()
+        .map(|l| text_width(text, doc, style, l))
+        .fold(0.0f32, f32::max);
+    // The caret's 1 px stays inside the box.
+    let width = (widest + 1.0).ceil();
+    if multiline {
+        Natural {
+            width: Some(width),
+            height: Some(lines.len().max(1) as f32 * lh),
+            baseline: None,
+            first_line_at_top: true,
+            ..Natural::default()
+        }
+    } else {
+        Natural {
+            width: Some(width),
+            height: Some(lh),
+            baseline: Some(base),
+            inner_line: Some(lh),
+            ..Natural::default()
+        }
+    }
+}
+
 impl ControlSpec {
     /// Natural content-box geometry of the control (controls.md §4).
     pub fn natural(&self, text: &mut TextServices, doc: DocumentId, style: &TextStyle) -> Natural {

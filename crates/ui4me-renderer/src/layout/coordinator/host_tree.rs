@@ -115,6 +115,8 @@ pub(crate) struct HostNode {
     /// Size containment in effect (inline axis, block axis; CSS Containment 2 section 3.1): the
     /// box's size on a contained axis is computed as if it had no content (`dispatch`).
     pub(crate) size_contain: (bool, bool),
+    /// `contain-intrinsic-width` / `-height` (CSS px) of a size-contained box (0.9 F0903).
+    pub(crate) intrinsic_size: (Option<f32>, Option<f32>),
     /// Fragmentation facts of the box (015 FRAG-2b, `crate::layout::fragmentation`).
     pub(crate) frag_facts: crate::layout::fragmentation::FragFacts,
     /// The node's role in a fragmentation root (a multicol container, its flow thread).
@@ -425,6 +427,24 @@ impl HostTree {
                         ratio: e.ratio,
                         ..Default::default()
                     },
+                    ReplacedKind::Control(
+                        crate::layout::replaced::controls::ControlSpec::TextLine { .. }
+                        | crate::layout::replaced::controls::ControlSpec::Number
+                        | crate::layout::replaced::controls::ControlSpec::Textarea { .. },
+                    ) if bs.field_sizing_content
+                        && r.inner.as_ref().is_some_and(|i| i.select.is_none()) =>
+                    {
+                        let i = r.inner.as_ref().expect("checked");
+                        crate::layout::replaced::controls::field_content_natural(
+                            i.multiline,
+                            i.password,
+                            &i.value,
+                            &i.placeholder,
+                            text,
+                            boxes.document,
+                            &bs.text,
+                        )
+                    }
                     ReplacedKind::Control(spec) => spec.natural(text, boxes.document, &bs.text),
                     ReplacedKind::MarkerSymbol { shape, .. } => {
                         // A drawn bullet (FR-083): its box and margins follow the font's ascent.
@@ -610,6 +630,10 @@ impl HostTree {
             } else {
                 (contain.size_inline, contain.size_block)
             },
+            intrinsic_size: (
+                contain.intrinsic.0.map(|v| v as f32 / 64.0),
+                contain.intrinsic.1.map(|v| v as f32 / 64.0),
+            ),
             frag_facts: crate::layout::fragmentation::FragFacts {
                 // Monolithic content (CSS Break 3 section 4.4; plan §A3): replaced boxes, flex and grid
                 // containers, tables, scroll containers, out-of-flow boxes, block-axis size containment and
@@ -917,6 +941,7 @@ impl HostTree {
             subtree_end: idx + 1,
             subgrid: None,
             size_contain: (false, false),
+            intrinsic_size: (None, None),
             frag_facts: Default::default(),
             frag_role: Default::default(),
             flow_geom: None,
@@ -1045,11 +1070,13 @@ impl HostTree {
                 let empty = self.dispatch_container_empty(n, probe);
                 self.empty_probe = saved;
                 let mut inputs = inputs;
+                // `contain-intrinsic-size`: sized as if its content were that size.
+                let (iw, ih) = self.nodes[i].intrinsic_size;
                 if need_w {
-                    inputs.known_dimensions.width = Some(empty.width);
+                    inputs.known_dimensions.width = Some(empty.width + iw.unwrap_or(0.0));
                 }
                 if need_h {
-                    inputs.known_dimensions.height = Some(empty.height);
+                    inputs.known_dimensions.height = Some(empty.height + ih.unwrap_or(0.0));
                 }
                 return self.dispatch(n, inputs, block_ctx);
             }

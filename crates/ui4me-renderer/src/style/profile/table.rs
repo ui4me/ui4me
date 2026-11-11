@@ -139,6 +139,10 @@ bool_prefs! {
     "layout.css.text-decoration-inset.enabled" = false,
     "layout.css.text-decoration-inset-percentage.enabled" = false,
     "layout.css.anchor-positioning.enabled" = true, // 1.23.0: On (F0808: anchor-name, position-anchor and anchor() insets; position-area, position-try* are dropped and reported)
+    "layout.css.content-visibility.enabled" = true, // 1.25.0: On (0.9 F0903; hidden skips contents, auto never skips; carried patch P-006-19)
+    "layout.css.contain-intrinsic-size.enabled" = true, // 1.25.0: On (0.9 F0903; <length> and auto <length>; the remembered auto size is not kept)
+    "layout.css.field-sizing.enabled" = true, // 1.25.0: On (0.9 F0903; text inputs and textareas; select keeps its size)
+    "layout.css.resize.enabled" = true, // 1.25.0: On (0.9 F0903; corner drag sets the inline width/height; no grip is drawn)
     "layout.css.style-queries.enabled" = false,
     "layout.css.scroll-state.enabled" = false,
     "layout.css.font-palette.enabled" = false,
@@ -253,16 +257,16 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.column-width", On), // 1.9.0: multicolumn and column breaks end to end (015 MC-1, FRAG-2c, lane L-MC)
     ("css.property.columns", On), // 1.9.0: multicolumn and column breaks end to end (015 MC-1, FRAG-2c, lane L-MC)
     ("css.property.contain", On),
-    ("css.property.contain-intrinsic-size", Unavailable),
+    ("css.property.contain-intrinsic-size", On), // 1.25.0: 0.9 F0903
     ("css.property.container", On),
     ("css.property.container-name", On),
     ("css.property.container-type", On),
-    ("css.property.content-visibility", Unavailable),
+    ("css.property.content-visibility", On), // 1.25.0: 0.9 F0903
     ("css.property.corner-shape", Off),
     ("css.property.counter-increment", On),
     ("css.property.counter-reset", On),
     ("css.property.counter-set", Unavailable),
-    ("css.property.field-sizing", Unavailable),
+    ("css.property.field-sizing", On), // 1.25.0: 0.9 F0903
     ("css.property.font-optical-sizing", On),
     ("css.property.font-size-adjust", Off),
     ("css.property.font-synthesis", On),
@@ -280,7 +284,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.position-area", Off), // 1.23.0: parsed by the engine, dropped and reported (F0808 subset)
     ("css.property.position-try", Off), // 1.23.0: position-try-fallbacks / -order / the shorthand: dropped and reported
     ("css.property.print-color-adjust", Unavailable),
-    ("css.property.resize", Unavailable),
+    ("css.property.resize", On), // 1.25.0: 0.9 F0903
     ("css.property.scroll-behavior", On),
     ("css.property.scroll-margin", On),
     ("css.property.scroll-padding", On),
@@ -419,13 +423,7 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
     ("animation-range-end", "css.property.animation-timeline"),
     ("animation-range-start", "css.property.animation-timeline"),
     ("animation-timeline", "css.property.animation-timeline"),
-    (
-        "contain-intrinsic-size",
-        "css.property.contain-intrinsic-size",
-    ),
-    ("content-visibility", "css.property.content-visibility"),
     ("counter-set", "css.property.counter-set"),
-    ("field-sizing", "css.property.field-sizing"),
     ("font-size-adjust", "css.property.font-size-adjust"),
     ("font-variant-emoji", "css.property.font-variant-emoji"),
     ("image-orientation", "css.property.image-orientation"),
@@ -436,7 +434,6 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
     ("page", "css.property.page"),
     ("print-color-adjust", "css.property.print-color-adjust"),
     ("initial-letter", "css.property.initial-letter"),
-    ("resize", "css.property.resize"),
     ("shape-outside", "css.property.shape-outside"),
     (
         "text-decoration-skip-ink",
