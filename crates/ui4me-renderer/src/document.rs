@@ -2691,6 +2691,9 @@ mod popover_tests;
 pub mod public_dom;
 mod resize;
 pub mod rich_clipboard;
+pub(crate) mod rich_edit;
+#[cfg(test)]
+mod rich_editing_tests;
 mod scroll_anim;
 #[cfg(test)]
 mod scroll_tests;

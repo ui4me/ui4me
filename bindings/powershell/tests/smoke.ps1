@@ -451,6 +451,20 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21i_rich_editing' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<div id="ed" contenteditable><p>ab</p></div><p id="o">o</p>')
+            if (-not $window.ExecEdit('ed', 'insert_text', 'c')) { throw 'insert_text changed nothing' }
+            if (-not $window.ExecEdit('ed', 'bold')) { throw 'bold was refused' }
+            if (-not ($window.GetEditStateJson('ed') | ConvertFrom-Json).bold) { throw 'pending bold not reported' }
+            if (-not $window.ExecEdit('ed', 'undo')) { throw 'undo changed nothing' }
+            $threw = $false
+            try { $null = $window.ExecEdit('ed', 'link', 'javascript:alert(1)') } catch { $threw = $true }
+            if (-not $threw) { throw 'A javascript: link was accepted' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS21h_window_actions' {
         Invoke-Ui4meApp -Backend headless {
             param($app)

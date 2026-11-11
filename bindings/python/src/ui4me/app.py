@@ -884,6 +884,19 @@ class Window:
         """The id of the element holding the pointer capture, else None."""
         return self._command("get_pointer_capture")["element"]
 
+    def exec_edit(self, element: str, command: str, value: str | None = None) -> bool:
+        """Run a rich-text editing command on a ``contenteditable`` host: ``bold``, ``italic``,
+        ``underline``, ``strikethrough``, ``code``, ``link`` (``value`` is an http, https or mailto
+        URL), ``unlink``, ``remove_format``, ``insert_text``, ``insert_paragraph``, ``undo`` and
+        ``redo``. It acts on the host's selection (a caret at the end when there is none) and
+        returns whether anything changed; formatting needs a rich host (not ``plaintext-only``)."""
+        return bool(self._command("exec_edit", element=element, command=command, value=value)["ok"])
+
+    def get_edit_state(self, element: str) -> dict:
+        """The formats at the selection of a ``contenteditable`` host:
+        ``{bold, italic, underline, strikethrough, code, link}`` (``link`` is the href or None)."""
+        return self._command("get_edit_state", element=element)
+
     def get_popover(self, element: str) -> dict:
         """``{"open": bool, "kind": "auto" | "manual"}``."""
         return self._command("get_popover", element=element)

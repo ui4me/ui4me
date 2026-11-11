@@ -394,39 +394,99 @@ impl Document {
     /// offsets `(anchor, focus)`, when both ends are there.
     pub(super) fn host_selection(&self, host: NodeId) -> Option<(usize, usize)> {
         let (a, f) = (self.selection.anchor?, self.selection.focus?);
+        if self.is_rich_host(host) {
+            // Rich hosts: the points are in the host's leaf blocks; flat offsets join them.
+            let r = self.rich_load(host);
+            let ids = r.block_ids();
+            let flat = |p: SelPoint| {
+                let i = ids.iter().position(|x| *x == Some(p.root))?;
+                (p.nth == 0).then(|| r.flat_of(i, p.byte))
+            };
+            return Some((flat(a)?, flat(f)?));
+        }
         (a.root == host && f.root == host && a.nth == 0 && f.nth == 0).then_some((a.byte, f.byte))
     }
-    /// Place the selection inside `host`'s paragraph (byte offsets).
+    /// Place the selection inside `host` (flat byte offsets for a rich host).
     pub(super) fn set_host_selection(&mut self, host: NodeId, anchor: usize, focus: usize) {
+        if self.is_rich_host(host) {
+            let r = self.rich_load(host);
+            self.set_rich_selection(&r, anchor, focus);
+            return;
+        }
+        let point = |byte| SelPoint {
+            root: host,
+            nth: 0,
+            byte,
+        };
+        self.place_selection(point(anchor), point(focus));
+    }
+    /// Place the selection of a rich host from flat offsets, using its current tree.
+    pub(super) fn set_rich_selection(
+        &mut self,
+        r: &super::rich_edit::Rich,
+        anchor: usize,
+        focus: usize,
+    ) {
+        let ids = r.block_ids();
+        let point = |flat: usize| {
+            let (i, byte) = r.locate(flat);
+            ids.get(i)
+                .copied()
+                .flatten()
+                .map(|root| SelPoint { root, nth: 0, byte })
+        };
+        if let (Some(a), Some(f)) = (point(anchor), point(focus)) {
+            self.place_selection(a, f);
+        }
+    }
+    fn place_selection(&mut self, anchor: SelPoint, focus: SelPoint) {
         let before = (self.selection.anchor, self.selection.focus);
-        self.selection.anchor = Some(SelPoint {
-            root: host,
-            nth: 0,
-            byte: anchor,
-        });
-        self.selection.focus = Some(SelPoint {
-            root: host,
-            nth: 0,
-            byte: focus,
-        });
+        self.selection.anchor = Some(anchor);
+        self.selection.focus = Some(focus);
         self.selection.dragging = false;
         self.selection.unit = None;
         self.repaint = true;
         self.note_selection_change(before);
     }
-    /// The lines of `host`'s paragraph: byte range, viewport top and height, and the caret stops
-    /// `(byte, viewport x)` in logical order.
+    /// The lines of `host`'s text: byte range, viewport top and height, and the caret stops
+    /// `(byte, viewport x)` in logical order (flat offsets for a rich host).
     #[allow(clippy::type_complexity)]
     pub(super) fn host_lines(
         &mut self,
         host: NodeId,
+    ) -> Result<Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)>> {
+        if !self.is_rich_host(host) {
+            return self.root_lines(host, 0);
+        }
+        let r = self.rich_load(host);
+        let mut out = Vec::new();
+        for (i, id) in r.block_ids().into_iter().enumerate() {
+            let Some(id) = id else { continue };
+            let base = r.flat_of(i, 0);
+            let lines = self.root_lines(id, base)?;
+            if lines.is_empty() {
+                // An empty paragraph has no text line: its box stands in for one.
+                if let Some((x, y, _, h)) = self.viewport_rect(id) {
+                    out.push((base..base, y, h.clamp(10.0, 40.0), vec![(base, x)]));
+                }
+            }
+            out.extend(lines);
+        }
+        Ok(out)
+    }
+    /// The lines of the paragraph rooted at `root`, byte offsets shifted by `base`.
+    #[allow(clippy::type_complexity)]
+    fn root_lines(
+        &mut self,
+        root: NodeId,
+        base: usize,
     ) -> Result<Vec<(std::ops::Range<usize>, f64, f64, Vec<(usize, f64)>)>> {
         let Some(c) = self.committed_tree()? else {
             return Ok(Vec::new());
         };
         let tree = &c.layout.fragments;
         let index = TextIndex::build(tree, self.pipeline.document());
-        let Some(&para) = index.by_root.get(&(host, 0)) else {
+        let Some(&para) = index.by_root.get(&(root, 0)) else {
             return Ok(Vec::new());
         };
         let p = &tree.paragraphs[para];
@@ -436,7 +496,7 @@ impl Document {
             let FragmentKind::Text(tf) = &tree.get(f).kind else {
                 continue;
             };
-            let Some((fx, fy, _, fh, base, _)) = self.frag_geometry(tree, f, &mut scroll) else {
+            let Some((fx, fy, _, fh, fbase, _)) = self.frag_geometry(tree, f, &mut scroll) else {
                 continue;
             };
             if out.iter().any(|l| l.1 == fy) {
@@ -447,9 +507,14 @@ impl Document {
                 .caret_stops(tf.line_index)
                 .stops
                 .iter()
-                .map(|s| (s.byte, fx + f64::from(s.x) - base))
+                .map(|s| (s.byte + base, fx + f64::from(s.x) - fbase))
                 .collect();
-            out.push((line.text_range.clone(), fy, fh, stops));
+            out.push((
+                line.text_range.start + base..line.text_range.end + base,
+                fy,
+                fh,
+                stops,
+            ));
         }
         out.sort_by(|a, b| a.1.total_cmp(&b.1));
         Ok(out)
