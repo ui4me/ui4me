@@ -7,8 +7,8 @@ Read `AGENTS.md`, `docs/PROJECT_STATUS.md` and `docs/core-foundation/EXECUTION.m
 
 - The owner reports Core **0.2 implemented, running and tested** on their development setup. **Accept 0.2 as the engineering baseline.** Do not re-open all 0.2 release checks or launch a general codebase audit. Check Git revision and the small relevant interface before changes. Fix 0.2 only for a reproducible regression affecting new work.
 - PyPI/PowerShell Gallery publication and its administrative/workflow qualification are a **separate task**; do not let that work block Core 0.3/0.4. Never publish, create releases/tags, or change remote release protections without explicit authorization for that action.
-- Finish a coherent **Core 0.3** (programmable document/scroll/selection) and then a **practical Core 0.4 (Foundation Complete)** (HTML controls + ordinary Linux/Windows desktop services). Optionally perform a *short* 0.5 reliability pass only for problems real Core applications uncover, not a feature-expansion campaign.
-- After completing 0.4 the owner should build apps using only the public API and stop touching Rust except for real defects. No UI4ME UI framework/components in this milestone. No JS, webview, embedded browser/server, MCP/agent protocols, plugin framework, general-purpose SVG/print/video engine.
+- Core 0.4 is released and is the stable baseline. The long-range post-0.4 Core development mission is defined by `docs/core-roadmap/RELEASE_ORDER.md` and `docs/core-roadmap/versions/`. Work sequentially from the first incomplete milestone through 1.0 without expanding optional UI/application scope; 1.1 is a future portability track. Preserve the existing Sonnet-default, few-worktree, proportional testing and publication-authorization rules. This replaces the old stop-at-0.4/skip-0.5 mandate. Ledger: `docs/core-roadmap/PROGRESS.md`.
+- Still out of Core scope: UI4ME UI framework/components, JS, webview, embedded browser/server, MCP/agent protocols, plugin framework (see `docs/core-roadmap/BOUNDARIES.md`).
 
 ## Default operating mode
 

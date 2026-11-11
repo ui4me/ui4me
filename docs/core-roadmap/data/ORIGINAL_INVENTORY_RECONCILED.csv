@@ -1,0 +1,225 @@
+id,title,owner,original_target,old_0_2_state,v0_4_static_disposition,scheduled_work_items
+DOM-001,HTML5 tree parsing,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-002,Document and generational node identity,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-003,ID lookup,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0604
+DOM-004,Public CSS selector query,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,F0604
+DOM-005,Text content read and write,Core / Document,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-006,HTML subtree replacement,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-007,Incremental HTML insertion,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-008,Remove and move nodes,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-009,Atomic mutation batch,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-010,Attribute and class operations,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-011,Read attributes and class lists,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-012,DOM serialization,Core / Document,0.4,missing,documented_missing_or_not_public_in_0_4,F0601
+DOM-013,Document fragments and staging,Core / Document,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-014,Stylesheet add/remove/query,Core / Document,0.4,partial,documented_missing_or_not_public_in_0_4,F0602
+DOM-015,Safe URL and base resolution,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-016,DOM mutation journal,Core / Document,0.3,internal,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-017,Read-only element geometry,Core / Document,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,F0609
+DOM-018,DOM resource retirement,Core / Document,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0604
+DOM-019,HTML form-associated control state,Core / Document,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-020,Form reset and validation semantics,Core / Document,0.4,missing,implemented_with_known_limit_or_unqualified,F0605
+DOM-021,Input/depth/document size limits,Core / Document,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-022,HTML templates and nested content,Core / Document,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+DOM-023,Link activation and navigation policy,Core / Document,0.4,partial,implemented_with_known_limit_or_unqualified,F0608
+CSS-001,Author CSS parsing and cascade,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-002,Selectors specificity and pseudo classes,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-003,Custom properties and var(),Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-004,Media queries and responsive styles,Core / CSS and Layout,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-005,Box model and inline flow,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-006,Flexbox layout,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-007,CSS Grid basics,Core / CSS and Layout,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0904
+CSS-008,CSS table layout,Core / CSS and Layout,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-009,Relative and absolute positioning,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-010,Sticky and fixed positioning,Core / CSS and Layout,0.5-core,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0911
+CSS-011,Floats and inline wrapping,Core / CSS and Layout,0.5-core,internal,substantial_internal_support_or_future_candidate_needs_review,F0911
+CSS-012,Overflow and scroll-range geometry,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0804
+CSS-013,Multi-column layout,Core / CSS and Layout,later,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0904
+CSS-014,Paged media and printing,Core / CSS and Layout,later,unpromoted,documented_missing_or_not_public_in_0_4,F0904;F1001;F1002
+CSS-015,Border/background/radius painting,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-016,Gradients and background images,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0909
+CSS-017,Shadows and visual effects,Core / CSS and Layout,0.5-core,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0906
+CSS-018,Transforms and stacking context,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-019,"Clipping, overflow, rounded hit region",Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-020,Pseudo elements and generated content,Core / CSS and Layout,0.5-core,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0911
+CSS-021,Container queries,Core / CSS and Layout,later,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0911
+CSS-022,CSS animation and transitions,Core / CSS and Layout,later,unpromoted,documented_missing_or_not_public_in_0_4,F0901;F0902
+CSS-023,Writing modes and RTL layout,Core / CSS and Layout,0.5-core,partial,substantial_internal_support_or_future_candidate_needs_review,F0905
+CSS-024,List marker and counters,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+CSS-025,Text overflow and ellipsis,Core / CSS and Layout,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0909
+CSS-026,CSS profile and unsupported diagnostics,Core / CSS and Layout,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F1008;F1102
+CSS-027,CSS framework compatibility,Core / CSS and Layout,later,unpromoted,implemented_with_known_limit_or_unqualified,F0903;F0910
+TEXT-001,Unicode shaping and grapheme handling,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+TEXT-002,Font fallback and matching,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0506
+TEXT-003,Local font faces and WOFF,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+TEXT-004,Text line breaks and wraps,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+TEXT-005,Bidirectional text,Core / Text,0.4,partial,implemented_with_known_limit_or_unqualified,F0503
+TEXT-006,Caret geometry and selection in inputs,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0503
+TEXT-007,Read-only document text selection,Core / Text,0.3,missing,implemented_with_known_limit_or_unqualified,F0503;F0806
+TEXT-008,OS clipboard text operations,Core / Text,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0706
+TEXT-009,IME preedit and commit,Core / Text,0.4,partial,implemented_with_known_limit_or_unqualified,F0501
+TEXT-010,Text edits and undo/redo,Core / Text,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0801;F0806;F1003
+TEXT-011,Text metrics and character position queries,Core / Text,0.3,missing,documented_missing_or_not_public_in_0_4,F0603
+TEXT-012,Text decoration and spans,Core / Text,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+TEXT-013,Hyphenation and soft breaks,Core / Text,0.5-core,internal,substantial_internal_support_or_future_candidate_needs_review,F0905
+TEXT-014,Text transform and capitalization,Core / Text,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+TEXT-015,Vertical text and advanced typography,Core / Text,later,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0905
+TEXT-016,Caching and epoch retirement,Core / Text,0.3,internal,baseline_0_4_reported_supported_not_reaudited_itemwise,F1004
+INTERACTION-001,Pointer hit testing,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-002,Keyboard events and shortcuts,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0502
+INTERACTION-003,Focus and tab order,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0507
+INTERACTION-004,Native button activation semantics,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-005,Wheel and scrollbar interaction,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-006,Programmatic scroll_to and scroll_by,Core / HTML Semantics and Events,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,F0803
+INTERACTION-007,Scroll into view and focus scrolling,Core / HTML Semantics and Events,0.3,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-008,Native checkbox/radio semantics,Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-009,Native select/option and listbox,Core / HTML Semantics and Events,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0808
+INTERACTION-010,Range and number input,Core / HTML Semantics and Events,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0805
+INTERACTION-011,Progress and meter element semantics,Core / HTML Semantics and Events,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0805
+INTERACTION-012,Details and summary activation,Core / HTML Semantics and Events,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,
+INTERACTION-013,Dialog top layer and focus trapping,Core / HTML Semantics and Events,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0808
+INTERACTION-014,Label association and form semantics,Core / HTML Semantics and Events,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0605
+INTERACTION-015,Default actions and cancellable events,Core / HTML Semantics and Events,0.3,partial,implemented_with_known_limit_or_unqualified,F0607
+INTERACTION-016,Pointer capture and drag selection,Core / HTML Semantics and Events,0.4,partial,implemented_with_known_limit_or_unqualified,F0507;F0709;F0802
+INTERACTION-017,Accessibility semantic tree,Core / HTML Semantics and Events,0.4,unpromoted,implemented_with_known_limit_or_unqualified,F0504
+INTERACTION-018,Accessibility actions and state updates,Core / HTML Semantics and Events,0.4,unpromoted,implemented_with_known_limit_or_unqualified,F0504
+INTERACTION-019,HTML file input and native picker bridge,Core / HTML Semantics and Events,0.4,missing,documented_missing_or_not_public_in_0_4,F0606
+INTERACTION-020,Drag/drop DOM events,Core / HTML Semantics and Events,0.5-core,unpromoted,documented_missing_or_not_public_in_0_4,F0707
+INTERACTION-021,"Event propagation, target/path identity",Core / HTML Semantics and Events,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0507;F0807
+PAINT-001,Scene display-list construction,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-002,Paint ordering and stacking,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-003,Text glyph rasterization,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-004,Raster image decoding,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-005,SVG decoding and raster cache,Core / Raster and Graphics,0.4,unpromoted,baseline_0_4_reported_supported_not_reaudited_itemwise,F0907;F0908
+PAINT-006,Border images and masks,Core / Raster and Graphics,0.5-core,unpromoted,substantial_internal_support_or_future_candidate_needs_review,F0906
+PAINT-007,Color and alpha blending,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-008,Damage and incremental paint,Core / Raster and Graphics,0.5-core,partial,implemented_with_known_limit_or_unqualified,F1004
+PAINT-009,CPU framebuffer and snapshot,Core / Raster and Graphics,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-010,High-DPI scaling and pixel snapping,Core / Raster and Graphics,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,
+PAINT-011,GPU raster backend,Core / Raster and Graphics,later,missing,documented_missing_or_not_public_in_0_4,F1005
+HOST-001,Native window creation and close lifecycle,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F1105
+HOST-002,Multiple independent windows,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F1105
+HOST-003,Sequential app sessions on one process owner,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-004,Window title and size,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-005,Minimize maximize restore,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-006,Show hide focus raise window,Core / Native Application Host,0.4,missing,implemented_with_known_limit_or_unqualified,F0708
+HOST-007,Fullscreen and window decoration,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-008,Window icons and minimum size constraints,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-009,Screen and monitor enumeration,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-010,DPI scale and geometry events,Core / Native Application Host,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0506
+HOST-011,OS clipboard read/write service,Core / Native Application Host,0.3,partial,implemented_with_known_limit_or_unqualified,F0706
+HOST-012,Native file picker dialog,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,F0606;F0710
+HOST-013,Native folder picker and save dialog,Core / Native Application Host,0.4,missing,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-014,OS drag and drop files,Core / Native Application Host,0.4,missing,implemented_with_known_limit_or_unqualified,F0707
+HOST-015,Native application menus,Core / Native Application Host,0.5-core,missing,documented_missing_or_not_public_in_0_4,F0703
+HOST-016,System tray icon and menu,Core / Native Application Host,0.5-core,missing,documented_missing_or_not_public_in_0_4,F0704
+HOST-017,OS notifications,Core / Native Application Host,0.5-core,missing,documented_missing_or_not_public_in_0_4,F0702
+HOST-018,Global shortcuts and hotkeys,Core / Native Application Host,later,missing,documented_missing_or_not_public_in_0_4,F0705
+HOST-019,OS color-scheme preference,Core / Native Application Host,0.4,missing,documented_missing_or_not_public_in_0_4,F0506;F0701
+HOST-020,Window bounds persistence,Core / Native Application Host,ui-0.2,missing,ui_or_app_owned_window_bounds_persistence_not_core_runtime,
+HOST-021,Owner-thread event and work queue,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-022,Timers and wakeup integration,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+HOST-023,Native input platform adapters,Core / Native Application Host,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0501;F0502
+HOST-024,Window activation tokens and limitations,Core / Native Application Host,0.4,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0508;F0708
+BIND-001,Stable C ABI contracts,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0610;F1101;F1103
+BIND-002,Python bindings and callback ownership,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+BIND-003,PowerShell bindings and runspace lifetime,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+BIND-004,Event callbacks and subscription removal,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+BIND-005,Cross-thread deferred post,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F1007
+BIND-006,Asyncio bridge helper,Core / Bindings and Runtime Contracts,ui-0.1,missing,binding_integration_helper_current_0_4_to_check,F1007
+BIND-007,Reserved background completion delivery,Core / Bindings and Runtime Contracts,0.2-harden,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F1007
+BIND-008,Managed background worker pool,Core / Bindings and Runtime Contracts,ui-0.2,partial,binding_integration_helper_current_0_4_to_check,F1007
+BIND-009,Error code and diagnostics API,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,F0508;F0609;F0711;F1008
+BIND-010,Version and installed library provenance,Core / Bindings and Runtime Contracts,0.2-harden,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F1101
+BIND-011,Resource budgets and bounded admission,Core / Bindings and Runtime Contracts,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F1006
+BIND-012,Thread safety and lifecycle lease,Core / Bindings and Runtime Contracts,0.2-harden,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0505
+BIND-013,Headless testing backend,Core / Bindings and Runtime Contracts,0.2-harden,present,baseline_0_4_reported_supported_not_reaudited_itemwise,
+BIND-014,Public Python API ergonomic parity,Core / Bindings and Runtime Contracts,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0610;F1103
+BIND-015,Public PowerShell API ergonomic parity,Core / Bindings and Runtime Contracts,0.3,partial,baseline_0_4_reported_supported_not_reaudited_itemwise,F0610;F1103
+BIND-016,Third-language ABI consumability,Core / Bindings and Runtime Contracts,later,partial,substantial_internal_support_or_future_candidate_needs_review,F1103;F1203
+UI-001,Declarative markup builders,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-002,Component base/slots/context managers,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-003,Row column card layout helpers,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-004,Typed component properties,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-005,Reactive observable values,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-006,Computed bindings and one-way links,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-007,Refreshable dynamic subtrees,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-008,Diff reconciliation and batching,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-009,Theme variables and dark mode,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-010,Icon packs and asset bundling,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-011,Markdown conversion and sanitization,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-012,Code syntax highlighting,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-013,Chat message component,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-014,Streaming text and message helper,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-015,Bounded append-only log viewer,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-016,In-app notification/toast service,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-017,Modal dialog service,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-018,Popovers and tooltips,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-019,Context menu and dropdown menu,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-020,Tabs and panels,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-021,Drawer sidebar and accordion,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-022,Switch and toggle widgets,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-023,Searchable select and multiselect,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-024,Form validation display helpers,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-025,Slider and input grouping,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-026,File-attachment component,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-027,Progress spinner and skeleton,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-028,Selectable navigation list,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-029,Tree view and hierarchy component,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-030,Data table sorting and pagination,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-031,Virtualized list and scroll anchoring,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-032,Pagination helpers,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-033,Breadcrumbs and step indicators,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-034,Command palette,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-035,Toolbar and status bar,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-036,Application shortcut manager,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-037,Responsive component rules,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-038,UI preferences storage adapter,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-039,Static chart rendering adapter,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-040,Image gallery and viewer,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-041,OS notification convenience wrapper,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-042,Internationalized labels and formatting,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-043,Accessible pattern implementations,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-044,Template/component composition from files,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-045,Managed async task and progress helpers,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+UI-046,PowerShell convenience components,Optional / UI Library,ui-0.2,absent,outside_core_do_not_schedule_as_core,
+UI-047,LLM-friendly component API reference,Optional / UI Library,ui-0.1,absent,outside_core_do_not_schedule_as_core,
+EXT-001,Terminal emulator and PTY adapter,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-002,Multi-language code editor,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-003,Rich-text WYSIWYG editor,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-004,Interactive chart and plotting engine,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-005,Graph and diagram explorer,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-006,Map and geographic layers,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-007,Audio and video players,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-008,3D scene and WebGL alternative,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-009,PDF/document viewer,Optional / Specialized Extensions,extension-backlog,absent,outside_core_do_not_schedule_as_core,
+EXT-010,Custom widget/plugin registration,Optional / Specialized Extensions,later,absent,outside_core_do_not_schedule_as_core,
+APP-001,ACP JSON-RPC session client,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-002,SSE and HTTP transport,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-003,WebSocket/API backend,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-004,Agent subprocess launch and permissions,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-005,Model/provider selection,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-006,Project and agent-session persistence,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-007,User authentication and RBAC,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-008,Business validation and application rules,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-009,Application navigation/routes,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-010,Secret storage and credential flows,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-011,Telemetry consent and analytics,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+APP-012,Agent streaming aggregation policy,Application Owned / Not UI4ME,app-owned,outside,outside_core_do_not_schedule_as_core,
+QA-001,Linux KDE Wayland native acceptance,Delivery / Quality and Ecosystem,0.2-harden,not-qualified,evidence_process_not_runtime_feature,F0711;F1108
+QA-002,Windows x64 native acceptance,Delivery / Quality and Ecosystem,0.2-harden,not-qualified,evidence_process_not_runtime_feature,F0711;F1108
+QA-003,Installed Python wheel consumer,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,F1106
+QA-004,Installed PowerShell module consumer,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,F1106
+QA-005,C ABI independent consumer,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,F1106
+QA-006,Pinned dependency and source provenance,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,F1106
+QA-007,Screen reader accessibility acceptance,Delivery / Quality and Ecosystem,0.4,not-qualified,evidence_process_not_runtime_feature,F0504;F1108
+QA-008,Scoped WPT conformance gates,Delivery / Quality and Ecosystem,0.5-core,partial,evidence_process_not_runtime_feature,F0910;F1104
+QA-009,Pixel oracle and text geometry comparisons,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,
+QA-010,Focus and callback fault injection,Delivery / Quality and Ecosystem,0.3,partial,evidence_process_not_runtime_feature,F0505;F1104
+QA-011,Long-session resource and worker soak,Delivery / Quality and Ecosystem,0.3,partial,evidence_process_not_runtime_feature,F0505;F1006
+QA-012,App consumer contract examples,Delivery / Quality and Ecosystem,0.3,partial,evidence_process_not_runtime_feature,F1105
+QA-013,Optional UI package compatibility matrix,Delivery / Quality and Ecosystem,ui-0.1,absent,evidence_process_not_runtime_feature,
+QA-014,Release and upgrade qualification,Delivery / Quality and Ecosystem,0.2-harden,partial,evidence_process_not_runtime_feature,F1106
+QA-015,Benchmarks for update and cold frame,Delivery / Quality and Ecosystem,0.5-core,partial,evidence_process_not_runtime_feature,
+QA-016,"Docs, examples and agent-readable contracts",Delivery / Quality and Ecosystem,0.3,partial,evidence_process_not_runtime_feature,F1102;F1107
+QA-017,No-JavaScript/no-webserver core policy,Delivery / Quality and Ecosystem,0.2-harden,present,evidence_process_not_runtime_feature,

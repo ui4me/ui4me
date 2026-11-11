@@ -1,0 +1,2797 @@
+{
+  "schema": "ui4me-core-roadmap-work-items/v1",
+  "baseline": "v0.4.0",
+  "source": "uploaded 2026-11-11 0.4 archive; static review; no tests executed",
+  "versions": {
+    "0.5": {
+      "name": "Input, international text and accessibility hardening",
+      "intent": "Qualify and correct keyboard/IME/assistive real desktop behavior; capabilities truthful."
+    },
+    "0.6": {
+      "name": "Complete public document and HTML interface",
+      "intent": "Expose already internal document functionality and finish forms/events."
+    },
+    "0.7": {
+      "name": "Native desktop services",
+      "intent": "Add actual OS shell integrations and host feature detection."
+    },
+    "0.8": {
+      "name": "Interaction and editing foundation",
+      "intent": "Finish direct interaction primitives, native touch and safe plain-text edit."
+    },
+    "0.9": {
+      "name": "Advanced CSS, SVG and typography",
+      "intent": "Promote modern visual features from actual internal engine code and profile."
+    },
+    "0.10": {
+      "name": "Printing, scalable rendering and advanced backend",
+      "intent": "Paginated print, GPU option, incremental layout, rich editing and stress correctness."
+    },
+    "1.0": {
+      "name": "Long-term stable Core",
+      "intent": "Freeze supported profile, ABI, documented evidence and maintainable release engineering."
+    },
+    "1.1": {
+      "name": "Optional portability expansion",
+      "intent": "Additional OS/CPU/language targets; baseline Core 1.0 remains stable."
+    }
+  },
+  "items": [
+    {
+      "version": "0.5",
+      "id": "F0501",
+      "title": "IME preedit, candidate and commit across hosts",
+      "importance": "P0",
+      "baseline_status": "partial_unqualified",
+      "original_ids": [
+        "TEXT-009",
+        "HOST-023"
+      ],
+      "design": "Keep preedit separate from committed model text, track grapheme-caret and focus; native adapters must not double-commit.",
+      "acceptance": "Test composing Japanese/Chinese/Korean and Unicode in text input and textarea with native KDE Wayland and Windows sessions; focus move/cancel/close; compare emitted commits exactly once.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/editing/ime.rs",
+          "line": 3,
+          "match": "//! IME composition in text controls. 011 normalises the platform's input-method events to",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 3,
+          "match": "use crate::document::{Clipboard, ImeState, Input, MAX_PIXELS};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-009",
+          "path": "engine/crates/ui4me-interaction/src/editing/ime.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-023",
+          "path": "engine/crates/ui4me-platform/src/input.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0502",
+      "title": "Dead keys, AltGr, keyboard layouts and repeat",
+      "importance": "P0",
+      "baseline_status": "unqualified",
+      "original_ids": [
+        "INTERACTION-002",
+        "HOST-023"
+      ],
+      "design": "Platform adapters distinguish physical/logical/character events and AltGr from Ctrl+Alt; preserve shortcuts.",
+      "acceptance": "Real keyboard journeys for Czech, US Intl and one additional layout on both hosts; no duplicated text or swallowed native shortcuts.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/keyboard.rs",
+          "line": 3,
+          "match": "//! Key default actions of an uncanceled `keydown`/`keyup`: sequential focus navigation (Tab,",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 19,
+          "match": "use winit::keyboard::{Key, ModifiersState, NamedKey, PhysicalKey};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-002",
+          "path": "engine/crates/ui4me-interaction/src/keyboard.rs",
+          "line_start": 28,
+          "line_end": 44,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-023",
+          "path": "engine/crates/ui4me-platform/src/input.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0503",
+      "title": "Bidirectional text selection, caret and ranges",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "TEXT-005",
+        "TEXT-006",
+        "TEXT-007"
+      ],
+      "design": "Maintain logical text offsets, derive visual highlight/caret from shaped runs, preserve grapheme boundaries.",
+      "acceptance": "Mixed RTL/LTR selection, copy, drag, Home/End and line wrapping; no surrogate/grapheme splits; assistive position consistent.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/text/bidi.rs",
+          "line": 8,
+          "match": "//! ([`controls_for`]) and records each as an `InlineItemKind::BidiControl` item over its bytes.",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/text/geometry/selection.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-005",
+          "path": "engine/crates/ui4me-text/src/bidi.rs",
+          "line_start": 19,
+          "line_end": 35,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "TEXT-006",
+          "path": "engine/crates/ui4me-text/src/paragraph/frozen.rs",
+          "line_start": 1065,
+          "line_end": 1081,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "TEXT-007",
+          "path": "engine/crates/ui4me-text/src/paragraph/frozen.rs",
+          "line_start": 199,
+          "line_end": 215,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0504",
+      "title": "Accessible caret/range information and actions",
+      "importance": "P0",
+      "baseline_status": "partial",
+      "original_ids": [
+        "INTERACTION-017",
+        "INTERACTION-018",
+        "QA-007"
+      ],
+      "design": "Augment AccessKit tree for text fields, selection and caret; no false availability claims; full supported actions.",
+      "acceptance": "AT-SPI and UIA native text-navigation/action scenarios with Orca/Narrator or equivalent; update focus/value/selection coherently.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/a11y/build.rs",
+          "line": 16,
+          "match": "/// Tag bit of the text-run child of a text field (013 adapter-threading §5: a derived id space).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/interaction/assistive.rs",
+          "line": 12,
+          "match": "//! - [`set_text_value`]: focus the text control, then replace its whole value through the editing",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-017",
+          "path": "engine/crates/ui4me-a11y/src/lib.rs",
+          "line_start": 22,
+          "line_end": 38,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-018",
+          "path": "engine/crates/ui4me-runtime/src/a11y.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-007",
+          "path": "engine/crates/ui4me-a11y/src/tests.rs",
+          "line_start": 9,
+          "line_end": 25,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0505",
+      "title": "Input/accessibility lifecycle and resource correctness",
+      "importance": "P0",
+      "baseline_status": "candidate",
+      "original_ids": [
+        "BIND-012",
+        "QA-010",
+        "QA-011"
+      ],
+      "design": "Verify callbacks cannot outlive owned node/session, no assistive tree stale IDs, no deadlocks around modality, input dispatch or stop.",
+      "acceptance": "Inject close/reopen, remove focused node, cancel modal, reconnect assistive client, stop under callback; pass focused fault tests and real platform journeys.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 20,
+          "match": "pub type Callback = extern \"C\" fn(u64, *const c_char, *mut c_void) -> i32;",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/a11y/mod.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-012",
+          "path": "engine/crates/ui4me-core/src/owner.rs",
+          "line_start": 16,
+          "line_end": 32,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-010",
+          "path": "engine/crates/ui4me-ffi/tests/panic_containment.rs",
+          "line_start": 22,
+          "line_end": 38,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-011",
+          "path": "engine/crates/ui4me-resources/tests/shutdown.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0506",
+      "title": "Live font, locale, scale and contrast environment changes",
+      "importance": "P1",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "TEXT-002",
+        "HOST-010",
+        "HOST-019"
+      ],
+      "design": "Expose safe environment invalidations; preserve document state; separate native platform signals from app override.",
+      "acceptance": "Changing OS font/scale/accent/contrast at runtime recalculates relevant styles/fonts once, without losing input state; documented unsupported signals.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/text/fonts/environment.rs",
+          "line": 3,
+          "match": "//! Font environment (009 `contracts/font-matching.md` §1) and the owner-thread `TextServices`",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/device.rs",
+          "line": 5,
+          "match": "//! font-metrics adapter (font_metrics.rs).",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-002",
+          "path": "engine/crates/ui4me-text/src/fonts/faces.rs",
+          "line_start": 27,
+          "line_end": 43,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-010",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 136,
+          "line_end": 152,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0507",
+      "title": "Keyboard/pointer focus and event regression matrix",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "INTERACTION-003",
+        "INTERACTION-016",
+        "INTERACTION-021"
+      ],
+      "design": "Ensure tab ordering, click/drag selection, keyboard navigation and mouse capture use one stable target/lifetime model.",
+      "acceptance": "Dialog and control keyboard matrix on both OSes; pointer outside window, removed target, hidden and disabled nodes; no stale capture.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/focus.rs",
+          "line": 3,
+          "match": "//! Focus (001 T059, T084): focusable areas, the focusing steps and focus update (`blur` and",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/interaction/pointer.rs",
+          "line": 355,
+          "match": "crate::interaction::focus::accepts_text_input(d, n)",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-003",
+          "path": "engine/crates/ui4me-interaction/src/focus.rs",
+          "line_start": 19,
+          "line_end": 35,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-016",
+          "path": "engine/crates/ui4me-interaction/src/pointer.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-021",
+          "path": "engine/crates/ui4me-interaction/src/dispatch.rs",
+          "line_start": 28,
+          "line_end": 44,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.5",
+      "id": "F0508",
+      "title": "Platform feature status and accessible failure diagnostics",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "BIND-009",
+        "HOST-024"
+      ],
+      "design": "One language-neutral capability/status query for runtime/platform restrictions, not optimistic booleans.",
+      "acceptance": "Python, PowerShell, C consumer agree on support/unsupported/denied/unavailable; Wayland restrictions and permission denials return exact causes.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-009",
+          "path": "engine/crates/ui4me-core/src/status.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-024",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 108,
+          "line_end": 124,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0601",
+      "title": "Public DOM inner/outer/document HTML serialization",
+      "importance": "P1",
+      "baseline_status": "internal_not_public",
+      "original_ids": [
+        "DOM-012"
+      ],
+      "design": "Expose bounded read-only serialize commands using current serializer, correctly handling templates, attributes and Unicode.",
+      "acceptance": "Inner/outer/document serialization roundtrips accepted markup, errors on stale IDs and invalid nodes, respects limits; both bindings and C contract.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-document/src/serialize.rs",
+          "line": 113,
+          "match": "pub fn inner_html(&self, n: NodeId) -> Result<String, Status> {",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-012",
+          "path": "engine/crates/ui4me-dom/src/serialize.rs",
+          "line_start": 111,
+          "line_end": 127,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0602",
+      "title": "Attach/replace/remove stylesheet and inspect sources",
+      "importance": "P1",
+      "baseline_status": "internal_not_public",
+      "original_ids": [
+        "DOM-014"
+      ],
+      "design": "Expose stable stylesheet attachment IDs, safe CSS source management, parse diagnostics and invalidation.",
+      "acceptance": "Repeated add/replace/remove including invalid CSS, deleted owner, order and frame update; parity across bindings.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-document/src/stylesheets.rs",
+          "line": 128,
+          "match": "pub fn attach_stylesheet(&mut self, css: &str) -> Result<AttachmentId, Status> {",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/sheets/set.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-014",
+          "path": "engine/crates/ui4me-dom/src/stylesheets.rs",
+          "line_start": 45,
+          "line_end": 61,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0603",
+      "title": "Read-only text range geometry and hit-to-text APIs",
+      "importance": "P1",
+      "baseline_status": "internal_not_public",
+      "original_ids": [
+        "TEXT-011"
+      ],
+      "design": "Expose text range rects, offsets, hit testing without leaking font/shaper private internals; Unicode-safe offsets.",
+      "acceptance": "Wrapped multilingual text coordinates, stale range errors, clipped/hidden elements, high DPI, query limits; both bindings.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/text/geometry/selection.rs",
+          "line": 3,
+          "match": "//! Text geometry: selection (reserved).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/diagnostics/probes/text_geometry.rs",
+          "line": 1,
+          "match": "//! owner: 005-pipeline-diagnostics — T001 placeholder (FR-056). Probe `text_geometry` (content owner 009).",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-011",
+          "path": "engine/crates/ui4me-text/src/metrics.rs",
+          "line_start": 28,
+          "line_end": 44,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0604",
+      "title": "DOM traversal and generic node references",
+      "importance": "P1",
+      "baseline_status": "subset",
+      "original_ids": [
+        "DOM-003",
+        "DOM-004",
+        "DOM-018"
+      ],
+      "design": "Add scoped traversal, parent/children/sibling/read-only type with generation-safe opaque handles or IDs; avoid browser JS object model.",
+      "acceptance": "Unidentified elements, text nodes, fragments, removed/moved nodes, limit enforcement and predictable stale-handle errors.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-document/src/view.rs",
+          "line": 17,
+          "match": "use crate::node::{Attribute, ElementData, Node, NodeKind};",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-document/src/query.rs",
+          "line": 11,
+          "match": "use crate::node::NodeKind;",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-003",
+          "path": "engine/crates/ui4me-dom/src/query.rs",
+          "line_start": 22,
+          "line_end": 38,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "DOM-004",
+          "path": "engine/crates/ui4me-style/src/query.rs",
+          "line_start": 221,
+          "line_end": 237,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "DOM-018",
+          "path": "engine/crates/ui4me-dom/src/retain.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0605",
+      "title": "HTML validity and form-submit semantics",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "DOM-020",
+        "INTERACTION-014"
+      ],
+      "design": "Implement bounded native constraint validation for required/min/max/pattern/email/number and form associations; explicit invalid events/default actions.",
+      "acceptance": "Form invalid/submittable branches, label rules, reset/default value, controls removed mid-submit; keyboard and both bindings.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-document/src/forms.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-document/src/control_semantics.rs",
+          "line": 59,
+          "match": "// HTML's missing and invalid value defaults are both Text.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-020",
+          "path": "engine/crates/ui4me-dom/src/forms.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-014",
+          "path": "engine/crates/ui4me-dom/src/forms.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0606",
+      "title": "Standard HTML file input and native picker bridge",
+      "importance": "P1",
+      "baseline_status": "absent_public",
+      "original_ids": [
+        "INTERACTION-019",
+        "HOST-012"
+      ],
+      "design": "Connect file input activation to native picker without exposing privileged paths silently; same privacy/cancel semantics as file service.",
+      "acceptance": "File chooser click/keyboard, accept/multiple, cancel, Unicode paths, sandbox policy and lifecycle on Linux/Windows.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 591,
+          "match": "pub fn finish_file_dialog(&self, window: u64, token: u64, result: Value) {",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/interaction/controls.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-019",
+          "path": "engine/crates/ui4me-ffi/src/api/dialog.rs",
+          "line_start": 13,
+          "line_end": 29,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-012",
+          "path": "engine/crates/ui4me-ffi/src/api/dialog.rs",
+          "line_start": 13,
+          "line_end": 29,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0607",
+      "title": "Synchronous cancellable event pre-dispatch policy",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "INTERACTION-015"
+      ],
+      "design": "Preserve post-dispatch language callbacks, offer safe declarative cancellation/rules before native default actions; avoid blocking foreign callbacks.",
+      "acceptance": "Prevent default for links, submit, dialog Escape, drag, select; predictable ordering and no deadlock/reentrancy.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/dispatch.rs",
+          "line": 42,
+          "match": "#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 7,
+          "match": "#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-015",
+          "path": "engine/crates/ui4me-interaction/src/dispatch.rs",
+          "line_start": 28,
+          "line_end": 44,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0608",
+      "title": "Safe external link/navigation policy",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "DOM-023"
+      ],
+      "design": "Add explicit app opt-in to external URL launch with allowlist/scheme policy and event result; no arbitrary browser engine.",
+      "acceptance": "No implicit network fetch or script execution; blocked data/javascript/file schemes, normal HTTPS opt-in, denial and host failure tested.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/activation.rs",
+          "line": 361,
+          "match": "/// Other activation behaviours (radio groups, reset, labels, links, summary) are 012's later",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-023",
+          "path": "engine/crates/ui4me-ffi/src/api/navigation.rs",
+          "line_start": 62,
+          "line_end": 78,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0609",
+      "title": "DOM/CSS read diagnostics and stable public schema",
+      "importance": "P2",
+      "baseline_status": "partial",
+      "original_ids": [
+        "DOM-017",
+        "BIND-009"
+      ],
+      "design": "Promote narrowly useful computed-style/cascade/query introspection without exposing internal Stylo ABI.",
+      "acceptance": "Query recognized property, inherited/effective value and unsupported state; versioned JSON schema, bounded cost, diagnostics stable.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/diagnostics/probes/computed_style.rs",
+          "line": 3,
+          "match": "//! `computed_style.resolved_style` probe input (neutral): CSSOM resolved values for the",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/query.rs",
+          "line": 1,
+          "match": "//! owner: 006-style-engine — created by 001 slice (R-28)",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "DOM-017",
+          "path": "engine/crates/ui4me-runtime/src/geometry_query.rs",
+          "line_start": 48,
+          "line_end": 64,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "BIND-009",
+          "path": "engine/crates/ui4me-core/src/status.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.6",
+      "id": "F0610",
+      "title": "Mutation and stylesheet API parity + limits",
+      "importance": "P0",
+      "baseline_status": "candidate",
+      "original_ids": [
+        "BIND-001",
+        "BIND-014",
+        "BIND-015"
+      ],
+      "design": "Bind every new document API through typed C/JSON contract, unify errors and stale IDs.",
+      "acceptance": "Independent installed C, Python, PowerShell consumers; queue pressure, invalid arguments and reentrancy tested; ABI1 preserved.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "bindings/python/src/ui4me/app.py",
+          "line": 58,
+          "match": "self._app._command({\"op\": \"cancel_timer\", \"token\": self.token})",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "bindings/powershell/Ui4me.Managed/App.cs",
+          "line": 140,
+          "match": "throw new InvalidOperationException(\"UI commands require the creating thread. Use Post from other managed threads.\");",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-001",
+          "path": "engine/crates/ui4me-ffi/src/entry.rs",
+          "line_start": 74,
+          "line_end": 90,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "BIND-014",
+          "path": "bindings/python/src/ui4me/document.py",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "BIND-015",
+          "path": "bindings/powershell/src/Ui4me/Document.cs",
+          "line_start": 15,
+          "line_end": 31,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0701",
+      "title": "Automatic OS dark/light/high-contrast preference",
+      "importance": "P1",
+      "baseline_status": "absent_public",
+      "original_ids": [
+        "HOST-019"
+      ],
+      "design": "Expose initial and changed OS preference, logical override; connect prefers-color-scheme and forced-colors where supportable.",
+      "acceptance": "Theme toggles without restart on Windows/KDE, stable fallback if portal cannot expose preference; explicit event and capability.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/device.rs",
+          "line": 4,
+          "match": "//! published by HostRuntime/WindowPresenter (viewport, device size, DPR, colour scheme) and the",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.7",
+      "id": "F0702",
+      "title": "Native system notifications",
+      "importance": "P1",
+      "baseline_status": "absent",
+      "original_ids": [
+        "HOST-017"
+      ],
+      "design": "Offer native notification request with permission/availability states and click/dismiss callbacks; no in-app toast dependency.",
+      "acceptance": "Linux desktop notifications and Windows notification journey; on deny/suppressed return status, no indefinite callback leaks.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 17,
+          "match": "use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.7",
+      "id": "F0703",
+      "title": "Native app menubars and context menus",
+      "importance": "P1",
+      "baseline_status": "absent",
+      "original_ids": [
+        "HOST-015"
+      ],
+      "design": "Per-window menu tree, commands, accelerators, enabled/checked states; native where supported, explicit fallback capability.",
+      "acceptance": "Keyboard/mouse, dynamic disabled/rebuild, accelerator collisions, multiple windows, owner-thread event delivery.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 4,
+          "match": "use crate::runtime::{lock, FileDialogRequest, Observed, Session, WindowInfo, WindowOp};",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 2,
+          "match": "//! DOM, rendering, windows and timers live in OWNER on their creating thread.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.7",
+      "id": "F0704",
+      "title": "System tray/status icon and lifecycle",
+      "importance": "P1",
+      "baseline_status": "absent",
+      "original_ids": [
+        "HOST-016"
+      ],
+      "design": "Dedicated app-level tray entry and context menu with platform capability detection, icon scaling, cleanup on stop.",
+      "acceptance": "Tray icon/menu and trigger native desktop journey for supported hosts, robust shutdown and failure/unsupported reporting.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 21,
+          "match": "use winit::window::{CursorIcon, ImePurpose, Window, WindowId};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.7",
+      "id": "F0705",
+      "title": "Global system keyboard shortcuts",
+      "importance": "P2",
+      "baseline_status": "absent",
+      "original_ids": [
+        "HOST-018"
+      ],
+      "design": "Opt-in registered hotkeys with collision/permission handling, owner-thread dispatch, automatic unregister on stop.",
+      "acceptance": "Register/unregister, collision, Wayland permission denied, window unfocused, multi-app isolation; no silent hook fallback.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 19,
+          "match": "use winit::keyboard::{Key, ModifiersState, NamedKey, PhysicalKey};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.7",
+      "id": "F0706",
+      "title": "Rich clipboard formats",
+      "importance": "P2",
+      "baseline_status": "absent_public",
+      "original_ids": [
+        "TEXT-008",
+        "HOST-011"
+      ],
+      "design": "Support UTF-8 text plus HTML/image MIME where platform permits; maintain typed format list, sanitize untrusted HTML.",
+      "acceptance": "Plain text fallback, image MIME, copied styled selection and paste safety on Windows/KDE; bounded sizes and errors.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 580,
+          "match": "pub fn install_clipboard(",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/interaction/editing/clipboard.rs",
+          "line": 4,
+          "match": "//! Shift+Insert; Cmd for Meta) fires a trusted, cancelable `ClipboardEvent` at the focused element",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-008",
+          "path": "engine/crates/ui4me-interaction/src/editing/clipboard.rs",
+          "line_start": 30,
+          "line_end": 46,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-011",
+          "path": "engine/crates/ui4me-platform/src/clipboard/mod.rs",
+          "line_start": 9,
+          "line_end": 25,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0707",
+      "title": "Generic element/file drag and drop",
+      "importance": "P1",
+      "baseline_status": "absent_subset",
+      "original_ids": [
+        "INTERACTION-020",
+        "HOST-014"
+      ],
+      "design": "Implement intra-document drag/drop data transfer and OS file drop through platform adapter; event lifetime and URL/path safety.",
+      "acceptance": "Windows/X11 real drag/drop; Wayland portal/backend path where technically possible; otherwise precise supported=false result, no bogus success.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/pointer.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 111,
+          "match": "// Drop order: surface, context, final window handle.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-020",
+          "path": "engine/crates/ui4me-interaction/src/pointer.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "HOST-014",
+          "path": "engine/crates/ui4me-platform/src/input.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0708",
+      "title": "Wayland-compatible window management enhancements",
+      "importance": "P1",
+      "baseline_status": "partial_limited",
+      "original_ids": [
+        "HOST-006",
+        "HOST-024"
+      ],
+      "design": "Use supported compositor protocols/activation tokens, avoid impossible absolute position/icon/raise promises.",
+      "acceptance": "Explicit per-op result: works on X11/Windows, supported Wayland protocols when available, otherwise unsupported; no hanging request.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 57,
+          "match": "winit::platform::wayland::EventLoopBuilderExtWayland::with_any_thread(&mut builder, session.allow_any_thread);",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "HOST-006",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 108,
+          "line_end": 124,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "HOST-024",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 108,
+          "line_end": 124,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0709",
+      "title": "Cursor, pointer modes and drag threshold services",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "INTERACTION-016"
+      ],
+      "design": "Expose cursor shape, confinement/capture where native hosts allow; defend focus loss and removed element.",
+      "acceptance": "Native behavior on both OSes, capability query and events; release capture on focus loss/shutdown.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/pointer.rs",
+          "line": 327,
+          "match": "/// The keyword a computed `cursor` value resolves to: the last entry of the list (the fallback",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 21,
+          "match": "use winit::window::{CursorIcon, ImePurpose, Window, WindowId};",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-016",
+          "path": "engine/crates/ui4me-interaction/src/pointer.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0710",
+      "title": "Native file association and open-with entrypoint",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "HOST-012"
+      ],
+      "design": "App opt-in open-file delivery from OS including startup/second-instance; no installing file associations automatically.",
+      "acceptance": "Accept Unicode filenames and safe argument/event delivery; shell requests cannot forge arbitrary commands.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 865,
+          "match": ".map_err(|e| Error::io(format!(\"open_file: {e}\")))?;",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "HOST-012",
+          "path": "engine/crates/ui4me-ffi/src/api/dialog.rs",
+          "line_start": 13,
+          "line_end": 29,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.7",
+      "id": "F0711",
+      "title": "Native host platform contract and two-binding consumer",
+      "importance": "P0",
+      "baseline_status": "candidate",
+      "original_ids": [
+        "BIND-009",
+        "QA-001",
+        "QA-002"
+      ],
+      "design": "Use optional adapter traits behind one stable language-neutral ABI with identical errors/capability reads.",
+      "acceptance": "Installed Python/PowerShell, Windows/KDE native app test; normal absence of optional desktop service handled without crash.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 5,
+          "match": "use crate::{Error, Result};",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "bindings/powershell/Ui4me.Managed/App.cs",
+          "line": 89,
+          "match": "internal void Succeed(object? value) { Volatile.Write(ref state, 2); Completion.TrySetResult(value); }",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-009",
+          "path": "engine/crates/ui4me-core/src/status.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-001",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 17,
+          "line_end": 33,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-002",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 17,
+          "line_end": 33,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0801",
+      "title": "Contenteditable plain-text foundation",
+      "importance": "P1",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "TEXT-010"
+      ],
+      "design": "Scope to contenteditable=plaintext-only/explicit editing host; reuse selection and undo, prohibit script/HTML injection.",
+      "acceptance": "Keyboard/IME/undo/paste/copy/select/caret across blocks, focus and cleanup; no accidental HTML execution.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/editing.rs",
+          "line": 1,
+          "match": "//! owner: 012-interaction (lane L-EDIT-r4; FR-070-FR-082 text editing subset; `contracts/editing.md`)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-document/src/mutate/replace.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-010",
+          "path": "engine/crates/ui4me-interaction/src/editing/history.rs",
+          "line_start": 14,
+          "line_end": 30,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0802",
+      "title": "Pointer capture, touch, stylus and gestures",
+      "importance": "P2",
+      "baseline_status": "partial_future",
+      "original_ids": [
+        "INTERACTION-016"
+      ],
+      "design": "Map device source/touch IDs/pressure where host supports; preserve mouse semantics, per-target capture and release.",
+      "acceptance": "Touch tap/scroll, stylus down/up, gesture cancel on window close; real hardware or documented not-run, no fake passing.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/pointer.rs",
+          "line": 3,
+          "match": "//! Pointer state that CSS can see: `:hover` on the element under the pointer and its ancestors,",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 581,
+          "match": "\"pointer\" => CursorIcon::Pointer,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-016",
+          "path": "engine/crates/ui4me-interaction/src/pointer.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0803",
+      "title": "Smooth scrolling and CSS scroll-behavior",
+      "importance": "P2",
+      "baseline_status": "disabled_profile",
+      "original_ids": [
+        "INTERACTION-006"
+      ],
+      "design": "Owner-clock animation with reduced-motion preference, cancellation, deterministic headless time.",
+      "acceptance": "ScrollTo smooth + instant, user wheel interrupts, no frame queue pileup, reduced motion honored.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/scroll.rs",
+          "line": 12,
+          "match": "//! focus-scrolls-into-view rule, `scroll-behavior: smooth` (006 drops it).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 105,
+          "match": "\"layout.css.scroll-behavior.enabled\" = false,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-006",
+          "path": "engine/crates/ui4me-interaction/src/scroll.rs",
+          "line_start": 183,
+          "line_end": 199,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0804",
+      "title": "Scroll snapping, margins/padding and overscroll control",
+      "importance": "P2",
+      "baseline_status": "disabled_profile",
+      "original_ids": [
+        "CSS-012"
+      ],
+      "design": "Add box/snap coordinate rules incrementally, guard nested scroll containers and keyboard/pointer interactions.",
+      "acceptance": "Snap mandatory/proximity, nested scrolls, scroll-padding/margin, overscroll flags; valid unsupported diagnostic for unimplemented subfeatures.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 284,
+          "match": "(\"css.property.scroll-snap\", Unavailable),",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/interaction/scroll.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-012",
+          "path": "engine/crates/ui4me-layout/src/coordinator/overflow.rs",
+          "line_start": 2,
+          "line_end": 18,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0805",
+      "title": "Advanced controls semantics",
+      "importance": "P2",
+      "baseline_status": "partial",
+      "original_ids": [
+        "INTERACTION-010",
+        "INTERACTION-011"
+      ],
+      "design": "Refine number/range/progress/meter activation, keyboard locale, form/reset, disabled/read-only behavior.",
+      "acceptance": "Keyboard/pointer/validation events, native semantic values, screen reader state; negative invalid range controls.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/controls.rs",
+          "line": 1,
+          "match": "//! owner: 012-interaction (lane L-CTRL-r10; `contracts/controls.md` sections 1, 3 and 5) — the",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-document/src/control_semantics.rs",
+          "line": 1,
+          "match": "//! Canonical control classification and current facts. Interaction, layout and",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-010",
+          "path": "engine/crates/ui4me-interaction/src/controls.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-011",
+          "path": "engine/crates/ui4me-layout/src/replaced/controls.rs",
+          "line_start": 3,
+          "line_end": 19,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0806",
+      "title": "HTML text editing and selection interoperability",
+      "importance": "P1",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "TEXT-007",
+        "TEXT-010"
+      ],
+      "design": "Shared selection model for inputs/contenteditable/document; preserve updates across DOM mutation.",
+      "acceptance": "Undo/redo, multi-line, bidi, IME, copy/paste/delete, remove selected subtree, preserve scroll and accessibility.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/editing.rs",
+          "line": 3,
+          "match": "//! Editing of `input` (text-like types and `number`) and `textarea`: the caret and selection",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/text/geometry/caret.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-007",
+          "path": "engine/crates/ui4me-text/src/paragraph/frozen.rs",
+          "line_start": 199,
+          "line_end": 215,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "TEXT-010",
+          "path": "engine/crates/ui4me-interaction/src/editing/history.rs",
+          "line_start": 14,
+          "line_end": 30,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0807",
+      "title": "Pointer and keyboard interaction event extensibility",
+      "importance": "P2",
+      "baseline_status": "partial",
+      "original_ids": [
+        "INTERACTION-021"
+      ],
+      "design": "Expose documented event fields for external languages without browser JS objects; preserve deterministic dispatch and owner thread.",
+      "acceptance": "Pointer coordinates, key modifiers, cancelability, capture and stale-target cases available via bindings.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/dispatch.rs",
+          "line": 5,
+          "match": "//! listener registries, focus, input queue, event log). See `API.md` for the host contract.",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 201,
+          "match": "event: String,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-021",
+          "path": "engine/crates/ui4me-interaction/src/dispatch.rs",
+          "line_start": 28,
+          "line_end": 44,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.8",
+      "id": "F0808",
+      "title": "Basic in-window native widgets and popover anchors",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "INTERACTION-009",
+        "INTERACTION-013"
+      ],
+      "design": "Implement HTML popover/top-layer anchor positioning subset, escape-key behavior and focus, no high-level component API.",
+      "acceptance": "Popover show/hide, stacking, dynamic reposition on resize/scroll; keyboard and accessibility semantics.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/dialog.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/coordinator/oof.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "INTERACTION-009",
+          "path": "engine/crates/ui4me-dom/src/select.rs",
+          "line_start": 16,
+          "line_end": 32,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "INTERACTION-013",
+          "path": "engine/crates/ui4me-interaction/src/dialog.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0901",
+      "title": "CSS transitions and keyframe animations",
+      "importance": "P1",
+      "baseline_status": "internal_disabled",
+      "original_ids": [
+        "CSS-022"
+      ],
+      "design": "Promote existing Stylo animation machinery into one deterministic owner-clock scheduler and damage model; support reduced motion.",
+      "acceptance": "Opacity/transform and layout property animations, cancellation/restart, timers, stop/reopen, CPU bounded animations and source-profile On.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/animation.rs",
+          "line": 3,
+          "match": "//! CSS Transitions 1 and CSS Animations 1 on Stylo's animation machinery (research R-11; AD-11,",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 76,
+          "match": "\"layout.css.display-animations.enabled\" = false,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-022",
+          "path": "engine/crates/ui4me-style/src/animation.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0902",
+      "title": "CSS @starting-style and modern animation timing",
+      "importance": "P2",
+      "baseline_status": "disabled_profile",
+      "original_ids": [
+        "CSS-022"
+      ],
+      "design": "Progressively enable @starting-style and selected animation timing options after F0901 works.",
+      "acceptance": "Transitional insert/remove, contradictory declarations, reduced motion, no stale animation tasks.",
+      "depends_on": [
+        "F0901"
+      ],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 93,
+          "match": "\"layout.css.starting-style-at-rules.enabled\" = false,",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/animation.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-022",
+          "path": "engine/crates/ui4me-style/src/animation.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0903",
+      "title": "Modern layout property completion (disabled profile)",
+      "importance": "P2",
+      "baseline_status": "disabled_profile",
+      "original_ids": [
+        "CSS-027"
+      ],
+      "design": "Address listed off/unavailable app-relevant properties: content-visibility, contain-intrinsic-size, resizing, shape-outside, overscroll and field-sizing where engine supports them.",
+      "acceptance": "Each enabled property has parser+computed+used+paint effect tests and unsupported diagnostics for remaining values; no silent On flag.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 259,
+          "match": "(\"css.property.content-visibility\", Unavailable),",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/coordinator/mod.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-027",
+          "path": "engine/crates/ui4me-style/src/profile/mod.rs",
+          "line_start": 20,
+          "line_end": 36,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0904",
+      "title": "Advanced CSS grid, subgrid, multi-column and pagination conformance",
+      "importance": "P2",
+      "baseline_status": "subset_implemented",
+      "original_ids": [
+        "CSS-007",
+        "CSS-013",
+        "CSS-014"
+      ],
+      "design": "Improve selected nested subgrid, break/float/intrinsic-size scenarios; avoid generic rewrite of implemented CSS.",
+      "acceptance": "Curated fixtures and WPT selection for grid, floats, multicol; regressions compared with existing cold rendering.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/layout/table/grid.rs",
+          "line": 6,
+          "match": "//! `rowspan`. The output is the grid of the WHATWG HTML Standard §4.9.12.1 (\"forming a table\"):",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/fragmentation/multicol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-007",
+          "path": "engine/crates/ui4me-layout/src/box_tree/typed_layout.rs",
+          "line_start": 1,
+          "line_end": 16,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-013",
+          "path": "engine/crates/ui4me-layout/src/fragmentation/multicol.rs",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-014",
+          "path": "engine/crates/ui4me-layout/src/fragmentation/paged.rs",
+          "line_start": 33,
+          "line_end": 49,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0905",
+      "title": "Typography fine features and international coverage",
+      "importance": "P2",
+      "baseline_status": "subset_implemented",
+      "original_ids": [
+        "TEXT-013",
+        "TEXT-015",
+        "CSS-023"
+      ],
+      "design": "Expand script/language dictionaries and vertical CJK/ruby semantics where meaningful; system font/feature changes propagate.",
+      "acceptance": "Unicode corpus with fallback, line break/selection geometry, RTL, fonts and vertical text; do not claim full CSS writing conformance.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/text/hyphenation.rs",
+          "line": 3,
+          "match": "//! `hyphens: auto`: Liang's hyphenation algorithm over TeX pattern files (hyph-utf8), owned code with",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/text/paragraph/vertical.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-013",
+          "path": "engine/crates/ui4me-text/src/hyphenation.rs",
+          "line_start": 45,
+          "line_end": 61,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "TEXT-015",
+          "path": "engine/crates/ui4me-text/src/paragraph/vertical.rs",
+          "line_start": 19,
+          "line_end": 35,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-023",
+          "path": "engine/crates/ui4me-layout/src/writing_mode/mod.rs",
+          "line_start": 25,
+          "line_end": 41,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0906",
+      "title": "Visual masking, borders, clip paths and advanced effects",
+      "importance": "P2",
+      "baseline_status": "subset_implemented",
+      "original_ids": [
+        "CSS-017",
+        "PAINT-006"
+      ],
+      "design": "Close common CSS visual gaps without sacrificing hit-test/clip correspondence or bounded raster resources.",
+      "acceptance": "Gradients/clip/mask/shadows/border-image combinations, deterministic pixels and safe malformed assets.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/scene/paint/mask.rs",
+          "line": 1,
+          "match": "//! owner: 010-paint-render — lane L-DARK-r9 (`mask-image` and its longhands; CSS Masking 1 section 7)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/scene/paint/clip_path.rs",
+          "line": 3,
+          "match": "//! `clip-path` basic shapes (CSS Masking 1 section 5.1, CSS Shapes 1): `inset()` (with `round`,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-017",
+          "path": "engine/crates/ui4me-scene/src/paint/shadow.rs",
+          "line_start": 13,
+          "line_end": 29,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "PAINT-006",
+          "path": "engine/crates/ui4me-scene/src/paint/border_image.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0907",
+      "title": "Inline SVG DOM and render/hit-test subset",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "PAINT-005"
+      ],
+      "design": "Keep existing external SVG raster support. Add bounded inline SVG elements/shapes/text/geometry, style, transform and events; no JS SVG animations needed.",
+      "acceptance": "Simple icons/charts/paths inline, CSS inherited fill/stroke, hit testing and DOM interactions, malformed/oversize SVG rejected safely.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-assets/src/lib.rs",
+          "line": 25,
+          "match": "pub mod svg;",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/replaced/images.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "PAINT-005",
+          "path": "engine/crates/ui4me-resources/src/svg/raster_cache.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0908",
+      "title": "SVG full static presentation feature profile",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "PAINT-005"
+      ],
+      "design": "Document supported SVG gradients/filters/clipping/markers/text as a fixed profile; close high-value gaps after F0907.",
+      "acceptance": "Conformance corpus for static SVG content and CSS hooks; fallback and resource limits; separate unsupported features listed.",
+      "depends_on": [
+        "F0907"
+      ],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/scene/paint/replaced.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 146,
+          "match": "\"gfx.font_rendering.opentype_svg.enabled\" = false,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "PAINT-005",
+          "path": "engine/crates/ui4me-resources/src/svg/raster_cache.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0909",
+      "title": "CSS color, backgrounds, advanced typography and visual profile",
+      "importance": "P2",
+      "baseline_status": "partial",
+      "original_ids": [
+        "CSS-016",
+        "CSS-025"
+      ],
+      "design": "Promote app-relevant Off/Unavailable CSS tokens, preferring actual component requirements and a fixed profile over arbitrary WPT score.",
+      "acceptance": "Representative color/gradient/shadow/blur/ellipsis tests; exact feature profile/reason codes before/after change.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 60,
+          "match": "\"layout.css.color-mix-multi-color.enabled\" = true,",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/scene/paint/background.rs",
+          "line": 13,
+          "match": "ClipShape, Color, ColorStop, DrawOp, Extend, Gradient, GradientKind, ItemKind, Point, Rect,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-016",
+          "path": "engine/crates/ui4me-scene/src/paint/background.rs",
+          "line_start": 1,
+          "line_end": 14,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "CSS-025",
+          "path": "engine/crates/ui4me-layout/src/ifc/container.rs",
+          "line_start": 505,
+          "line_end": 521,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0910",
+      "title": "Framework compatibility fixtures without browser emulation",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "CSS-027",
+        "QA-008"
+      ],
+      "design": "Golden fixtures for curated Bootstrap/Tailwind/Mantine-style static markup; no JS runtime or web loader.",
+      "acceptance": "Header/sidebar/forms/table/grid survive common breakpoints and style overrides; publish documented exceptions.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 3,
+          "match": "//! Profile table of `ui4me-css/1` 1.1.0 (006 `contracts/css-feature-profile.md` §4–§6).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/regression/mod.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-027",
+          "path": "engine/crates/ui4me-style/src/profile/mod.rs",
+          "line_start": 20,
+          "line_end": 36,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-008",
+          "path": "engine/crates/ui4me-oracle/src/harness.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.9",
+      "id": "F0911",
+      "title": "Close existing advanced layout and pseudo-element conformance gaps",
+      "importance": "P2",
+      "baseline_status": "substantial_existing",
+      "original_ids": [
+        "CSS-010",
+        "CSS-011",
+        "CSS-020",
+        "CSS-021"
+      ],
+      "design": "Do not reimplement existing sticky/fixed, floats, pseudo-elements, or container query systems. Audit real behavior and fix only demonstrable semantic gaps under the fixed native profile.",
+      "acceptance": "Focused CSS fixtures for sticky and fixed position under scroll, floats with text wrapping, first-line/letter/generated content, and nested container queries under mutation/resize; record existing PASS if covered.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/layout/coordinator/sticky.rs",
+          "line": 1,
+          "match": "//! owner: 008-layout-engine (US6: T078)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/coordinator/floats.rs",
+          "line": 1,
+          "match": "//! owner: 008-layout-engine (L-FLOAT-r10) — floats met in inline content (CSS 2.1 section 9.5).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/layout/box_tree/pseudo.rs",
+          "line": 1,
+          "match": "//! owner: 008-layout-engine (lane L-LIST-r9) - generated boxes: `::before`, `::after` and",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/container.rs",
+          "line": 5,
+          "match": "//! generated a box in the last layout, the content-box width and height in CSS px that the style",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-010",
+          "path": "engine/crates/ui4me-layout/src/coordinator/sticky.rs",
+          "line_start": 1,
+          "line_end": 17,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-011",
+          "path": "engine/crates/ui4me-layout/src/coordinator/floats.rs",
+          "line_start": 11,
+          "line_end": 27,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-020",
+          "path": "engine/crates/ui4me-layout/src/box_tree/pseudo.rs",
+          "line_start": 23,
+          "line_end": 39,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-021",
+          "path": "engine/crates/ui4me-style/src/container.rs",
+          "line_start": 27,
+          "line_end": 43,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1001",
+      "title": "Paged media and print page model",
+      "importance": "P1",
+      "baseline_status": "internal_disabled",
+      "original_ids": [
+        "CSS-014"
+      ],
+      "design": "Build on existing paged geometry; support @page subset, page breaks, print media, headers/footers if architecture permits; no browser URL loading.",
+      "acceptance": "Multi-page page-break and widows/orphans fixtures, repeatable preview sizes, deterministic pagination receipts.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/layout/fragmentation/paged.rs",
+          "line": 1,
+          "match": "//! owner: 015-core-completion (PAGE-1, lane L-PAGE) — paged media on the shared fragmentation engine (plan §A3",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/page.rs",
+          "line": 1,
+          "match": "//! owner: 015-core-completion (PAGE-1, lane L-PAGE) — the page context of CSS Paged Media 3.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-014",
+          "path": "engine/crates/ui4me-layout/src/fragmentation/paged.rs",
+          "line_start": 33,
+          "line_end": 49,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1002",
+      "title": "Native printing and offline paged export",
+      "importance": "P1",
+      "baseline_status": "absent_public",
+      "original_ids": [
+        "CSS-014"
+      ],
+      "design": "Public print preview and print job API on Linux/Windows; optional PDF export can live in separate adapter if it adds too much engine surface.",
+      "acceptance": "Native printer dialog and printing/cancel/error on both hosts, no data leak or indefinite worker; deterministic paged export smoke.",
+      "depends_on": [
+        "F1001"
+      ],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/pipeline/paged.rs",
+          "line": 1,
+          "match": "//! owner: 015-core-completion (PAGE-1, lane L-PAGE) — paginated output of a document (CSS Paged Media 3).",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-014",
+          "path": "engine/crates/ui4me-layout/src/fragmentation/paged.rs",
+          "line_start": 33,
+          "line_end": 49,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1003",
+      "title": "HTML rich editing foundations",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "TEXT-010"
+      ],
+      "design": "Extend F0801 to bounded contenteditable HTML subset: typing, formatting, selection, paste sanitization and undo; WYSIWYG editor widgets stay extensions.",
+      "acceptance": "Nested inline formatting, keyboard commands, IME, paste sanitized HTML, undo, selection stays valid under mutations; no script.",
+      "depends_on": [
+        "F0801"
+      ],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/interaction/editing.rs",
+          "line": 1,
+          "match": "//! owner: 012-interaction (lane L-EDIT-r4; FR-070-FR-082 text editing subset; `contracts/editing.md`)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-document/src/mutate/insert.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "TEXT-010",
+          "path": "engine/crates/ui4me-interaction/src/editing/history.rs",
+          "line_start": 14,
+          "line_end": 30,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1004",
+      "title": "Incremental layout and long-document scalability",
+      "importance": "P1",
+      "baseline_status": "partial_implemented",
+      "original_ids": [
+        "PAINT-008",
+        "TEXT-016"
+      ],
+      "design": "Use dirty-region/dom-journal to avoid whole-document layout for safe append/attr/style changes; fall back to cold layout when proof fails.",
+      "acceptance": "Differential cold-vs-incremental receipts, repeated append/scroll/focus state, no unbounded allocation. Performance gate relative to meaningful user-visible stalls, not 5ms microbenchmarks.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/layout/box_tree/incremental.rs",
+          "line": 1,
+          "match": "//! owner: 008-layout-engine — incremental box-tree construction (015 PERF-1, closes beta RX-1)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/pipeline/update.rs",
+          "line": 3,
+          "match": "//! Update algorithm (005 recompute-plan §4; v1: incremental style, conservative full rebuild of",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "PAINT-008",
+          "path": "engine/crates/ui4me-raster/src/damage.rs",
+          "line_start": 37,
+          "line_end": 53,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "TEXT-016",
+          "path": "engine/crates/ui4me-text/src/paragraph/shaped.rs",
+          "line_start": 184,
+          "line_end": 200,
+          "confidence": "symbol-or-code"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1005",
+      "title": "GPU backend with CPU deterministic fallback",
+      "importance": "P2",
+      "baseline_status": "absent",
+      "original_ids": [
+        "PAINT-011"
+      ],
+      "design": "Add optional GPU surface backend behind same retained display list, keep CPU authoritative headless oracle and runtime fallback.",
+      "acceptance": "GPU available/unavailable/device-loss paths; visual equivalence corpus; no mandatory GPU requirement, no performance-only breakage.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/raster/mod.rs",
+          "line": 1,
+          "match": "//! CPU raster backend, surface validation and render receipts.",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/raster/lower/vello_cpu.rs",
+          "line": 4,
+          "match": "//! names vello_cpu/peniko/kurbo types. Validation lives in `crate::raster::validate`.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "0.10",
+      "id": "F1006",
+      "title": "Resource isolation and diagnostics under adverse workloads",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "BIND-011",
+        "QA-011"
+      ],
+      "design": "Audit load cancel/malformed image/SVG/stream/frame churn and native async workers; expose bounded admission and useful failure reporting.",
+      "acceptance": "Session restart and 1h interactive soak on release candidate, decoder cancellation and stop, force limits; no runaway resources or leaked callbacks.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-assets/src/lib.rs",
+          "line": 1,
+          "match": "//! owner: 007-resources — created by 001 slice (R-28)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 500,
+          "match": "drop(removed); // Retire document resources before callbacks.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-011",
+          "path": "engine/crates/ui4me-resources/src/worker.rs",
+          "line_start": 27,
+          "line_end": 43,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-011",
+          "path": "engine/crates/ui4me-resources/tests/shutdown.rs",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1007",
+      "title": "Non-interactive and multithreaded backend command safety",
+      "importance": "P1",
+      "baseline_status": "partial",
+      "original_ids": [
+        "BIND-005",
+        "BIND-007"
+      ],
+      "design": "Maintain current owner-thread rule, expose typed safe deferred work primitives; no renderer under shared mutex.",
+      "acceptance": "Both languages dispatch background work during heavy rendering, stop/cancel/restart, deterministic result/exception settlement and queue pressure.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 24,
+          "match": "const MAX_POSTS: usize = 512;",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "bindings/python/src/ui4me/app.py",
+          "line": 26,
+          "match": "raise RuntimeError(\"Do not wait for posted work on the UI owner thread\")",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-005",
+          "path": "engine/crates/ui4me-runtime/src/queue.rs",
+          "line_start": 32,
+          "line_end": 48,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "BIND-007",
+          "path": "engine/crates/ui4me-runtime/src/queue.rs",
+          "line_start": 32,
+          "line_end": 48,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "0.10",
+      "id": "F1008",
+      "title": "Developer diagnostics: CSS profile and layout trace",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "BIND-009",
+        "CSS-026"
+      ],
+      "design": "Readable structured unsupported CSS, stale ID, layout/paint failure and resource reports without exposing internal engine pointers.",
+      "acceptance": "Stable machine schema; redact paths/content by default; user can inspect why CSS/DOM command had no effect.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/diagnostics/mod.rs",
+          "line": 1,
+          "match": "//! owner: 005-pipeline-diagnostics — created by 001 slice (R-28)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 569,
+          "match": "/// `css.display.*` ids the diagnostics classifier produces (diagnostics.rs `display_feature`).",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-009",
+          "path": "engine/crates/ui4me-core/src/status.rs",
+          "line_start": 8,
+          "line_end": 24,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "CSS-026",
+          "path": "engine/crates/ui4me-style/src/profile/table.rs",
+          "line_start": 6,
+          "line_end": 22,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1101",
+      "title": "Public ABI/API and semantic-version compatibility freeze",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "BIND-001",
+        "BIND-010"
+      ],
+      "design": "Write compatibility table for commands, callback lease, errors, handle lifetimes, version negotiation and deprecation policy.",
+      "acceptance": "Installed independent 0.4 and current clients against supported version boundaries; no silent semantic break.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "include/ui4me.h",
+          "line": 15,
+          "match": "/* ABI 1. All strings are UTF-8, NUL terminated, borrowed and read-only.",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/protocol.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-001",
+          "path": "engine/crates/ui4me-ffi/src/entry.rs",
+          "line_start": 74,
+          "line_end": 90,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "BIND-010",
+          "path": "engine/crates/ui4me-ffi/src/version.rs",
+          "line_start": 4,
+          "line_end": 20,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1102",
+      "title": "One canonical fixed HTML/CSS/Core support profile",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "CSS-026",
+        "QA-016"
+      ],
+      "design": "Publish supported/limited/unsupported for HTML, CSS, DOM, events, native platform and SVG. All On features must be accepted by subsystem, not merely parsed.",
+      "acceptance": "Machine-readable profile has no stale values; capabilities match tested native behavior and static source audit.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/style/profile/table.rs",
+          "line": 3,
+          "match": "//! Profile table of `ui4me-css/1` 1.1.0 (006 `contracts/css-feature-profile.md` §4–§6).",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "docs/PROJECT_STATUS.md",
+          "line": 22,
+          "match": "It has one fixed, compiled renderer profile. Python and PowerShell call the same",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "CSS-026",
+          "path": "engine/crates/ui4me-style/src/profile/table.rs",
+          "line_start": 6,
+          "line_end": 22,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1103",
+      "title": "Versioned contract parity across C, Python and PowerShell",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "BIND-001",
+        "BIND-014",
+        "BIND-015",
+        "BIND-016"
+      ],
+      "design": "Consolidate native statuses, default values, handle ownership, events, errors and lifecycle; third-language C consumer as ABI proof.",
+      "acceptance": "Same semantic feature examples and errors in C/Python/PowerShell on both hosts from clean installs.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "bindings/python/src/ui4me/app.py",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "bindings/powershell/Ui4me.Managed/App.cs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-001",
+          "path": "engine/crates/ui4me-ffi/src/entry.rs",
+          "line_start": 74,
+          "line_end": 90,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "BIND-014",
+          "path": "bindings/python/src/ui4me/document.py",
+          "line_start": 18,
+          "line_end": 34,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "BIND-015",
+          "path": "bindings/powershell/src/Ui4me/Document.cs",
+          "line_start": 15,
+          "line_end": 31,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "BIND-016",
+          "path": "engine/crates/ui4me-ffi/src/types.rs",
+          "line_start": 9,
+          "line_end": 25,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1104",
+      "title": "Conformance and security-focused fuzz/negative gate",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "QA-008",
+        "QA-010"
+      ],
+      "design": "Curated WPT slice + parser/image/CSS/DOM mutation fuzz + red-team of resource/parser limits and foreign callback boundaries.",
+      "acceptance": "No P0/P1 crash, memory unsafety, stale identity, malformed input escape or uncontrolled untrusted resource access.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-document/src/parse/mod.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-renderer/src/regression/mod.rs",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "QA-008",
+          "path": "engine/crates/ui4me-oracle/src/harness.rs",
+          "line_start": 34,
+          "line_end": 50,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-010",
+          "path": "engine/crates/ui4me-ffi/tests/panic_containment.rs",
+          "line_start": 22,
+          "line_end": 38,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1105",
+      "title": "Clean multiwindow desktop app contracts",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "HOST-001",
+        "HOST-002",
+        "QA-012"
+      ],
+      "design": "Three substantial Core-only installed consumers: text/file utility, data-heavy app, chat/log. No optional UI4ME UI dependency.",
+      "acceptance": "Long-running close/reopen/multiwindow + resize/scroll/selection/input on KDE and Windows, independent installed package, no private workspace paths.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "examples/foundation",
+          "note": "inspect directory"
+        },
+        {
+          "path": "crates/ui4me-core/src/runtime.rs",
+          "line": 2,
+          "match": "//! DOM, rendering, windows and timers live in OWNER on their creating thread.",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "HOST-001",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 31,
+          "line_end": 47,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "HOST-002",
+          "path": "engine/crates/ui4me-runtime/src/windows.rs",
+          "line_start": 119,
+          "line_end": 135,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "QA-012",
+          "path": "engine/crates/ui4me-integration-tests/src/bin/ui4me-render.rs",
+          "line_start": 44,
+          "line_end": 60,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1106",
+      "title": "Packaging and reproducible source build/upgrade matrix",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "QA-003",
+        "QA-004",
+        "QA-005",
+        "QA-006",
+        "QA-014"
+      ],
+      "design": "Keep release packaging deterministic: Linux and Windows wheel/module/native SDK, dependency provenance, install/upgrade/rollback and checksums.",
+      "acceptance": "Build on clean runners and upgrade from v0.4 on supported hosts; released artifacts smoke-tested, no publication without authorization.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "dev.py",
+          "line": 2,
+          "match": "\"\"\"Repository entry point for local development and release tooling.\"\"\"",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": ".github/workflows",
+          "note": "inspect directory"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "QA-003",
+          "path": "tools/installed_consumer.py",
+          "line_start": 21,
+          "line_end": 37,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-004",
+          "path": "tools/installed_psmodule.ps1",
+          "line_start": 52,
+          "line_end": 68,
+          "confidence": "symbol-or-code"
+        },
+        {
+          "feature_id": "QA-005",
+          "path": "engine/crates/ui4me-ffi/tests/abi_conformance.rs",
+          "line_start": 27,
+          "line_end": 43,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-006",
+          "path": "engine/crates/ui4me-ffi/src/version.rs",
+          "line_start": 4,
+          "line_end": 20,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-014",
+          "path": "engine/crates/ui4me-ffi/tests/abi_manifest.rs",
+          "line_start": 12,
+          "line_end": 28,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "F1107",
+      "title": "Long-term maintainability and evidence handoff",
+      "importance": "P1",
+      "baseline_status": "planned",
+      "original_ids": [
+        "QA-016"
+      ],
+      "design": "Remove stale claims, publish stable architecture/status/changelog/release recipe, record exceptions and owner/API contracts.",
+      "acceptance": "New agent can change one feature with documented command and affected tests; evidence references exact SHA/build; simple maintenance workflow.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "docs/PROJECT_STATUS.md",
+          "line": 1,
+          "match": "# UI4ME Core 0.4: implementation status and contract",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "AGENTS.md",
+          "line": 3,
+          "match": "Read `docs/PROJECT_STATUS.md` before changing lifecycle behavior. Keep runtime",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "1.0",
+      "id": "F1108",
+      "title": "Final supported-platform accessibility and interaction acceptance",
+      "importance": "P0",
+      "baseline_status": "planned",
+      "original_ids": [
+        "QA-007",
+        "QA-001",
+        "QA-002"
+      ],
+      "design": "Use final combined desktop functionality, not isolated probes, with screen readers and multilingual native controls.",
+      "acceptance": "Real native linux Windows journeys, issue triage and explicit not-run/blocked for hardware/OS cases; no unsupported conformance claims.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-renderer/src/a11y/build.rs",
+          "line": 1,
+          "match": "//! owner: 013-accessibility — lane L-A11Y-b1 (beta contract B3)",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 125,
+          "match": "a11y: Accessibility,",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "QA-007",
+          "path": "engine/crates/ui4me-a11y/src/tests.rs",
+          "line_start": 9,
+          "line_end": 25,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-001",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 17,
+          "line_end": 33,
+          "confidence": "file-lead"
+        },
+        {
+          "feature_id": "QA-002",
+          "path": "engine/crates/ui4me-platform/src/window.rs",
+          "line_start": 17,
+          "line_end": 33,
+          "confidence": "file-lead"
+        }
+      ]
+    },
+    {
+      "version": "1.1",
+      "id": "F1201",
+      "title": "macOS native host and native packaging",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [],
+      "design": "Port verified Core contract with platform-specific dialogs, clipboard, accessibility/voiceover and signing; keep core ABI.",
+      "acceptance": "macOS installed Python/PowerShell consumer and interactive native journeys; supported target evidence prior to claim.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 1,
+          "match": "//! Retained winit 0.30 host. Native objects never leave their owning thread.",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "dev.py",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "1.1",
+      "id": "F1202",
+      "title": "ARM64 Linux/Windows portability",
+      "importance": "P2",
+      "baseline_status": "future_candidate",
+      "original_ids": [],
+      "design": "Add native build and wheel/module/ABI qualification per platform; avoid architecture assumptions.",
+      "acceptance": "ARM64 Linux and Windows real hardware/VM native GUI and clean installed tests; x64 unaffected.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "crates/ui4me-core/src/native.rs",
+          "line": 49,
+          "match": "#[cfg(target_os = \"windows\")]",
+          "kind": "reading_lead_not_proof"
+        },
+        {
+          "path": "Cargo.toml",
+          "line": 1,
+          "match": "file reference; no direct keyword match",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": []
+    },
+    {
+      "version": "1.1",
+      "id": "F1203",
+      "title": "Additional host languages from the stable C ABI",
+      "importance": "P3",
+      "baseline_status": "future_candidate",
+      "original_ids": [
+        "BIND-016"
+      ],
+      "design": "Maintain C SDK for Lua/Ruby/.NET etc; extra bindings should live as separate packages, not Core ABI churn.",
+      "acceptance": "Independent non-Python/non-PowerShell consumer exercises lifecycle, callbacks, events, errors, multithread post and native UI.",
+      "depends_on": [],
+      "source_leads": [
+        {
+          "path": "include/ui4me.h",
+          "line": 28,
+          "match": "uint32_t UI4ME_CALL ui4me_abi_version(void);",
+          "kind": "reading_lead_not_proof"
+        }
+      ],
+      "old_source_leads": [
+        {
+          "feature_id": "BIND-016",
+          "path": "engine/crates/ui4me-ffi/src/types.rs",
+          "line_start": 9,
+          "line_end": 25,
+          "confidence": "file-lead"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,936 @@
+{
+  "schema": "ui4me-css-profile-static/v1",
+  "source": "crates/ui4me-renderer/src/style/profile/table.rs",
+  "counts": {
+    "On": 86,
+    "Unavailable": 21,
+    "Off": 37,
+    "Filtered": 10
+  },
+  "flags": [
+    {
+      "id": "css.at-rule.container",
+      "state": "On",
+      "line": 181,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.counter-style",
+      "state": "Unavailable",
+      "line": 182,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.custom-media",
+      "state": "Off",
+      "line": 183,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.font-face",
+      "state": "On",
+      "line": 184,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.font-feature-values",
+      "state": "Filtered",
+      "line": 185,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.font-palette-values",
+      "state": "Off",
+      "line": 186,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.import",
+      "state": "On",
+      "line": 187,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.keyframes",
+      "state": "Off",
+      "line": 188,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.layer",
+      "state": "On",
+      "line": 189,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.media",
+      "state": "On",
+      "line": 190,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.namespace",
+      "state": "On",
+      "line": 191,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.page",
+      "state": "Off",
+      "line": 192,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.page-vertical",
+      "state": "Off",
+      "line": 193,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.page-width-change",
+      "state": "Off",
+      "line": 194,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.property",
+      "state": "On",
+      "line": 195,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.scope",
+      "state": "On",
+      "line": 196,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.scope-implicit",
+      "state": "Off",
+      "line": 197,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.starting-style",
+      "state": "Off",
+      "line": 198,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.supports",
+      "state": "On",
+      "line": 199,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.at-rule.view-transition",
+      "state": "Off",
+      "line": 200,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.-webkit-box",
+      "state": "On",
+      "line": 201,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.-webkit-inline-box",
+      "state": "On",
+      "line": 202,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.block",
+      "state": "On",
+      "line": 203,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.contents",
+      "state": "On",
+      "line": 204,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.flex",
+      "state": "On",
+      "line": 205,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.flow-root",
+      "state": "On",
+      "line": 206,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.grid",
+      "state": "On",
+      "line": 207,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.grid-lanes",
+      "state": "Off",
+      "line": 208,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline",
+      "state": "On",
+      "line": 209,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline-block",
+      "state": "On",
+      "line": 210,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline-flex",
+      "state": "On",
+      "line": 211,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline-grid",
+      "state": "On",
+      "line": 212,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline-grid-lanes",
+      "state": "Off",
+      "line": 213,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.inline-table",
+      "state": "On",
+      "line": 214,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.list-item",
+      "state": "On",
+      "line": 215,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.none",
+      "state": "On",
+      "line": 216,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.ruby",
+      "state": "Unavailable",
+      "line": 217,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.ruby-base",
+      "state": "Unavailable",
+      "line": 218,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.ruby-base-container",
+      "state": "Unavailable",
+      "line": 219,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.ruby-text",
+      "state": "Unavailable",
+      "line": 220,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.ruby-text-container",
+      "state": "Unavailable",
+      "line": 221,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.display.table",
+      "state": "On",
+      "line": 222,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.calc",
+      "state": "On",
+      "line": 223,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.color-mix",
+      "state": "On",
+      "line": 224,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.container-style-query",
+      "state": "Off",
+      "line": 225,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.counter",
+      "state": "On",
+      "line": 226,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.cross-fade",
+      "state": "Off",
+      "line": 227,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.fit-content",
+      "state": "On",
+      "line": 228,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.light-dark",
+      "state": "On",
+      "line": 229,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.light-dark-image",
+      "state": "Off",
+      "line": 230,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.oklch",
+      "state": "On",
+      "line": 231,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.progress",
+      "state": "On",
+      "line": 232,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.function.random",
+      "state": "Off",
+      "line": 233,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.media.prefers-reduced-motion",
+      "state": "On",
+      "line": 234,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.-webkit-line-clamp",
+      "state": "On",
+      "line": 235,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.-webkit-text-fill-color",
+      "state": "Off",
+      "line": 236,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.-webkit-text-stroke",
+      "state": "Unavailable",
+      "line": 237,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.accent-color",
+      "state": "On",
+      "line": 238,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.anchor-name",
+      "state": "Unavailable",
+      "line": 239,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.animation",
+      "state": "Off",
+      "line": 240,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.animation-timeline",
+      "state": "Off",
+      "line": 241,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.appearance",
+      "state": "On",
+      "line": 242,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.backdrop-filter",
+      "state": "Filtered",
+      "line": 243,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.baseline-source",
+      "state": "Filtered",
+      "line": 244,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.break-after",
+      "state": "On",
+      "line": 245,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.break-before",
+      "state": "On",
+      "line": 246,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.break-inside",
+      "state": "On",
+      "line": 247,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.column-count",
+      "state": "On",
+      "line": 248,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.column-fill",
+      "state": "On",
+      "line": 249,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.column-rule",
+      "state": "On",
+      "line": 250,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.column-span",
+      "state": "On",
+      "line": 251,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.column-width",
+      "state": "On",
+      "line": 252,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.columns",
+      "state": "On",
+      "line": 253,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.contain",
+      "state": "On",
+      "line": 254,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.contain-intrinsic-size",
+      "state": "Unavailable",
+      "line": 255,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.container",
+      "state": "On",
+      "line": 256,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.container-name",
+      "state": "On",
+      "line": 257,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.container-type",
+      "state": "On",
+      "line": 258,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.content-visibility",
+      "state": "Unavailable",
+      "line": 259,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.corner-shape",
+      "state": "Off",
+      "line": 260,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.counter-increment",
+      "state": "On",
+      "line": 261,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.counter-reset",
+      "state": "On",
+      "line": 262,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.counter-set",
+      "state": "Unavailable",
+      "line": 263,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.field-sizing",
+      "state": "Unavailable",
+      "line": 264,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.font-optical-sizing",
+      "state": "On",
+      "line": 265,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.font-size-adjust",
+      "state": "Off",
+      "line": 266,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.font-synthesis",
+      "state": "On",
+      "line": 267,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.font-variant-emoji",
+      "state": "Off",
+      "line": 268,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.font-variation-settings",
+      "state": "On",
+      "line": 269,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.hyphenate-character",
+      "state": "On",
+      "line": 270,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.hyphens",
+      "state": "On",
+      "line": 271,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.image-orientation",
+      "state": "Unavailable",
+      "line": 272,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.initial-letter",
+      "state": "Off",
+      "line": 273,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.line-clamp",
+      "state": "On",
+      "line": 274,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.mask",
+      "state": "On",
+      "line": 275,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.overscroll-behavior",
+      "state": "Off",
+      "line": 276,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.page",
+      "state": "Off",
+      "line": 277,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.position-anchor",
+      "state": "Unavailable",
+      "line": 278,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.print-color-adjust",
+      "state": "Unavailable",
+      "line": 279,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.resize",
+      "state": "Unavailable",
+      "line": 280,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scroll-behavior",
+      "state": "Off",
+      "line": 281,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scroll-margin",
+      "state": "Unavailable",
+      "line": 282,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scroll-padding",
+      "state": "Unavailable",
+      "line": 283,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scroll-snap",
+      "state": "Unavailable",
+      "line": 284,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scrollbar-color",
+      "state": "On",
+      "line": 285,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scrollbar-gutter",
+      "state": "On",
+      "line": 286,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.scrollbar-width",
+      "state": "On",
+      "line": 287,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.shape-outside",
+      "state": "Unavailable",
+      "line": 288,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-combine-upright",
+      "state": "On",
+      "line": 289,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-decoration-skip-ink",
+      "state": "Unavailable",
+      "line": 290,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-orientation",
+      "state": "On",
+      "line": 291,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-overflow",
+      "state": "On",
+      "line": 292,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-underline-offset",
+      "state": "On",
+      "line": 293,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.text-underline-position",
+      "state": "On",
+      "line": 294,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.transition",
+      "state": "Off",
+      "line": 295,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.view-transition",
+      "state": "Off",
+      "line": 296,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.writing-mode",
+      "state": "On",
+      "line": 297,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.property.zoom",
+      "state": "Off",
+      "line": 298,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.backdrop",
+      "state": "On",
+      "line": 299,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.color-swatch",
+      "state": "Filtered",
+      "line": 300,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.details-content",
+      "state": "Off",
+      "line": 301,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.file-selector-button",
+      "state": "Filtered",
+      "line": 302,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.first-letter",
+      "state": "On",
+      "line": 303,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.first-line",
+      "state": "On",
+      "line": 304,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.marker",
+      "state": "On",
+      "line": 305,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.part",
+      "state": "Filtered",
+      "line": 306,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.pseudo.slotted",
+      "state": "Filtered",
+      "line": 307,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.dir",
+      "state": "On",
+      "line": 308,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.has",
+      "state": "On",
+      "line": 309,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.host",
+      "state": "Filtered",
+      "line": 310,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.modal",
+      "state": "On",
+      "line": 311,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.nth-child-of",
+      "state": "On",
+      "line": 312,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.selector.open",
+      "state": "On",
+      "line": 313,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.syntax.nesting",
+      "state": "On",
+      "line": 314,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.unit.cq",
+      "state": "On",
+      "line": 315,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.unit.lh-normal",
+      "state": "Off",
+      "line": 316,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.-webkit-fill-available",
+      "state": "On",
+      "line": 317,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.background-clip-border-area",
+      "state": "Off",
+      "line": 318,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.background-clip-text",
+      "state": "On",
+      "line": 319,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.clip-path-url",
+      "state": "Filtered",
+      "line": 320,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.filter-url",
+      "state": "Filtered",
+      "line": 321,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.font-variant-caps-all",
+      "state": "On",
+      "line": 322,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.revert-rule",
+      "state": "On",
+      "line": 323,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.shape-function",
+      "state": "Off",
+      "line": 324,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.stretch",
+      "state": "On",
+      "line": 325,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.subgrid",
+      "state": "On",
+      "line": 326,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.system-ui",
+      "state": "On",
+      "line": 327,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.text-indent-each-line",
+      "state": "Off",
+      "line": 328,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.text-indent-hanging",
+      "state": "Off",
+      "line": 329,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.text-wrap-balance",
+      "state": "On",
+      "line": 330,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.text-wrap-pretty",
+      "state": "Off",
+      "line": 331,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.text-wrap-style-stable",
+      "state": "On",
+      "line": 332,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.white-space-collapse-preserve-spaces",
+      "state": "Off",
+      "line": 333,
+      "classification": "triage_not_auto_enable"
+    },
+    {
+      "id": "css.value.word-break-break-word",
+      "state": "Off",
+      "line": 334,
+      "classification": "triage_not_auto_enable"
+    }
+  ]
+}
