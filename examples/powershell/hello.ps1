@@ -1,5 +1,5 @@
 # Install Ui4me first. The same HTML/CSS/assets also ship in the installed packages.
-Import-Module Ui4me -ErrorAction Stop
+if (-not (Get-Module Ui4me)) { Import-Module Ui4me -ErrorAction Stop }
 $source = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../foundation'))
 Invoke-Ui4meApp -ArgumentList @($source) {
     param($app, $source)
