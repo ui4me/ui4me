@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from .common import ROOT, DevError, clean_environment, find_artifact, host, load_manifest, native_name, now, read_json, revision, run_directory, safe_extract, sha256, source_id, write_json
-from .packages import checked_build, native_output, stage_powershell
+from .packages import checked_build, native_output, native_target, stage_powershell
 from .process import run
 
 INSTALLED = {"F01", "F09", "F11", "F12"}
@@ -45,17 +45,19 @@ def unit(binding: str, profile: str) -> bool:
             built = checked_build(profile, binding)
             env["UI4ME_NATIVE_LIB"] = str(native_output(profile))
         if binding == "core":
-            command = ["cargo", "test", "--locked", "-p", "ui4me-core"]
+            command = ["cargo", "test", "--locked", "--workspace", "--features", "ui4me-renderer/fault-injection", "--target", native_target()]
             if profile == "release":
                 command.append("--release")
             env["UI4ME_SOURCE_ID"] = source_id()
             env["UI4ME_GIT_REVISION"] = revision()
+            env["CARGO_TARGET_DIR"] = str(ROOT / "build/cargo" / host())
+            env.pop("CARGO_BUILD_TARGET", None)
             step = run(command, cwd=ROOT, env=env, log=folder / "unit.log", check=False)
             receipt["steps"].append(step)
             counts = re.findall(r"test result: ok\. (\d+) passed;", (folder / "unit.log").read_text(encoding="utf-8", errors="replace"))
             count = sum(int(n) for n in counts)
             receipt["test_count"] = count
-            receipt["cases"] = [{"id": "UNIT-core", "status": "passed" if step["status"] == "passed" and count > 0 else step["status"] if step["status"] != "passed" else "failed", "tests": count, "details": "Rust test command with nonzero test count required"}]
+            receipt["cases"] = [{"id": "UNIT-core", "status": "passed" if step["status"] == "passed" and count > 0 else step["status"] if step["status"] != "passed" else "failed", "tests": count, "details": "All shipped workspace crates; nonzero test count required"}]
         elif binding in {"python", "tools"}:
             tests = ROOT / ("bindings/python/tests" if binding == "python" else "tests/tooling")
             if binding == "python":
@@ -235,7 +237,9 @@ def installed(binding: str, manifest_path: Path, native: bool = False, interacti
                         raise DevError("Reinstalled consumer identity or scenarios differ from the candidate")
                     receipt["consumer_sha256"] = sha256(result)
                     receipt["build_info"] = final_info
-                    receipt["installation_checks"] = {"missing_payload_rejected": True, "exact_candidate_reinstalled": True, "previous_version_upgrade": "not_applicable_for_initial_0.1"}
+                    if binding == "powershell":
+                        receipt["harness"]["powershell"] = data["powershell_version"]
+                    receipt["installation_checks"] = {"missing_payload_rejected": True, "exact_candidate_reinstalled": True, "previous_version_upgrade": "not_run; use dev.py upgrade-check"}
                     for case in cases:
                         if case["id"] == "F01":
                             case["details"] += "; fresh process rejected the deliberately removed native payload with a clear diagnostic"
@@ -254,3 +258,82 @@ def installed(binding: str, manifest_path: Path, native: bool = False, interacti
     finally:
         finish(folder, receipt)
     return receipt["status"] in {"passed", "not_run"}
+
+
+def upgrade(binding: str, manifest_path: Path, previous_version: str = "0.1.0") -> bool:
+    """Exercise a real public-version upgrade; old/new native code uses fresh processes."""
+    if not re.fullmatch(r"\d+\.\d+\.\d+", previous_version):
+        raise DevError("Previous version must be a three-part stable version")
+    manifest_path = manifest_path.resolve()
+    folder, receipt = new_receipt(binding, "upgrade", manifest_path)
+    receipt["previous_version"] = previous_version
+    try:
+        manifest = load_manifest(manifest_path)
+        if tuple(map(int, previous_version.split('.'))) >= tuple(map(int, manifest["version"].split('.'))):
+            raise DevError("Previous version must be older than the candidate")
+        env = clean_environment()
+        with tempfile.TemporaryDirectory(prefix="ui4me upgrade ž ") as temporary:
+            consumer = Path(temporary).resolve()
+            previous = folder / "consumer-previous.json"
+            result = folder / "consumer.json"
+            if binding == "python":
+                item = find_artifact(manifest, "python-wheel", host())
+                wheel = manifest_path.parent / item["path"]
+                run([sys.executable, "-m", "venv", str(consumer / "venv")], cwd=consumer, log=folder / "venv.log", env=env)
+                python = consumer / "venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+                run([str(python), "-m", "pip", "install", "--only-binary=:all:", "--no-deps", "ui4me==" + previous_version], cwd=consumer, log=folder / "install-previous.log", env=env)
+                probe = "import json,sys; from pathlib import Path; import ui4me; info=ui4me.build_info(); assert ui4me.__version__ == info['version'] == sys.argv[1]; app=ui4me.App(backend='headless',handle_sigint=False); window=app.open('<input id=\"value\" value=\"previous\">'); assert window.get_value('value')=='previous'; app.on('started',lambda _:app.stop()); app.run(); app.close(); Path(sys.argv[2]).write_text(json.dumps(info),encoding='utf-8')"
+                run([str(python), "-I", "-c", probe, previous_version, str(previous)], cwd=consumer, log=folder / "consumer-previous.log", env=env)
+                old = read_json(previous)
+                old_payload = Path(old["library_path"]).resolve()
+                if not old_payload.is_relative_to(consumer) or not old_payload.is_file():
+                    raise DevError("Previous package loaded outside its isolated environment")
+                receipt["previous_native_sha256"] = sha256(old_payload)
+                run([str(python), "-m", "pip", "install", "--upgrade", "--no-index", "--no-deps", str(wheel)], cwd=consumer, log=folder / "upgrade.log", env=env)
+                script = consumer / "installed.py"
+                shutil.copy2(ROOT / "bindings/python/tests/installed.py", script)
+                command = [str(python), "-I", str(script), "--result", str(result)]
+            elif binding == "powershell":
+                item = find_artifact(manifest, "powershell-package")
+                module_root = consumer / "modules"
+                run(["pwsh", "-NoLogo", "-NoProfile", "-File", str(ROOT / "scripts/upgrade-previous.ps1"), "-Destination", str(module_root), "-Version", previous_version, "-ResultPath", str(previous)], cwd=consumer, log=folder / "install-previous.log", env=env)
+                old = read_json(previous)
+                old_payload = Path(old["library_path"]).resolve()
+                if not old_payload.is_relative_to(consumer) or not old_payload.is_file():
+                    raise DevError("Previous module loaded outside its isolated directory")
+                receipt["previous_native_sha256"] = sha256(old_payload)
+                feed = consumer / "feed"
+                feed.mkdir()
+                shutil.copy2(manifest_path.parent / item["path"], feed / Path(item["path"]).name)
+                run(["pwsh", "-NoLogo", "-NoProfile", "-File", str(ROOT / "scripts/save-local-powershell.ps1"), "-Feed", str(feed), "-Destination", str(module_root), "-Version", manifest["version"]], cwd=consumer, log=folder / "upgrade.log", env=env)
+                module = module_root / "Ui4me" / manifest["version"]
+                script = consumer / "installed.ps1"
+                shutil.copy2(ROOT / "bindings/powershell/tests/installed.ps1", script)
+                command = ["pwsh", "-NoLogo", "-NoProfile", "-File", str(script), "-ModulePath", str(module), "-ResultPath", str(result)]
+            else:
+                raise DevError("Upgrade applies to Python or PowerShell")
+            receipt["consumed_artifact"] = item
+            step = run(command, cwd=consumer, log=folder / "consumer-upgraded.log", env=env, check=False, timeout=180)
+            receipt["steps"].append(step)
+            if step["status"] != "passed":
+                receipt["status"] = step["status"]
+                raise DevError("Candidate consumer failed after the previous package upgrade")
+            data = read_json(result)
+            info = data.get("build_info", {})
+            cases = data.get("cases", [])
+            payload = Path(info.get("library_path", "")).resolve()
+            if info.get("version") != manifest["version"] or info.get("source_id") != manifest["source_id"] or not payload.is_relative_to(consumer):
+                raise DevError("Upgraded consumer loaded wrong candidate identity or payload")
+            if len(cases) != len(INSTALLED) or {case.get("id") for case in cases} != INSTALLED or any(case.get("status") != "passed" for case in cases):
+                raise DevError("Upgraded consumer did not pass every installed case")
+            receipt["build_info"] = info
+            receipt["cases"] = [{"id": "UPGRADE-" + binding, "status": "passed", "details": f"Public {previous_version} operated, then exact {manifest['version']} candidate passed installed checks in fresh processes"}]
+    except (DevError, OSError, ValueError, KeyError) as error:
+        if receipt["status"] == "running":
+            receipt["status"] = getattr(error, "status", "blocked")
+        receipt["error"] = str(error)
+    except KeyboardInterrupt:
+        receipt["status"] = "interrupted"
+    finally:
+        finish(folder, receipt)
+    return receipt["status"] == "passed"

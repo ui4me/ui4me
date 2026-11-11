@@ -32,7 +32,7 @@ public static class Native
                 return;
             }
             if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
-                throw new PlatformNotSupportedException("ui4me 0.1 supports x64 Windows and Linux only.");
+                throw new PlatformNotSupportedException("ui4me supports x64 Windows and Linux only.");
             var rid = OperatingSystem.IsWindows() ? "win-x64" : OperatingSystem.IsLinux() ? "linux-x64" : throw new PlatformNotSupportedException();
             var filename = OperatingSystem.IsWindows() ? "ui4me_core.dll" : "libui4me_core.so";
             var overridePath = Environment.GetEnvironmentVariable("UI4ME_NATIVE_LIB");
@@ -49,8 +49,8 @@ public static class Native
             {
                 if (AbiVersion() != 1) throw new Ui4meException(-1, "This binding requires native ABI 1.");
                 using var identity = JsonDocument.Parse(Utf8(BuildInfo()));
-                if (identity.RootElement.GetProperty("product").GetString() != "ui4me" || identity.RootElement.GetProperty("version").GetString() != "0.1.0")
-                    throw new Ui4meException(-1, "Native product/version does not match this ui4me 0.1.0 binding.");
+                if (identity.RootElement.GetProperty("product").GetString() != "ui4me" || identity.RootElement.GetProperty("version").GetString() != BuildVersion.Value)
+                    throw new Ui4meException(-1, $"Native product/version does not match this ui4me {BuildVersion.Value} binding.");
             }
             catch (Exception failure) { initializationFailure = failure; throw; }
             moduleRoot = root;
@@ -64,7 +64,7 @@ public static class Native
         using var document = JsonDocument.Parse(Utf8(BuildInfo()));
         var result = JsonSerializer.Deserialize<Dictionary<string, object?>>(document.RootElement.GetRawText())!;
         result["abi"] = AbiVersion();
-        result["binding_version"] = "0.1.0";
+        result["binding_version"] = BuildVersion.Value;
         result["library_path"] = libraryPath;
         return JsonSerializer.Serialize(result);
     }
@@ -109,6 +109,8 @@ public static class Native
     internal static extern int SessionRun(ulong session);
     [DllImport("ui4me_core", EntryPoint="ui4me_session_post", CallingConvention=CallingConvention.Cdecl)]
     internal static extern int SessionPost(ulong session, ulong token);
+    [DllImport("ui4me_core", EntryPoint="ui4me_session_complete", CallingConvention=CallingConvention.Cdecl)]
+    internal static extern int SessionComplete(ulong session, ulong token);
     [DllImport("ui4me_core", EntryPoint="ui4me_session_stop", CallingConvention=CallingConvention.Cdecl)]
     internal static extern int SessionStop(ulong session);
     [DllImport("ui4me_core", EntryPoint="ui4me_session_destroy", CallingConvention=CallingConvention.Cdecl)]

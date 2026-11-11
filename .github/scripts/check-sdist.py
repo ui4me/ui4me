@@ -13,6 +13,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from tools.ui4me_dev.common import clean_environment, host, revision, sha256, source_id, write_json
+sys.path.insert(0, str(ROOT / "bindings/python"))
+from _build_support import stage_native_source
 
 
 def main() -> None:
@@ -42,9 +44,7 @@ def main() -> None:
             (source / "bindings").mkdir(parents=True)
             shutil.copytree(ROOT / "bindings/python", source / "bindings/python",
                             ignore=shutil.ignore_patterns("build", "dist", "*.egg-info", "__pycache__", ".venv"))
-            shutil.copytree(ROOT / "crates/ui4me-core", source / "crates/ui4me-core")
-            for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "LICENSE"):
-                shutil.copy2(ROOT / name, source / name)
+            stage_native_source(ROOT, source)
             # Prior staged wheel outputs must not leak into the portable sdist.
             for name in ("_native/staged-library.bin", "_notices/staged-notice.txt"):
                 generated = source / "bindings/python/src/ui4me" / name

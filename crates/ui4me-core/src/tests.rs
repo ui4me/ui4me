@@ -48,6 +48,37 @@ extern "C" fn callback(id: u64, text: *const c_char, user: *mut c_void) -> i32 {
                 // Reentry must not deadlock on the native size update lock.
                 session.command(json!({"op":"stats"})).map_err(|_| ())?;
             }
+            (6, Some("started")) => {
+                let result = runtime::destroy(id);
+                lock(&capture.events)
+                    .push(json!({"type":"destroy_attempt","code":result.err().map(|e|e.code)}));
+                session.stop().map_err(|_| ())?;
+            }
+            (6, Some("stopped")) => {
+                let result = runtime::destroy(id);
+                lock(&capture.events)
+                    .push(json!({"type":"destroy_attempt","code":result.err().map(|e|e.code)}));
+            }
+            (7, Some("completion")) => {
+                session.stop().map_err(|_| ())?;
+            }
+            (8, Some("started")) => {
+                // Exercise the actual inner ABI guard while an outer run and its
+                // callback remain on the stack. No panic crosses extern C.
+                let status = guard(|| panic!("test-only reentrant ABI panic"));
+                lock(&capture.events).push(json!({"type":"panic_status","code":status}));
+                let result = runtime::destroy(id);
+                lock(&capture.events).push(json!({"type":"destroy_attempt","code":result.err().map(|e|e.code)}));
+            }
+            (8, Some("stopped")) => {
+                let result = runtime::destroy(id);
+                lock(&capture.events)
+                    .push(json!({"type":"destroy_attempt","code":result.err().map(|e|e.code)}));
+            }
+            (10, Some("input")) => {
+                let window = event["window"].as_u64().ok_or(())?;
+                session.command(json!({"op":"replace_children_html","window":window,"element":"content","html":"<input id='editor' value='replacement'>"})).map_err(|_|())?;
+            }
             _ => {}
         }
         Ok::<i32, ()>(0)
@@ -125,8 +156,7 @@ fn invalid_resize_does_not_partially_change_window() {
         .session
         .command(json!({"op":"resize","window":id,"width":800,"height":1}))
         .is_err());
-    let state = lock(&h.session.state);
-    let window = &state.windows[&id];
+    let window = h.session.window_info(id).unwrap();
     assert_eq!(
         (window.width, window.height, window.resize_revision),
         (640, 480, 0)
@@ -165,8 +195,10 @@ fn snapshot_round_trips_png_dimensions_and_rgb_pixels() {
     assert_eq!(info.color_type, png::ColorType::Rgb);
     assert_eq!(info.bit_depth, png::BitDepth::Eight);
     assert!(pixels[..info.buffer_size()]
-        .chunks_exact(3)
-        .all(|pixel| pixel == [0, 0, 255]));
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .all(|pixel| *pixel == [0, 0, 255]));
     drop(reader);
     std::fs::remove_file(path).unwrap();
 }
@@ -192,15 +224,8 @@ fn applied_native_resize_is_reported_once_in_physical_pixels() {
         &mut last,
         PhysicalSize::new(1800, 1600)
     ));
-    let state = lock(&h.session.state);
-    assert_eq!(
-        (
-            state.windows[&id].pixel_width,
-            state.windows[&id].pixel_height
-        ),
-        (1720, 1560)
-    );
-    drop(state);
+    let info = h.session.window_info(id).unwrap();
+    assert_eq!((info.pixel_width, info.pixel_height), (1720, 1560));
     let events = h.events();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["type"], "resized");
@@ -323,4 +348,227 @@ fn multiple_windows_close_before_terminal_event() {
         2
     );
     assert_eq!(h.events().last().unwrap()["type"], "stopped");
+}
+
+#[test]
+fn destroy_is_rejected_in_started_and_stopped_callbacks() {
+    let h = Harness::new(6);
+    h.session.run().unwrap();
+    let attempts: Vec<_> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "destroy_attempt")
+        .collect();
+    assert_eq!(attempts.len(), 2);
+    assert!(attempts.iter().all(|e| e["code"] == 2));
+    assert_eq!(
+        h.session.command(json!({"op":"stats"})).unwrap()["run_active"],
+        false
+    );
+    runtime::destroy(h.session.id).unwrap();
+}
+
+#[test]
+fn reentrant_abi_panic_does_not_permit_early_destroy() {
+    struct ResetPoison;
+    impl Drop for ResetPoison {
+        fn drop(&mut self) {
+            POISONED.store(false, Ordering::Release);
+        }
+    }
+    let h = Harness::new(8);
+    let _reset = ResetPoison;
+    assert_eq!(h.session.run().unwrap_err().code, 8);
+    assert!(POISONED.load(Ordering::Acquire));
+    assert!(h
+        .events()
+        .iter()
+        .any(|e| e["type"] == "panic_status" && e["code"] == 8));
+    assert_eq!(
+        runtime::create(json!({"backend":"headless"}), None, ptr::null_mut())
+            .unwrap_err()
+            .code,
+        8
+    );
+    let attempts: Vec<_> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "destroy_attempt")
+        .collect();
+    assert_eq!(attempts.len(), 2);
+    assert!(attempts.iter().all(|e| e["code"] == 2));
+    assert_eq!(
+        h.session.command(json!({"op":"stats"})).unwrap()["windows"],
+        0
+    );
+    runtime::destroy(h.session.id).unwrap();
+}
+
+#[test]
+fn reserved_completion_survives_full_ordinary_post_queue() {
+    let h = Harness::new(7);
+    h.session
+        .command(json!({"op":"reserve_completion","token":900}))
+        .unwrap();
+    for token in 0..512 {
+        h.session.post(token).unwrap();
+    }
+    let worker = h.session.clone();
+    std::thread::spawn(move || worker.complete(900))
+        .join()
+        .unwrap()
+        .unwrap();
+    assert_eq!(h.session.complete(900).unwrap_err().code, 4);
+    h.session.run().unwrap();
+    assert_eq!(
+        h.events()
+            .iter()
+            .filter(|e| e["type"] == "completion" && e["token"] == 900)
+            .count(),
+        1
+    );
+    let stats = h.session.command(json!({"op":"stats"})).unwrap();
+    assert_eq!(stats["completions_delivered"], 1);
+    assert_eq!(stats["cancelled"], 512);
+    assert_eq!(stats["reserved_completions"], 0);
+}
+
+#[test]
+fn completion_reservations_are_bounded_and_cancelable() {
+    let h = Harness::new(0);
+    for token in 0..128 {
+        h.session
+            .command(json!({"op":"reserve_completion","token":token}))
+            .unwrap();
+    }
+    assert_eq!(
+        h.session
+            .command(json!({"op":"reserve_completion","token":999}))
+            .unwrap_err()
+            .code,
+        5
+    );
+    h.session.complete(7).unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"cancel_completion","token":7}))
+            .unwrap()["cancelled"],
+        true
+    );
+    assert_eq!(h.session.complete(7).unwrap_err().code, 4);
+    h.session
+        .command(json!({"op":"reserve_completion","token":999}))
+        .unwrap();
+    h.session.stop().unwrap();
+    h.session.run().unwrap();
+    let stats = h.session.command(json!({"op":"stats"})).unwrap();
+    assert_eq!(stats["reserved_completions"], 0);
+    assert_eq!(stats["completions_cancelled"], 129);
+}
+
+#[test]
+fn protocol_rejects_unknown_and_wrongly_typed_fields_without_mutation() {
+    let h = Harness::new(0);
+    assert!(h
+        .session
+        .command(json!({"op":"open","html":"<p>hello</p>","with":200}))
+        .is_err());
+    assert!(h
+        .session
+        .command(json!({"op":"open","html":"<p>hello</p>","width":"200"}))
+        .is_err());
+    assert!(h
+        .session
+        .command(json!({"op":"timer","token":1,"milliseconds":1,"repeat":"false"}))
+        .is_err());
+    let stats = h.session.command(json!({"op":"stats"})).unwrap();
+    assert_eq!(stats["windows"], 0);
+    assert_eq!(stats["timers"], 0);
+}
+
+#[test]
+fn structured_document_commands_preserve_literal_text_and_controls() {
+    let h = Harness::new(0);
+    let id=h.session.command(json!({"op":"open","html":"<main id='content'><p id='status'>Ready</p><input id='name' value='Adam'><input id='enabled' type='checkbox'></main>"})).unwrap()["window"].as_u64().unwrap();
+    h.session
+        .command(json!({"op":"set_value","window":id,"element":"name","value":"Příliš žluťoučký"}))
+        .unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_value","window":id,"element":"name"}))
+            .unwrap()["value"],
+        "Příliš žluťoučký"
+    );
+    h.session
+        .command(json!({"op":"set_checked","window":id,"element":"enabled","checked":true}))
+        .unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_checked","window":id,"element":"enabled"}))
+            .unwrap()["checked"],
+        true
+    );
+    h.session
+        .command(json!({"op":"set_text","window":id,"element":"status","text":"<b>literal</b>"}))
+        .unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_value","window":id,"element":"status"}))
+            .unwrap()["value"],
+        "<b>literal</b>"
+    );
+    assert!(h.session.command(json!({"op":"replace_children_html","window":id,"element":"status","html":"<script>bad()</script>"})).is_err());
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_value","window":id,"element":"name"}))
+            .unwrap()["value"],
+        "Příliš žluťoučký"
+    );
+}
+
+#[test]
+fn stop_does_not_wait_for_a_document_operation() {
+    let h = Harness::new(0);
+    let worker = h.session.clone();
+    let (start_tx, start_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        start_rx.recv().unwrap();
+        let result = worker.stop();
+        done_tx.send(result).unwrap();
+    });
+    let completed = h
+        .session
+        .exercise_owner_borrow(|| {
+            start_tx.send(()).unwrap();
+            done_rx.recv_timeout(std::time::Duration::from_secs(2))
+        })
+        .unwrap();
+    thread.join().unwrap();
+    completed
+        .expect("stop must not wait for the owner document borrow")
+        .unwrap();
+    h.session.run().unwrap();
+}
+
+#[test]
+fn reentrant_replacement_retires_remaining_events_for_the_old_node() {
+    let h = Harness::new(10);
+    let window=h.session.command(json!({"op":"open","html":"<div id='content'><input id='editor' value='before'></div>"})).unwrap()["window"].as_u64().unwrap();
+    h.session
+        .command(json!({"op":"focus","window":window,"element":"editor"}))
+        .unwrap();
+    h.session
+        .input(window, crate::document::Input::Text("x".into()))
+        .unwrap();
+    assert_eq!(
+        h.session
+            .command(json!({"op":"get_value","window":window,"element":"editor"}))
+            .unwrap()["value"],
+        "replacement"
+    );
+    let events = h.events();
+    assert_eq!(events.iter().filter(|e| e["type"] == "input").count(), 1);
+    assert_eq!(events.iter().filter(|e| e["type"] == "change").count(), 0);
+    assert!(events.iter().all(|e| e.get("_target").is_none()));
 }

@@ -11,7 +11,7 @@ import threading
 import time
 
 import ui4me
-from ui4me import App, Ui4meError, build_info
+from ui4me import App, build_info
 
 
 FORM = '''<h1>ui4me native acceptance</h1>
@@ -58,8 +58,8 @@ def installed_cases():
         assert seen == ["started"]
 
         # The first closed window is no longer a valid native target while the
-        # second remains alive. Exercise both the native stale status and token
-        # identity rather than merely checking that callbacks survive GC.
+        # second remains alive. The binding must mark closed before callbacks;
+        # the external C consumer separately checks native stale status codes.
         with App(backend="headless", handle_sigint=False) as app:
             first = app.open('<p id="value">first</p>')
             second = app.open('<p id="value">second</p>')
@@ -70,8 +70,8 @@ def installed_cases():
                 if event["window"] == first.id:
                     try:
                         first.get_value("value")
-                    except Ui4meError as error:
-                        assert error.code == 4
+                    except RuntimeError:
+                        assert first.closed
                     else:
                         raise AssertionError("Native accepted a closed window ID")
                     assert second.get_value("value") == "second"
@@ -97,24 +97,55 @@ def installed_cases():
             app.run()
 
     def resource_diagnostics():
-        resource = files("ui4me").joinpath("resources/demo.html").read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory(prefix="ui4me space ž ") as directory:
+            for resource in files("ui4me").joinpath("resources").iterdir():
+                if resource.is_file():
+                    (Path(directory) / resource.name).write_bytes(resource.read_bytes())
             target = Path(directory) / "form ü.html"
-            target.write_text(resource, encoding="utf-8")
+            (Path(directory) / "index.html").rename(target)
             with App(backend="headless", handle_sigint=False) as app:
                 window = app.open_file(target)
-                assert window.get_value("name") == "World"
+                assert window.get_value("name") == "Příliš žluťoučký kůň"
                 try:
                     app.open_file(target.with_name("missing.html"))
                 except FileNotFoundError:
                     pass
                 else:
                     raise AssertionError("Missing resource was accepted")
+                probe_file = Path(directory) / "assets ü.html"
+                probe_file.write_text('''<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body>
+<div id="paint" style="width:120px;height:120px;padding:0"></div>
+<img id="asset" width="28" height="28" style="position:absolute;left:8px;top:8px;width:28px;height:28px">
+</body></html>''', encoding="utf-8")
+                probe = app.open_file(probe_file, width=160, height=160)
+                capture = Path(directory) / "assets.png"
+                probe.snapshot(capture)
+                state = {"phase": "css", "previous": capture.read_bytes()}
+                probe.add_class("paint", "sidebar")
+                def sample(_):
+                    probe.snapshot(capture)
+                    pixels = capture.read_bytes()
+                    if pixels == state["previous"]:
+                        return
+                    state["previous"] = pixels
+                    if state["phase"] == "css":
+                        state["phase"] = "image"
+                        probe.set_attribute("asset", "src", "icon.png")
+                    else:
+                        assert not any(item.get("stage") == "resource" for item in probe.diagnostics()["diagnostics"])
+                        state["phase"] = "done"
+                        app.stop()
+                def timeout(_):
+                    raise AssertionError("Local stylesheet/image did not change rendered pixels: " + state["phase"])
+                app.timer(10, sample, repeat=True)
+                app.timer(3000, timeout)
+                app.run()
+                assert state["phase"] == "done"
         assert build_info()["source_id"]
 
     def candidate_identity():
         info = build_info()
-        assert ui4me.__version__ == "0.1.0" == info["version"]
+        assert ui4me.__version__ == info["binding_version"] == info["version"]
         assert info["source_id"] and Path(info["library_path"]).is_file()
         # A second session proves local disposal/recreate; public upgrade is a separate release check.
         for _ in range(2):
@@ -124,7 +155,7 @@ def installed_cases():
 
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
-    check("F11", resource_diagnostics, "Explicit Unicode/space resource path and source diagnostics")
+    check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     return cases
 

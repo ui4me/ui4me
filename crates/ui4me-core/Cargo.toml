@@ -1,11 +1,11 @@
 [package]
 name = "ui4me-core"
 version.workspace = true
-edition.workspace = true
+edition = "2021"
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The ui4me application lifecycle and minimal native renderer"
+description = "The ui4me native application runtime and document renderer"
 publish = false
 build = "build.rs"
 
@@ -15,11 +15,13 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["dep:winit", "dep:softbuffer"]
+native = ["dep:winit", "dep:softbuffer", "dep:arboard"]
 
 [dependencies]
 serde_json = "=1.0.154"
-font8x8 = "=0.3.1"
+serde = { version = "1", features = ["derive"] }
+ui4me-renderer = { path = "../ui4me-renderer" }
+arboard = { version = "=3.6.1", optional = true, default-features = false, features = ["wayland-data-control"] }
 png = "=0.18.1"
 winit = { version = "=0.30.13", optional = true, default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
 softbuffer = { version = "=0.4.8", optional = true, default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }

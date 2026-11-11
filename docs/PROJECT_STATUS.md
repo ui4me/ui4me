@@ -1,337 +1,359 @@
-# Project status and development handoff
+# UI4ME 0.2: implementation and verification handoff
 
-This document is the authoritative engineering handoff for ui4me. The
-language-neutral API is specified by [`include/ui4me.h`](../include/ui4me.h).
+This is the authoritative engineering handoff for the 0.2 source delivery.
+The public native boundary is [`include/ui4me.h`](../include/ui4me.h); the
+wire requests are defined in
+[`protocol.rs`](../crates/ui4me-core/src/protocol.rs).
 
-## Product and verification status
+## Current status
 
-ui4me is a native, in-process UI runtime for Python and PowerShell applications.
-The Rust core owns session/window state, the software form renderer and native
-event loop; host languages own application logic. The initial distribution is
-version 0.1.0, native ABI 1. [PyPI](https://pypi.org/project/ui4me/0.1.0/) and
-[PowerShell Gallery](https://www.powershellgallery.com/packages/Ui4me/0.1.0/)
-publish independent packages from this monorepo. No browser, IPC broker, plugin
-framework, or old rendering engine is part of the runtime.
+**0.2.0 is implemented as a source candidate. It is not yet a qualified public
+release.** The implementation replaces the 0.1 fixed form painter with the
+consolidated HTML/CSS document engine while retaining the new repository's
+native window host, package separation and release workflow.
 
-The published candidate is source commit `884647892c6969e925eb4dea46aaa45eeeb4620f`.
-Its [CI run](https://github.com/ui4me/ui4me/actions/runs/42848001121) passed
-Linux and Windows builds, core/Python/PowerShell/tooling contract suites and
-installed consumers of the combined final artifacts. Its Linux x86-64 Python
-wheel, Windows x64 Python wheel and combined PowerShell module were downloaded
-from their public registries, matched to the qualified hashes, and exercised by
-isolated consumers on both hosts. Automated native sessions tested two bindings
-on Debian 13 using nested KWin Wayland on a virtual X11 display, and on Windows
-Server 2022 via an interactive ordinary-user RDP desktop. These are not claims
-of physical-monitor coverage. Public package consumers were also installed in
-fresh environments using Linux Python 3.13.5 and PowerShell 7.6.9, and Windows
-Python 3.14.10 and PowerShell 7.6.9; F01/F09/F11/F12 passed on each binding and
-host. The owner reviewed the recorded observations; the
-[review-only release workflow](https://github.com/ui4me/ui4me/actions/runs/42872599592)
-qualified that candidate. **Those results belong to that exact source and
-artifacts, not to a later checkout.** Run and record new checks after changes.
+The delivery work executed Linux compilation, Rust regression checks, Python
+and PowerShell binding checks, the C ABI consumer and isolated package checks.
+The source archive includes `build/delivery/verification.json` and selected
+logs/receipts with the exact results, source identity and limitations. Those
+files are ignored build evidence, not application source. A result belongs to
+the recorded source/artifact identity, never automatically to a later edit.
 
-The first TestPyPI and PyPI publishing attempts uploaded successfully but their
-post-upload verification failed because the publishing job reported a source
-identity mismatch. The cause was identified during maintenance: the pinned
-[PyPA action](https://github.com/pypa/gh-action-pypi-publish/blob/7245906fb61fa33a13554f9d5fb856fe61758086/create-docker-action.py)
-creates `.github/.tmp/.generated-actions/run-pypi-publish-in-docker-container/action.yml`
-inside the checkout, correctly changing its source hash. The
-[failed upload-job log](https://github.com/ui4me/ui4me/actions/runs/42873468613/job/130030724940)
-records this generated action, successful uploads, then the identity mismatch.
-Verification-only retries skipped already-published identical wheels and passed.
-Python public-download verification now runs in fresh Linux and Windows jobs.
-Qualification evidence paths use portable separators so Windows can recheck a
-Linux-produced review record without changing its meaning.
-An offline regression reproduces the contaminated checkout's rejection and
-acceptance of the same manifest in a fresh checkout; it does not exempt the
-generated file from source checks. **A real upload followed by the fresh-job
-verification remains unproven.** The Gallery publication
-and public-download verification passed. There is no GitHub Release
-or version tag for 0.1.0. PowerShell static analysis on the published candidate
-reported warning-level findings; PSScriptAnalyzer 1.25.0/1.24.0 also raised a
-null-reference exception in `PSUseCmdletCorrectly` on PowerShell 7.6.9. An
-error-severity run with PSScriptAnalyzer 1.22.0 on PowerShell 7.4.0 completed
-with zero errors. Treat this as a partial static-analysis result, not a clean
-full default-rule pass.
+**Still required locally:** link and run the final candidate on Windows;
+exercise native input, window management, clipboard, DPI and IME on the target
+KDE/Wayland and Windows desktops; test the assembled two-platform packages.
+The Windows MSVC target passed a Rust cross-check on Linux, which checks
+conditional code and dependency types but does not link or run a Windows binary.
+The implementation environment had no usable native display, and no Windows
+host was reachable. Renderer images and headless input tests do not satisfy
+those desktop checks. The previous 0.1 release's evidence does not qualify 0.2.
 
-## Architecture and public interfaces
+No registry upload, remote Git push or public release is part of this delivery.
+The branch name used for the source work is `implementation/v0.2`. The ZIP has
+repository files at its root, includes no `.git` directory, and is intended to
+replace a clean checkout's files while preserving that checkout's `.git`.
 
-| Location | Responsibility |
-| --- | --- |
-| `crates/ui4me-core` | Rust session lifecycle, bounded work, document model, software rendering and winit/softbuffer native integration |
-| `include/ui4me.h` | Versioned C ABI using UTF-8 JSON commands/events and opaque monotonic IDs |
-| `bindings/python` | `ctypes` loader, Python facade, wheel metadata and binding tests |
-| `bindings/powershell` | PowerShell module and .NET managed bridge; one retained UI-owner thread, fresh runspace per application |
-| `examples` | Equivalent small native forms using public APIs |
-| `tests` and `quality/scenarios.json` | Cross-component checks, native stress checks and F01–F12 acceptance catalog |
-| `dev.py`, `tools/ui4me_dev`, `scripts` | Local build, test, packaging, reports and explicit release operations |
-| `.github/workflows` | Locked builds, artifact/consumer tests, controlled evidence collection and manual publication |
+## Product scope
 
-A host process has at most one active session. The first native session fixes the
-native owner thread, and subsequent native sessions must use that retained owner.
-Windows belong to their session, and stale session/window identities are never
-recycled. Python creates the app on its owner, normally the main thread, and
-`run()` blocks until it returns. PowerShell's `Invoke-Ui4meApp` uses a persistent
-hosted owner thread; its initializer receives `$app` and explicit `-ArgumentList`
-values in a fresh runspace. Caller locals do not implicitly cross runspaces.
-Callbacks run synchronously on the owner with no core registry/queue mutex held;
-long callbacks stall the UI. Normal last-window close returns to the host. Forced
-stop bypasses vetoes, cancels queued work, destroys windows and returns control;
-no path deliberately exits the embedding process.
+0.2 is the base for useful local desktop forms and small multi-window apps.
+It has one fixed, compiled renderer profile. Python and PowerShell call the
+same C ABI and own application logic; there is no embedded JavaScript engine,
+browser, HTTP resource loader, out-of-process UI broker or plugin system.
+Authentication and application-specific user records belong to the application.
 
-The Python package exports `App`, `Window`, `Subscription`, `Timer`,
-`Ui4meError`, `build_info`, and `__version__`. `App` offers `open`, `open_file`,
-`on`, `timer`, `post`, `stop`, `run`, `stats`, and context-manager cleanup.
-`Window` offers `on`, `set_text`, `get_value`, `set_title`, `resize`, `snapshot`,
-and `close`. Only `post` and `stop` are safe from other threads. Posts always
-defer; their futures settle with a value, exception, or cancellation. A pending
-future cannot be synchronously awaited by the UI owner. A close-request handler
-returns `False` to veto. `App(handle_sigint=True)` temporarily bridges SIGINT
-while running on the main thread, using one timer; the prior handler is restored.
-
-The PowerShell module exports `Invoke-Ui4meApp`, `Get-Ui4meInfo`,
-`New-Ui4meWindow`, `Register-Ui4meEvent`, `Set-Ui4meText`, `Get-Ui4meValue`,
-and `Stop-Ui4meApp`. App/Window objects also expose `On`, `Timer`, `Post`,
-`Stop`, `OpenFile`, `Resize`, `SetTitle` and `Snapshot`. `Work` executes a script
-in an isolated background runspace and dispatches completion to the owner;
-arguments are explicit, and a callback receives result values and an error.
-ScriptBlocks are runspace-bound: register `Post` on the owner; external managed
-workers may use `PostManaged(Func<object>)`. `GetResult()` on unfinished posted
-work rejects an owner-thread wait. Subscription disposal is token-specific.
-Background cancellation is cooperative, not forced termination; up to four
-workers may remain active process-wide and each retains at most 256 output
-entries. Stop requests worker cancellation but cannot safely kill arbitrary user
-code. Start a fresh host process after changing a loaded native library version.
-
-Both packages load a package-relative native library and check its ABI/version.
-`UI4ME_NATIVE_LIB` is an explicit absolute-path development override; unset it
-for installed-consumer tests. The loader does not search the current directory,
-PATH, or another checkout. `build_info()` / `Get-Ui4meInfo` expose diagnostic
-identity without opening a window. Renderer snapshots are software framebuffer
-images, **not** desktop captures and not evidence of focus, input or compositor
-behavior.
-
-## Runtime contract
-
-The following is the ABI 1 contract; change it together with the header, bindings
-and regression tests. In particular, never bypass ownership checks to make a
-binding appear to work.
-
-### Boundary and ownership
-
-`include/ui4me.h` is the C-facing contract. Native filenames are `ui4me_core.dll` on Windows and `libui4me_core.so` on Linux. All strings are UTF-8 and NUL terminated. The caller must pass valid readable pointers and writable output pointers. This ABI cannot validate arbitrary addresses or catch access violations caused by invalid pointers.
-
-`ui4me_session_create(config, callback, user, out)` creates one session. The creating thread owns its commands, `run` and `destroy`. Only `post` and `stop` are callable from other threads. Exactly one session exists at a time; destroy the previous one before creating another.
-
-The callback and user data remain rooted until destroy succeeds. Callbacks execute on the owner thread, with no core mutex held, and may issue commands. Callbacks must catch language exceptions and return a negative status; foreign exceptions must never unwind through Rust. Return `1` to veto `close_requested`; other positive values do not veto. Return `0` to continue.
-
-The output of `ui4me_session_command` is borrowed thread-local memory. Copy it before another command on that thread. Never free it. The caller should also copy `ui4me_last_error()` immediately after a failing call. `ui4me_build_info()` has process lifetime.
-
-### Startup, run and shutdown
-
-Configuration is a JSON object with optional `backend` (`native`, default, or `headless`), `app_id` (default `org.ui4me.app`) and `allow_any_thread` (boolean, default false). Unknown configuration keys are rejected. `app_id` maps to the Wayland application ID, X11 WM_CLASS names and Windows window class name. It does not create a desktop file, Windows AppUserModelID, installer identity or OS registration.
-
-Sessions move from ready to running to stopped. A session runs at most once. Commands can create windows before run, but actual OS windows are created only after the event loop resumes. `started` means the loop can accept work, not that a frame has been presented.
-
-The first native session fixes the process's native owner thread. The winit loop is retained on that thread and reused for later sessions. No window survives between runs. The PowerShell host sets `allow_any_thread: true` to explicitly enable winit's supported any-thread option on Windows and Linux. A subsequent native session on another thread returns an error. This is not a portable promise for macOS, mobile or Web.
-
-Native initialization failure requires a new process before another native attempt. The original startup error is returned. A caught Rust panic poisons the process runtime and refuses new sessions. Panic containment cannot recover arbitrary foreign memory corruption, process abort, stack overflow or an exception thrown through the C boundary.
-
-`stop` is idempotent for an existing session. It cancels queued posts, clears timers, releases native windows, emits `closed`, then `stopped`, and returns from run. `stop` overrides a close veto. `destroy` is rejected while run is active. Destroying a ready session releases its pending model/work without callbacks. The host binding must settle its own pending Future or delegate objects on disposal.
-
-The last window's accepted close stops the session. A session that never opened a window remains active until stopped, which supports headless lifecycle and timer tests. Calling stop before run produces terminal cleanup without a started event.
-
-### Commands
-
-| `op` | Fields | Result / behavior |
+| Area | Promoted 0.2 foundation | Practical boundary |
 | --- | --- | --- |
-| `open` | `html`, optional `title`, `width`, `height` | Returns `{ "window": id }`; creation is deferred to the native loop. |
-| `set_text` | `window`, `element`, `text` | Updates literal text or input value, never parses the replacement as HTML. |
-| `get_value` | `window`, `element` | Returns `{ "value": "..." }`. |
-| `close` | `window` | Requests close; veto can be returned from the later callback. |
-| `set_title` | `window`, `title` | Updates the requested native title. |
-| `resize` | `window`, `width`, `height` | Requests logical-pixel size; actual native size is reported separately. |
-| `snapshot` | `window`, `path` | Writes a renderer PNG; response includes dimensions and `native_capture: false`. |
-| `timer` | `token`, `milliseconds`, optional `repeat` | Adds or replaces a timer; interval must be 1–86,400,000 ms. |
-| `cancel_timer` | `token` | Returns whether a timer existed. |
-| `stats` | none | Returns phase, window/timer/queue counts and execution/cancellation counters. Allowed after stop. |
+| Documents | Nested HTML, text/entities, unique public IDs, local file source base | Active script, iframe/object/embed, inline event-handler attributes and unimplemented native picker input types are rejected; malformed HTML still follows the HTML parser's recovery rules |
+| CSS and layout | Author/inline CSS, local linked sheets and imports, cascade/selectors, classes, custom properties, block/inline/flex, ordinary sizing/spacing, basic positioning | This is a defined application subset, not general browser compatibility; grid/table/advanced positioning remain unpromoted |
+| Painting | Backgrounds, borders, clipping, shaped text, raster images, ordinary overflow/scroll | Advanced effects and SVG breadth are not release promises; animations/transitions and paged-media rules are outside this profile |
+| Text | Unicode shaping and wrapping, font fallback, system font snapshot, local `@font-face` TTF/OTF/WOFF/WOFF2 | System font/theme changes are not live-reloaded; platform font availability affects output |
+| Controls | Text/password input, textarea, button, checkbox/radio, labels, disabled/readonly/placeholder, Tab/focus | Select/complex widgets and browser form navigation are not promoted |
+| Editing | Selection, cursor movement, deletion, plain-text copy/cut/paste, undo/redo, composition plumbing | Real KDE/Windows IME, dead-key and AltGr acceptance remains pending; no HTML clipboard or touch/pen/drag-and-drop claim |
+| Updates | Text/value/checked, attributes/classes, focus and atomic child replacement | Existing unrelated controls retain state; replaced controls are new identities |
+| Windows | Independent documents, resize, close veto, forced stop, timers, owner dispatch, repeated sessions | One active application session per process; subsequent native sessions reuse the first native owner thread |
+| Assets | Local CSS/images/fonts, explicit file roots, data URLs, bounded asynchronous loading | Remote URLs denied; large/over-capacity inputs return diagnostics instead of silently growing work |
+| Delivery | One version authority, native-inclusive Python wheel, PowerShell module, native SDK, portable sdist | Only both-platform release builds plus actual installed/native evidence can qualify publication |
 
-IDs are process-monotonic, never raw pointers, and stale IDs are rejected. A window ID does not become valid again for a later window. JSON strings are bounded to 2 MiB; the C caller still has to supply a valid NUL-terminated string.
+Retained backend code is deliberately private. Grid, select, printing/paging,
+advanced SVG/effects and accessibility may be developed later, but their source
+presence is not an assertion that they work through this 0.2 public facade.
 
-### Events
+## Architecture and ownership
 
-Every event contains `type`. Window events contain `window`; element events contain `element`, and change events also contain `value`.
+| Location | Owns |
+| --- | --- |
+| `crates/ui4me-core` | C ABI, typed protocol, application/session lifecycle, windows, bounded host queues, timers and winit/softbuffer integration |
+| `crates/ui4me-document` | Canonical DOM, generational identities, parsing, control state and atomic mutations |
+| `crates/ui4me-renderer` | One document facade; private style, text, layout, scene, raster, interaction and pipeline modules |
+| `crates/ui4me-assets` | Local resource policy, decoding/font sources, cache accounting, finite admission and process-owned asset workers |
+| `crates/ui4me-engine-types` | Internal identifiers, status codes and value types shared by the engine; no second public host API |
+| `bindings/python` | ctypes loader, Python facade, package backend and tests |
+| `bindings/powershell` | PowerShell module, .NET bridge, retained owner thread and isolated background runspaces |
+| `patches` | Exact carried Stylo/Taffy source and corrections; required for reproducible source builds |
+| `tools`, `scripts`, `.github` | Existing build/package/evidence/publication structure, strengthened for the larger source graph |
+| `examples/foundation` | One shared HTML/CSS app fixture used by both language examples |
 
-- `started`, `stopped`
-- `post` and `timer`, with `token`
-- `click`, `change`
-- `close_requested`, `closed`
-- `resized`, with actual `width`, `height`, and `units: "physical_pixels"`
+Rendering stages do not become public crates or public ABI objects. The host
+sees a document interface, input messages, immutable rendered pixels and plain
+event records. Native event processing and resource completions update the
+canonical document; hit testing uses committed layout/scene geometry.
 
-Closed means core-owned native window resources were released before notification. It does not guarantee that an external compositor has already removed the last visible pixels. Callbacks are synchronous; long callbacks stall input and rendering. Background work must post its result back to the owner thread.
+Mutable windows, documents and timers live on the owner thread. The shared
+session handle contains control queues and lifecycle state, not a mutex around
+the renderer. The owner releases its document borrow before calling Python or
+PowerShell. A callback can safely issue another supported command. Rendering,
+snapshots and decoding do not hold the shared post/stop queue lock.
 
-### Queues, timers and idle behavior
+Run and callback leases are tracked independently of the lifecycle phase.
+Destroy is rejected until run and every callback have returned, including a
+`stopped` callback. Foreign callbacks never unwind across the ABI. A Rust panic
+is contained, the active session is stopped/poisoned and new sessions are refused
+until the host process restarts. Ordinary argument, asset and callback failures
+have distinct errors and do not imply a successful operation.
 
-There are at most 512 pending posts, 128 timers and 32 windows. A post accepted before stop is either dispatched once or counted as cancelled. Rejected posts are not counted as accepted. A callback failure while dispatching a post counts it as executed, with the error returned after cleanup.
+### Asset lifetime
 
-The native loop drains bounded batches to avoid starving OS events. Repeating timers skip missed intervals rather than replaying a backlog. Timers use monotonic time. Callback commands can cancel later due timers before their callbacks are dispatched.
+The process has two fixed asset worker threads. A new application registers an
+interest in that service; it does not create a fresh pool. Shutdown stops intake,
+cancels interests, closes delivery atomically and returns without joining a
+codec on the UI owner. A cancelled job remains owned by the process service
+until it returns; later sessions cannot create extra worker threads around it.
 
-An idle loop waits for OS events or the next timer. A continuously full post queue may use polling so that bounded batches continue. Bindings can add their own interruption timer; that policy is separate from the core idle behavior.
+Admission remains charged while a job is queued, executing or awaiting delivery.
+A rejected job becomes a structured resource failure. Mailbox closure and
+publication use the same lock. Late image completions release their cache pins.
+Removing a DOM generation retires its image/style/font interests. An evicted
+raster still held by a frame remains charged until that frame releases it.
+These are operational budgets, not a claim that all process RSS or third-party
+codec temporary allocations are exactly bounded by one counter.
 
-### Minimal document and renderer
+## Public contract
 
-The supported tags are `html`, `body`, `div`, `h1`, `p`, `label`, `button` and `input`. Attributes are quoted `id`, inline `style`, and input-only `value` and `type="text"`. Inline styles on rendered elements support `color` and `background-color`; `body` supports only `background-color`. Colors are `#RRGGBB`, `black`, `white`, `red`, `green`, or `blue`. Styles do not inherit. Unsupported declarations are errors. Comments and an optional HTML doctype are accepted. IDs must be unique and whitespace-free. Unknown tags/attributes, malformed nesting, unsupported entities and oversized input are errors.
+### Session and threads
 
-The renderer uses a fixed vertical layout, basic bitmap text, pointer interaction, forward Tab navigation, Enter/Space activation, input append/Backspace and vertical scrolling. Unsupported glyphs display as `?`; UTF-8 values remain intact. There are no CSS stylesheets or layout properties, JavaScript, network fetch, accessibility bridge, IME composition, clipboard integration, text selection, caret positioning or browser compatibility claim.
+Python creates `App` on its owner thread, normally the main thread. `run()` blocks
+until the last window closes or stop completes. After shutdown, that App is
+terminal; construct a new App for another run. `post()` and `stop()` are safe
+from other threads. Other operations require the owner. Posts always defer,
+and their futures settle as result, exception or cancellation. Waiting for an
+unfinished future on the owner is rejected.
 
-Document limits: 1 MiB HTML, 128 rendered elements, 64 levels of nesting, 16 KiB text per element. Requested window dimensions are 160–4096 by 120–4096 logical pixels. Native buffers have a 16,777,216-pixel limit; a large high-DPI resize can exceed that limit and returns a runtime error instead of allocating unbounded memory.
+PowerShell's `Invoke-Ui4meApp` retains one native owner thread and creates a fresh
+runspace for each application. The initializer receives `$app` and explicit
+`-ArgumentList` values; caller locals do not cross the runspace boundary
+implicitly. ScriptBlocks are runspace-bound. Register `Post` from the owner;
+external managed workers may use `PostManaged(Func<object?>)`.
 
-Renderer snapshots use the model's pixel dimensions and scale. They are not OS desktop captures and never qualify focus, DPI, input or window-manager acceptance by themselves. A headless session never proves native startup.
+`Work(script, arguments, completion)` uses an isolated background runspace.
+Its result/error/cancel state is observable. It reserves a completion ticket
+before accepting work, so a full ordinary post queue cannot lose the result.
+Cancellation is cooperative. An executing arbitrary user script retains its
+process worker slot until it actually exits; stopping the UI does not kill it.
+The process permits four such workers, with at most 256 captured output entries
+per work item. Keep long operations off UI callbacks.
 
-### Error codes
+### Binding methods
 
-| Code | Category |
+| Operation | Python | PowerShell/.NET |
+| --- | --- | --- |
+| Create document | `app.open(html, ..., base_path=...)` | `$app.Open(html, title, width, height, basePath)` / `New-Ui4meWindow` |
+| Preserve a file's local base | `app.open_file(path, ...)` | `$app.OpenFile(path, ...)` |
+| Subscribe | `window.on(name, handler, element="id")` | `$window.On(...)` / `Register-Ui4meEvent` |
+| Set literal text | `window.set_text(id, text)` | `$window.SetText(id, text)` / `Set-Ui4meText` |
+| Form value | `get_value` / `set_value` | `GetValue` / `SetValue`, corresponding cmdlets |
+| Checkbox/radio | `get_checked` / `set_checked` | `GetChecked` / `SetChecked`, corresponding cmdlets |
+| Attributes | `set_attribute` / `remove_attribute` | `SetAttribute` / `RemoveAttribute` |
+| Classes | `add_class` / `remove_class` | `AddClass` / `RemoveClass` |
+| Focus | `focus(id)` | `Focus(id)` |
+| Replace children | `replace_children_html(id, html)` | `ReplaceChildrenHtml(id, html)` |
+| Diagnostics | `diagnostics()` | `DiagnosticsJson()` |
+| Window operations | `set_title`, `resize`, `snapshot`, `close`, `closed` | `SetTitle`, `Resize`, `Snapshot`, `Close`, `IsClosed` |
+| App operations | `on`, `timer`, `post`, `stop`, `stats`, `run`, `close` | `On`, `Timer`, `Post`, `Work`, `Stop`, `StatsJson`, `Run`, `Dispose` |
+
+`set_text` inserts literal text; it never treats that text as markup. For 0.1
+compatibility, calling it on a supported value control updates its value.
+New applications should use `set_value` for form controls. `replace_children_html`
+parses and validates a fragment before committing it. Duplicate IDs, unsupported
+active content and limits cannot leave a half-replaced subtree. Unrelated
+control values, selection and scroll are preserved; removed nodes' focus,
+resource interests and queued events are retired.
+
+`open_file` reads bounded UTF-8 and keeps the canonical containing directory as
+the resource base/root. Relative stylesheet/image/font URLs resolve there, with
+nested stylesheet URLs resolving relative to their sheet. For a string document,
+use `base_path` explicitly if it has local resources. Without a base, arbitrary
+local files are not implicitly available. Native clipboard is plain text and
+uses the OS; the headless clipboard is process memory.
+
+### Events and compatibility
+
+Typical element events are `click`, `input`, `change`, `commit`, focus/blur,
+key and mouse events, scrolling and composition events. A user edit emits
+canonical `input` and the legacy per-edit `change` alias. A committed value
+change emits `commit` (for example blur or Enter where appropriate). Programmatic
+value/checked updates do not pretend to be user typing. Do not subscribe to both
+`input` and its `change` alias for the same action unless duplicate notification
+is intentional.
+
+Document and window events include `type` and `window` plus relevant value,
+checked, keyboard, modifier, mouse or composition fields. Application events
+include `type` and relevant fields such as `token`, `backend` or `app_id`,
+without a window ID. `element` is the nearest identified
+target and `path` contains identified ancestors for bubbling events. An
+ID-filtered handler can receive a click on nested content within its button;
+each subscription is invoked at most once for that dispatch. Before delivering
+each queued document event to the binding, the host rechecks its generational
+target identity. Replacing a node with the same HTML ID cannot revive an obsolete
+queued event. Within one event's binding dispatch, matching handlers receive the
+same event/path snapshot; identity is not rechecked between individual language
+handlers.
+
+Application/window lifecycle includes `started`, `stopped`, `shown`, `closed`,
+`close_requested`, `resized`, `scale_changed`, timer and post/completion delivery. A close-request
+handler returns `False`/`$false` to veto. Forced stop bypasses veto, closes windows,
+settles pending work and returns to the embedding host. No intended runtime
+path exits the Python or PowerShell process.
+
+### C ABI and errors
+
+ABI remains **1**, with an additive 0.2 entry point:
+`ui4me_session_complete(session, token)`. Reserve/cancel tickets through typed
+`reserve_completion` / `cancel_completion` commands before/after background
+work. Up to 128 can be reserved. Completion publication is thread-safe and uses
+its reserved capacity independently of ordinary posts. Stop retires remaining
+tickets; bindings own payload storage and must settle their tasks on teardown.
+
+Strings are UTF-8, NUL-terminated and borrowed. Copy command output before the
+next command on that thread; never free it. The caller keeps callback/user data
+alive until destroy succeeds. The ABI assumes valid readable/writable pointers;
+it cannot validate arbitrary foreign addresses. Unknown JSON fields and wrong
+types are rejected at the boundary before mutation.
+
+| Status | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | Invalid argument or document |
-| 2 | Lifecycle violation |
-| 3 | Wrong owner thread |
-| 4 | Stale or unknown handle / element |
-| 5 | Resource limit |
-| 6 | Native runtime or display initialization |
-| 7 | Binding callback failure |
+| 1 | Invalid argument/protocol |
+| 2 | Lifecycle/state |
+| 3 | Wrong thread |
+| 4 | Stale handle |
+| 5 | Capacity/size limit |
+| 6 | Native runtime |
+| 7 | Callback |
 | 8 | Poisoned runtime |
-| 9 | File / snapshot IO |
+| 9 | I/O/resource failure |
 
-`last_error` is JSON with `code` and `message`. A successful status-returning ABI call clears the current thread's error. The host binding should retain its original language exception when a callback returns a failure.
+`ui4me_last_error()` returns the calling thread's diagnostic JSON. Successful
+status calls clear it. Unhandled event, timer or completion-handler errors stop the session and are
+raised after native cleanup. A posted action's exception is retained by its
+returned future/work object; it does not automatically stop the application. `build_info()` / `Get-Ui4meInfo` exposes
+version, ABI, source identity, target and explicit package library path.
+`UI4ME_NATIVE_LIB` is an absolute-path development override; installed tests
+clear it and never search the working directory or PATH for an alternative
+library. Restart the process after changing a loaded native version.
 
-## Development and build
+### Limits
 
-The repository targets Linux x86-64 and Windows x64. The Python metadata allows
-3.11–3.14; this range is package metadata, not evidence that every interpreter
-version has been tested. PowerShell 7.4 is the managed API floor, with a
-`net8.0` bridge; Windows PowerShell 5.1 is unsupported. Rust 1.90 is selected by
-`rust-toolchain.toml`, and `global.json` selects a .NET 10 SDK. Contributors
-need a C compiler, Windows MSVC x64 tools on Windows, and Linux Wayland/X11
-headers and runtime libraries. On Debian install a compiler, `pkg-config`,
-`libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libxkbcommon-x11-0`,
-`libegl1`, and `libgl1`. PowerShell packaging needs PSResourceGet 1.1+.
+Current public limits include 32 windows, 512 queued ordinary posts, 128 timers,
+128 reserved completions, 1 MiB HTML input/fragment, 16,384 DOM nodes, depth 256,
+16 KiB host-set text and a 16,777,216-pixel framebuffer. Requested window sizes
+are 160–4096 by 120–4096 logical pixels. Physical allocation is also checked after
+DPI scaling. Timer intervals are 1–86,400,000 ms. Source JSON is capped at 2 MiB.
+
+The fixed asset service admits 128 jobs, with 16 MiB queued source descriptions,
+128 MiB in-flight encoded-input allowance and 256 MiB completed-result allowance.
+Each document defaults to a 128 MiB decoded asset cache allowance, 64 MiB
+unreferenced cache and 16,777,216 decoded image pixels, plus encoded-file limits.
+The retained SVG backend has its own 128 MiB raster allowance; scene-held pixel
+Arcs remain charged after eviction in both caches. There can be 4,096
+current requesters per resource document. Text/layout/decorations and diagnostics
+also have bounded caches/history. Exceeding a bound is an explicit error; avoid
+submitting hundreds of distinct assets in a single burst.
+
+## Development
+
+Use Python 3.11+, Rust **1.99.1** (selected by `rust-toolchain.toml`), .NET SDK
+**10** (`global.json`) and PowerShell **7.4+**. The managed bridge targets .NET 8
+and the PowerShell 7.4 API floor. Windows PowerShell 5.1 and ARM/macOS are not
+supported targets. Python 3.11–3.14 is the metadata range; testing one interpreter
+does not establish the whole range.
+
+Linux needs a native compiler, `pkg-config`, X11/Wayland/xkbcommon development
+libraries and a working desktop for native acceptance. On Debian/Ubuntu the
+convenience bootstrap supports `scripts/bootstrap.sh --install-system` after
+reviewing its system-install option. Windows needs Visual Studio Build Tools
+with the C++ x64 toolset and Windows SDK; use its x64 developer shell. The
+PowerShell packaging path needs PSResourceGet 1.1+. `scripts/bootstrap.ps1`
+provides optional WinGet installation and Python-environment setup.
 
 ```sh
 python -m venv .venv
-# Linux: . .venv/bin/activate
+# Linux: source .venv/bin/activate
 # PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 python dev.py doctor
+python dev.py version --check
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
 python dev.py build --binding all --profile dev
 python dev.py test --binding all --suite unit --profile dev
 ```
 
-The tracked `Cargo.lock` and `bindings/powershell/Ui4me.Managed/packages.lock.json`
-are used with locked Cargo/NuGet resolution. Run `python dev.py lock` only for a
-planned dependency update, then review and commit the result. Use
-`scripts/bootstrap.sh` or `scripts/bootstrap.ps1` for the documented setup path;
-read their installation options before executing. Build receipts bind the exact
-source identity, host and native output; changing source or artifacts makes the
-receipt stale. Keep generated output and logs in ignored `build/` or `dist/`.
+`VERSION` is authoritative. `python dev.py version --check` checks derived Rust,
+Python, PowerShell and managed metadata; `python dev.py version --set X.Y.Z` updates it
+intentionally. Keep Cargo/NuGet locks. `python dev.py lock` is for a planned
+reviewed dependency update, not a routine cure for a failed build.
 
-### Dependency maintenance
+The Stylo/Taffy source patches are part of the build input. Do not remove them
+from a source ZIP or sdist. The build backend computes the local dependency/patch
+closure, rejects paths outside the source root and stages that complete closure.
+Packages retain native dependency notices and bundled font licenses.
 
-Dependabot checks Actions, Cargo, Python build tools and NuGet weekly. Routine
-Actions/Python minor and patch updates are grouped; Cargo/NuGet groups contain
-patch updates only because pre-1.0 Rust minor versions and PowerShell runtime
-changes deserve individual review. Actions, Cargo and Python major proposals
-remain separate. Routine System.Management.Automation proposals are limited to
-patch versions with `allow.update-types`; security updates remain eligible.
-Every managed-reference patch still needs the oldest supported host checked.
-The configured version-PR limits do not limit security-update PRs; no security
-ignore rules or automatic merges are configured. Python monitoring includes
-both the root requirements and `bindings/python/pyproject.toml`.
+### Run the development example
 
-The November maintenance update adopts these previously proposed versions:
+After the development build, Linux Python can run the checkout directly:
 
-| Scope | Selected versions | Review notes |
-| --- | --- | --- |
-| Actions, PRs #1–#5 | download-artifact 8.0.2, setup-dotnet 6.1.0, setup-python 7.1.0, upload-artifact 7.0.2, checkout 7.0.1 | Full commit SHA pins; Node 24 requires runner 2.327.1 or newer. Keep self-hosted native collectors current. |
-| Python tooling, PRs #6–#10 | patchelf 0.19.3.0, twine 7.0.0, wheel 0.48.0, auditwheel 6.8.2, build 1.6.1 | Build tools only; Linux-specific requirements retain platform markers. |
-| Rust, PRs #11–#14 | winit 0.30.13, serde_json 1.0.154, png 0.18.1, softbuffer 0.4.8 | Targeted Cargo lock update; PNG snapshot roundtrip regression covers dimensions, RGB format and pixels. |
-| Python backend, PRs #15 and #17 (opened during maintenance) | setuptools 84.2.1 | Includes the 84.1.0 source-manifest and Windows path-handling security fixes, then the independently tested minor follow-up. Isolated backend and development pins match; Python 3.10 minimum fits the project's 3.11 floor. |
+```sh
+export UI4ME_NATIVE_LIB="$PWD/build/cargo/linux-x64/x86_64-unknown-linux-gnu/debug/libui4me_core.so"
+export PYTHONPATH="$PWD/bindings/python/src"
+python examples/python/hello.py
+```
 
-Rust stays at 1.90, the managed bridge stays `net8.0` against PowerShell 7.4.0,
-and package version/ABI remain 0.1.0/1. The NuGet lock is unchanged. Isolated
-Python builds now pin setuptools 84.2.1 and wheel 0.48.0 to the same versions as
-`requirements-dev.txt`. Those direct Python pins are not a fully frozen
-transitive environment; Cargo and NuGet resolution are locked.
+On Windows use the absolute DLL at
+`build/cargo/win-x64/x86_64-pc-windows-msvc/debug/ui4me_core.dll` and set
+`PYTHONPATH` to `bindings/python/src`. To run PowerShell without manual bridge staging, first run
+`python dev.py package --binding all --profile dev`, then start a fresh PowerShell
+process and run:
 
-Old failed PR checks are not evidence of incompatibility with the new versions.
-Retained Windows reports for #2 and #6–#13 show stale native-build receipts;
-that issue was fixed on `main` in `ae828f8`. PR #14 passed both platform builds
-and packaging, then failed assembly on differing managed dependency metadata;
-`8c089f2` fixed that issue. Some old Linux Cargo failures have no retained build
-log, so their precise cause is unknown. PRs #1–#15 are now closed as superseded
-by the consolidated [#16](https://github.com/ui4me/ui4me/pull/16), merged in
-`d7aec7f`; [its full CI](https://github.com/ui4me/ui4me/actions/runs/42887215250)
-passed. The setuptools follow-up [#17](https://github.com/ui4me/ui4me/pull/17)
-also passed [full CI](https://github.com/ui4me/ui4me/actions/runs/42888573459)
-before merging in `5c9982a`. Each platform passed 20 core, 17 Python, 16
-PowerShell and 40 tooling tests; the aggregate gate required eight unit suites,
-12 installed consumers and two standalone source-distribution checks. These
-are CI results, not new interactive desktop acceptance.
+```powershell
+Import-Module ./build/package/linux-x64/Ui4me/Ui4me.psd1
+./examples/powershell/hello.ps1
+```
 
-Two managed-reference proposals remain declined. PR #19 (7.6.9) produced
-`NU1202` on both platforms in [its CI](https://github.com/ui4me/ui4me/actions/runs/42888663832):
-the package targets `net10.0`, incompatible with this project's `net8.0`.
-Dependabot closed #18 (7.4.22); it stays closed because its reference assembly
-requests version `7.4.6.500`, above the `7.4.0.500` supplied by the oldest
-supported host. The [PowerShell 7.4.0 loader](https://github.com/PowerShell/PowerShell/blob/v7.4.0/src/System.Management.Automation/CoreCLR/CorePsAssemblyLoadContext.cs)
-rejects that version mismatch. This is package-metadata and loader-source
-analysis, not a new live test on PowerShell 7.4.0. Keep the 7.4.0 compile
-reference until a deliberate host-minimum change is qualified.
+Use `win-x64` on Windows. A regular installed package can run the examples with
+no native override. Both examples use the same fixture and public APIs.
 
-For small changes use `python dev.py build --binding python --profile dev`
-followed by `python dev.py test --binding python --suite unit --profile dev`;
-substitute `core`, `powershell`, or `tools` as appropriate. Tooling tests need no
-native build. Shared core/ABI changes need both binding suites. Run
-`cargo fmt --all -- --check` and `cargo clippy --locked --all-targets -- -D warnings`
-for Rust changes. `python -m ui4me demo` launches the packaged Python example.
+### Build packages and test installed consumers
 
-### Package and install
+Freeze/commit a source checkpoint first. Build receipts include exact normalized
+source identity, compiler/configuration and hashes of native, managed and
+managed-dependency outputs. Packaging refuses a stale receipt or changed output.
 
 ```sh
 python dev.py build --binding all --profile release
+python dev.py test --binding all --suite unit --profile release
 python dev.py package --binding all --profile release
+python .github/scripts/check-sdist.py
+python dev.py test --binding all --suite installed --manifest dist/linux-x64/manifest.json
+python dev.py upgrade-check --binding python --manifest dist/linux-x64/manifest.json
 ```
 
-These produce a host-specific manifest at `dist/linux-x64/manifest.json` or
-`dist/win-x64/manifest.json`, a platform wheel, native SDK archive and staged
-PowerShell module. Linux wheel repair uses auditwheel; the published 0.1 wheel
-is `manylinux_2_34_x86_64`. Build on both platforms from the **same committed
-revision**, then assemble the exact host outputs:
+Substitute `win-x64` on Windows. The source-distribution check builds from an
+archive outside the checkout, installs its own resulting wheel and checks that
+consumer. It needs a native compiler and pinned Rust; it does not claim a wheel
+can be built on arbitrary systems without build tools. Upgrade checks install
+public 0.1.0 in isolation, exercise it, install the exact candidate and exercise
+it in a fresh process. An exact-candidate reinstall is a separate check.
+
+Build both hosts from the same committed source, collect the two platform
+artifact directories and assemble:
 
 ```sh
 python dev.py assemble --manifest dist/linux-x64/manifest.json --manifest dist/win-x64/manifest.json --out dist/release
 python dev.py test --binding all --suite installed --manifest dist/release/manifest.json
+python dev.py upgrade-check --binding powershell --manifest dist/release/manifest.json
 ```
 
-Repeat installed tests on the other OS using the same assembled directory. The
-combined module contains both native payloads, and installed tests use an
-isolated consumer directory with spaces/Unicode and clear development
-loader overrides. Windows C SDK checks need an x64 Visual Studio developer shell
-(or the CI MSVC setup). A wheel is the supported Python registry artifact; the
-current packaging setup requires a staged matching native runtime to create a
-usable platform wheel. A contributor source distribution can be built with
-`python -m build --sdist --outdir build/sdist bindings/python`; building from
-that sdist invokes locked Cargo and requires Rust 1.90 and the host compiler and
-native dependencies. The published 0.1.0 release contains platform wheels only;
-do not infer that source installation works on an untested platform.
+Repeat installed checks on the other OS against that same combined directory.
+The PowerShell module contains both native payloads. Its upgrade check requires
+this assembled `.nupkg`; a host staging ZIP is not the registry package. Wheels
+remain per platform.
+The external C consumer needs a C compiler (MSVC developer environment on Windows).
+The Linux wheel tag is determined by auditwheel and actual build dependencies;
+do not infer compatibility from an earlier release's tag.
 
-## Tests and evidence
+### Native acceptance and publication
 
-Unit tests live beside the Rust and Python owners; PowerShell smoke tests are in
-`bindings/powershell/tests`, and cross-component tooling tests in `tests/tooling`.
-The native SDK has an external C consumer. Headless contracts are useful but do
-not prove native focus, compositor input, resize, close, or real event-loop reuse.
-For an installed candidate, run on the target desktop:
+Use installed candidate bytes on the actual target desktops:
 
 ```sh
 python dev.py test --binding python --suite native --manifest dist/release/manifest.json --interactive
@@ -339,124 +361,87 @@ python dev.py test --binding powershell --suite native --manifest dist/release/m
 python dev.py report --manifest dist/release/manifest.json
 ```
 
-Supplementary real-native tests against the installed packages are:
+The F01–F12 catalog is in `quality/scenarios.json`. Run the shared foundation
+app as well as the native lifecycle harness when observing F03; the harness alone
+does not contain every 0.2 control. Native checks must include
+first paint, title, keyboard/pointer input, selection/clipboard/undo, Czech and
+combining text, checkbox/radio labels, resize/fractional DPI, scrolling, two
+independent windows, close veto, background completion under queue pressure,
+stop/reuse and explicit failure reporting. Record the actual compositor,
+PowerShell/Python versions and ordinary desktop user. A framebuffer PNG is not
+a desktop capture. Basic IME plumbing is implemented, but do not claim full IME
+support from synthetic composition events.
 
-```sh
-python tests/native/stress.py
-python tests/native/ownership.py
-pwsh -NoProfile -File tests/native/stress.ps1 -ModulePath /absolute/installed/Ui4me/0.1.0
-pwsh -NoProfile -File tests/native/ownership.ps1 -ModulePath /absolute/installed/Ui4me/0.1.0
+Automated results, native observations and human review are distinct. `attest`
+records an observed scenario; `qualify` validates the complete matrix against
+the exact artifact manifest and review. Missing/zero-test suites, failed latest
+attempts, stale source/artifacts and absent upgrades cannot qualify. CI and the
+release validator use shared proof validation. PowerShell 7.4 floor checks are
+part of CI; rerun them for this candidate.
+
+Publication remains explicit in the existing manual workflows. Source changes
+after a candidate build invalidate its receipts. Rebuild/repackage the affected
+candidate before further release checks, and verify the public downloaded
+bytes only after an authorized upload. No 0.2 publication has been performed by
+the ZIP delivery.
+
+## Instructions for the local AI agent
+
+Copy the following prompt into the agent operating on the replacement checkout.
+The implementation is present; the task is local establishment and defect repair.
+
+```text
+Establish and verify the UI4ME 0.2 implementation in this checkout on branch
+implementation/v0.2. Read AGENTS.md, README.md and docs/PROJECT_STATUS.md first,
+plus build/delivery/verification.json if present. Keep the new repository layout
+and VERSION=0.2.0. The source ZIP is the implementation, not a migration plan.
+
+Inspect git status and the replacement diff. Preserve .git and user changes.
+Install/use the pinned toolchains and committed Cargo/NuGet locks. Run the version,
+format and clippy checks, then build both bindings and run the workspace/core,
+Python, PowerShell and tooling suites through dev.py. Fix concrete failures in
+source, add only focused regressions for those defects, and rerun affected checks.
+Do not hide failures with skips, broad lint suppression, fabricated receipts or
+an unreviewed dependency upgrade.
+
+Run the shared foundation application on my actual Linux KDE desktop and Windows
+ordinary-user desktop, from both bindings. Verify the new rendering/editing and
+local asset behavior, targeted updates preserving other input state, independent
+windows, close/veto/stop, background completion, thread ownership and repeated
+sessions. Check real clipboard, Czech/dead-key/AltGr input, composition and
+fractional scaling. Report unsupported or unverified behavior accurately.
+Use the available Windows connection if configured; request access only if that
+host really cannot be reached. SSH-only headless success is not desktop evidence.
+
+Once fixes are complete, commit a coherent source checkpoint on this branch.
+Build release artifacts from that same source on Linux x64 and Windows x64.
+Run the standalone sdist build, isolated installed consumers, real 0.1.0-to-0.2.0
+upgrade checks and PowerShell 7.4 compatibility check. Assemble the two host
+outputs, then test the exact combined candidate on both hosts. Keep receipts,
+logs and screenshots under ignored build/ or dist/ and bind them to the actual
+source and artifact hashes. If source changes, repeat the affected build/package
+checks before claiming candidate results.
+
+Finish with the changes made, commands actually run, exact pass/fail/not-run
+results, working example launch commands and remaining release blockers.
+Do not publish, tag a release, merge or push without my instruction. Keep the
+scope to a dependable 0.2 foundation; defer new widgets and broad feature work.
 ```
 
-Use the appropriate installed module path on Windows. These scripts print
-structured assertions and build identity, exit nonzero on failure and require a
-real native display session; they do not create a human attestation.
+## Source provenance
 
-Native acceptance includes startup, input/state, window lifecycle, close
-interception, owner dispatch, shutdown races, reuse and bounded resources. The
-F01–F12 catalog in `quality/scenarios.json` also covers clean install,
-ABI/callback lifetime, resources and release identity. A full release matrix is
-both bindings × both platforms × all twelve scenarios. Automated GUI observations
-require review and documented operator attestation; a renderer snapshot alone
-is not a desktop capture. `python dev.py attest --help` describes recording a
-scenario, and `python dev.py qualify --help` describes release qualification.
-Statuses `passed`, `failed`, `blocked`, `interrupted`, and `not_run` are distinct;
-missing or zero-test required suites do not pass. The latest failed attempt must
-not be hidden by an older success. Logs, screenshots and receipts belong in
-`build/reports` and stay out of Git. Do not carry results across source identity
-or package-hash changes.
+The replacement starts from the supplied `ui4me/ui4me` snapshot, preserving its
+host/package layout. Rendering and interaction algorithms were reviewed and
+consolidated from the supplied older repository, with ownership, protocol,
+resource lifetime and public-facade changes for this implementation. The old
+migration plan is advisory, not an implementation authority.
 
-## Release and publication
-
-Build, package, assemble, test, attest, qualify, publish and public-download
-verification are separate operations. Normal pushes and pull requests never
-publish. `.github/workflows/ci.yml` builds both platforms, assembles the release
-candidate, checks isolated installed consumers and uploads `ci-bundle`.
-`native-evidence.yml` collects exact-candidate desktop receipts from trusted
-self-hosted Windows/Linux collectors labeled `ui4me-native`, configured with
-`UI4ME_EVIDENCE_DIRECTORY` outside their checkout. Collection alone is not human
-attestation. The manual `publish.yml` requires the successful CI run and both
-native-evidence run IDs at the same default-branch commit. Its `execute=false`
-mode verifies and prepares; publishing is an explicit separate action.
-
-CI also enforces Rust formatting/clippy, checks that committed Cargo/NuGet locks
-stay unchanged, builds and installs a standalone sdist on both platforms, and
-checks the final assembled wheel with Python 3.11, 3.12, 3.13 and 3.14 on both
-platforms. The C SDK and PowerShell installed consumers run separately. The
-final bundle checks the complete expected evidence set instead of inferring
-success from an artifact upload. See the exact revision's
-[Foundation CI run](https://github.com/ui4me/ui4me/actions/workflows/ci.yml) for
-its results and downloadable candidate, source-check and report artifacts.
-These hosted jobs use headless consumers and do not establish native desktop
-acceptance. This maintenance session had no access to the owner's Windows/RDP
-or KDE/Wayland desktop; previous desktop results do not transfer to these new
-dependency artifacts.
-
-Trusted publishers must match owner `ui4me`, repository `ui4me`, workflow
-`publish.yml`, and environment `pypi` or `testpypi`; the registries are separate.
-The Gallery job reads `PSGALLERY_API_KEY` from the `psgallery` environment, not
-from pull requests. Configure GitHub environment and repository permissions
-intentionally, keep secrets out of source and logs, and do not assume any
-organization or registry ownership is approved. A GitHub Release requires an
-explicitly created version tag at the qualified commit and is a separate action.
-Never overwrite a published version: record partial cross-registry publication
-and retry the same bytes, or use a new version with new evidence.
-
-Only the Python upload job requests OIDC `id-token: write`. Gallery publication
-uses a read-only GitHub token; only the separate GitHub Release job requests
-`contents: write`. Ordinary CI has read-only permissions, no publication
-environment, and no registry secret references. Publication requires the actual
-default **branch** ref; a tag with the same name does not qualify.
-
-Non-publishing release regression tests cover source contamination/fresh
-verification, exact artifact origin, missing qualification, identical and
-conflicting existing registry bytes, interrupted publication and registry
-errors. These use offline fixtures and never create genuine qualification
-evidence. A passing regression or `execute=false` review does not prove OIDC
-exchange, secret validity, an actual upload, or subsequent public download.
-
-### Settings observed and owner checks (10 November 2026)
-
-| Setting | Observable state | Required owner action |
+| Supplied source | Archive label | Archive SHA-256 |
 | --- | --- | --- |
-| Main protection | Active ruleset `Preserve main history` (#26974893) targets only `refs/heads/main`, blocks deletion and force pushes, and has no bypass actors. The branch API confirms `protected: true`. | Normal commits remain allowed. Keep development on `main`, use short-lived PR branches when review or CI is useful, and integrate only tested changes. |
-| Dependabot alerts/security updates | Dependency graph and security updates were disabled and are now enabled; alerts were already enabled. After refresh, the authenticated UI surfaced three development alerts: wheel GHSA-8rrh-rw8j-w5fx (fixed in 0.46.2), setuptools GHSA-h35f-9h28-mq5c (fixed in 83.0.0), and setuptools GHSA-xmj3-9gf7-h52w (fixed in 84.1.0). The preset auto-dismissal of low-impact development alerts was disabled. | After integration the authenticated UI shows zero open alerts and all three closed as **Fixed**. Wheel 0.48.0 and setuptools 84.2.1 cover the patched ranges. Continue reviewing new alerts; none were manually dismissed. |
-| Release environments | `release-review`, `native-validation`, `pypi`, `testpypi`, and `psgallery` exist, with no required reviewers. After explicit owner authorization on 2026-11-10, the `psgallery` deployment branch rule was saved and the authenticated UI confirmed **1 branch (`main`) and 0 tags allowed**. The other four environments still have effectively unrestricted deployment branches. `github-release` is absent. | The Gallery branch restriction is complete. Restrict the other publication environments to branch `main` and prepare `github-release` before using that destination. Reviewer policy remains an owner choice for this single-maintainer project. |
-| PyPI/TestPyPI publishers | PyPI's public 0.1.0 attestation identifies `ui4me/ui4me`, `publish.yml`, environment `pypi`. Historical uploads prove past use, not the current editable settings. | In each registry independently, verify project `ui4me` trusts owner/repository `ui4me/ui4me`, workflow `publish.yml`, and its corresponding `pypi` or `testpypi` environment. |
-| Gallery credential | Authenticated UI confirms `PSGALLERY_API_KEY` exists in `psgallery`. Its value was never read; expiry and registry scope cannot be established from secret metadata. | Before authorized publication, confirm the existing key is valid for publishing `Ui4me`; do not put it in PR-accessible configuration. |
-| Actions defaults | Repository default token permissions are read-only contents/packages. Actions cannot create or approve PRs; first-time fork contributors require workflow approval. Workflows additionally set explicit job permissions and pin third-party actions to full SHAs. | Keep registry credentials confined to the manual publishing jobs; apply the publication-environment branch restrictions noted above. |
-| Branch cleanup | All PRs #1–#20 are resolved; #16 and #17 are merged, #1–#15 superseded, and #18/#19/#20 declined for host compatibility. Their branches are removed; `main` is the sole remaining branch. Automatic deletion of merged PR head branches is enabled. | Dependabot may create temporary proposal branches in future. Keep `main` as the canonical product branch and remove resolved branches; no long-lived integration or release branch is required. |
+| New UI4ME repository | `69ab68732e1697ae858bfc06ac55cee0fe589fa1` | `823c285eb676abb6042d3d0eabda2c93aa12df1f9d1e5c72e17dabdd30673590` |
+| Older repository | `ac1ddb3c3b3bc4952aa546077ede6a5da16dace2` | `5008aae9c8e3f460938667589c0a358b97e2f23558854925257a923925accdbc` |
 
-For a future publication, first assign a **new version** consistently across the
-manifests and version-specific consumer assertions, then build the exact committed candidate, collect current Linux and
-Windows native evidence, and run manual `publish.yml` with `execute=false`.
-Only a separate explicit publication instruction authorizes `execute=true` or
-creation of a version tag/GitHub Release. Existing public 0.1.0 bytes remain
-untouched; maintenance builds with that version are development candidates.
-
-Qualification checks the complete required matrix, current source and candidate
-hashes, unit and SDK receipts, proof files and a reviewer. Hashes do not prove
-that a human observed a test; release review must verify provenance. After an
-explicit upload, `python dev.py verify --manifest dist/release/manifest.json
---registry pypi` (or `testpypi`, `powershell`, `github`) downloads and compares
-the published files, then runs installed consumers. Repeat on the other target
-as applicable. The fresh-job mitigation for the PyPI/TestPyPI identity mismatch
-noted above still requires verification in a future authorized publishing run.
-
-## Next work and instructions for agents
-
-Prioritize renderer/layout work in small reviewed steps: preserve lifecycle,
-window ownership, package loading, real GUI acceptance and stale-handle tests.
-Accessibility, IME, selection/clipboard, richer text shaping, CSS layout and
-stylesheets, and macOS/ARM are not implemented. Do not describe the renderer as
-a browser or claim asyncio, notebook, or arbitrary external event-loop support.
-Do not import historical rendering-engine artifacts.
-
-For each change, inspect this document and the C header, keep the API narrow,
-place tests by their owner, and run the affected host/binding commands. Respect
-caller requests for source-only work. Report actual failures and missing evidence
-rather than inferring a pass from source or other artifacts. Never publish or
-configure registry credentials as a consequence of a build, test or pull request.
-Do not commit generated binaries, logs, screenshots, virtual environments,
-credentials, or local evidence. Update this handoff when behavior or support
-changes, including exact revision and environment for any test claim.
+These labels identify the supplied archives, not a claim of a newly fetched
+remote HEAD. The archive delivered to the user is a complete source replacement;
+it intentionally omits compiler caches, binary packages, virtual environments
+and private Git metadata.

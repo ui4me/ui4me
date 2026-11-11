@@ -68,10 +68,15 @@ function New-Ui4meWindow {
         [string] $Title = 'ui4me',
         [int] $Width = 640,
         [int] $Height = 480,
+        [Parameter(ParameterSetName='Html')][string] $BasePath,
         [Ui4me.Managed.App] $App = [Ui4me.Managed.App]::Current
     )
     if ($null -eq $App) { throw 'Call New-Ui4meWindow inside Invoke-Ui4meApp or pass an App explicitly.' }
     if ($PSCmdlet.ParameterSetName -eq 'File') { $App.OpenFile($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path), $Title, $Width, $Height) }
+    elseif ($PSBoundParameters.ContainsKey('BasePath')) {
+        $base = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BasePath)
+        $App.Open($Html, $Title, $Width, $Height, $base)
+    }
     else { $App.Open($Html, $Title, $Width, $Height) }
 }
 
@@ -120,6 +125,29 @@ function Get-Ui4meValue {
     $Window.GetValue($Element)
 }
 
+function Set-Ui4meValue {
+    [CmdletBinding()]
+    param([Parameter(Mandatory, Position=0)][Ui4me.Managed.Window] $Window,
+          [Parameter(Mandatory, Position=1)][string] $Element,
+          [Parameter(Mandatory, Position=2)][AllowEmptyString()][string] $Value)
+    $Window.SetValue($Element, $Value)
+}
+
+function Get-Ui4meChecked {
+    [CmdletBinding()]
+    param([Parameter(Mandatory, Position=0)][Ui4me.Managed.Window] $Window,
+          [Parameter(Mandatory, Position=1)][string] $Element)
+    $Window.GetChecked($Element)
+}
+
+function Set-Ui4meChecked {
+    [CmdletBinding()]
+    param([Parameter(Mandatory, Position=0)][Ui4me.Managed.Window] $Window,
+          [Parameter(Mandatory, Position=1)][string] $Element,
+          [Parameter(Mandatory, Position=2)][bool] $Checked)
+    $Window.SetChecked($Element, $Checked)
+}
+
 function Stop-Ui4meApp {
     [CmdletBinding()]
     param([Ui4me.Managed.App] $App = [Ui4me.Managed.App]::Current)
@@ -127,4 +155,4 @@ function Stop-Ui4meApp {
     $App.Stop()
 }
 
-Export-ModuleMember -Function Invoke-Ui4meApp, Get-Ui4meInfo, New-Ui4meWindow, Register-Ui4meEvent, Set-Ui4meText, Get-Ui4meValue, Stop-Ui4meApp
+Export-ModuleMember -Function Invoke-Ui4meApp, Get-Ui4meInfo, New-Ui4meWindow, Register-Ui4meEvent, Set-Ui4meText, Get-Ui4meValue, Set-Ui4meValue, Get-Ui4meChecked, Set-Ui4meChecked, Stop-Ui4meApp

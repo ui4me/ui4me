@@ -9,6 +9,7 @@ from pathlib import Path
 from .common import ROOT, DevError, find_artifact, load_manifest, now, output_path, read_json, revision, sha256, source_id, write_json
 from .packages import require_locks
 from .testing import NATIVE
+from .validation import proof_errors, upgrade_errors
 
 
 def catalog() -> list[dict]:
@@ -147,6 +148,10 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
     values = [(p, d) for p, d in receipts() if d.get("phase", "candidate") == "candidate"]
     rows = observation_rows(values, manifest["source_id"], sha256(manifest_path))
     references = {}
+    upgrade_failures, upgrade_paths = upgrade_errors(values, manifest, sha256(manifest_path))
+    errors.extend(upgrade_failures)
+    for path in upgrade_paths:
+        references[path.relative_to(ROOT).as_posix()] = sha256(path)
     for row in rows:
         key = f"{row['platform']}/{row['binding']}/{row['scenario']['id']}"
         if row["status"] != "passed":
@@ -170,12 +175,7 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
                 path, unit_data = matching[-1]
                 if any(case.get("status") != "passed" for case in unit_data["cases"]):
                     errors.append(f"Unit suite contains a non-passing case: {platform}/{binding}")
-                if not unit_data.get("proof_files"):
-                    errors.append(f"Missing unit proof: {path}")
-                for item in unit_data.get("proof_files", []):
-                    proof = (path.parent / item["path"]).resolve()
-                    if not proof.is_relative_to(path.parent.resolve()) or not proof.is_file() or sha256(proof) != item["sha256"]:
-                        errors.append(f"Changed unit proof: {path} {item['path']}")
+                errors.extend(proof_errors(path, unit_data))
                 references[path.relative_to(ROOT).as_posix()] = sha256(path)
         sdk_runs = [(p, d) for p, d in values if (d.get("source_id"), d.get("manifest_sha256"), d.get("platform"), d.get("binding"), d.get("suite")) == (manifest["source_id"], sha256(manifest_path), platform, "core", "installed")]
         if not sdk_runs or sdk_runs[-1][1].get("status") != "passed" or not sdk_runs[-1][1].get("cases"):
@@ -184,10 +184,7 @@ def qualify(manifest_path: Path, reviewer: str | None = None, review_url: str | 
             path, sdk_data = sdk_runs[-1]
             if sdk_data.get("consumed_artifact") != find_artifact(manifest, "native-sdk", platform) or not sdk_data.get("proof_files"):
                 errors.append(f"Missing or mismatched C SDK proof: {path}")
-            for item in sdk_data.get("proof_files", []):
-                proof = (path.parent / item["path"]).resolve()
-                if not proof.is_relative_to(path.parent.resolve()) or not proof.is_file() or sha256(proof) != item["sha256"]:
-                    errors.append(f"Changed C SDK proof: {path}")
+            errors.extend(proof_errors(path, sdk_data))
             references[path.relative_to(ROOT).as_posix()] = sha256(path)
     if not reviewer or not review_url or not review_url.startswith("https://github.com/"):
         errors.append("Explicit release reviewer and HTTPS GitHub review/run URL required")

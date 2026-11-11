@@ -14,6 +14,27 @@ with App() as app:
     app.run()
 ```
 
-The minimal renderer supports a small fixed-layout HTML form subset and inline
-colors; it is not a browser. Documentation and the full native lifecycle
-contract are maintained at [github.com/ui4me/ui4me](https://github.com/ui4me/ui4me).
+Version 0.2 provides HTML documents, CSS layout, shaped Unicode text, local
+stylesheets and images, editable inputs, checkboxes/radio groups and independent
+windows. Use `app.open_file("ui/index.html")` to preserve the document directory
+for relative assets, or pass `base_path` to `app.open()`. JavaScript, network
+resources, embedded browsers and operating-system account management are outside
+this foundation.
+
+Update a document through `set_text`, `set_value`, `set_checked`, attributes,
+classes and `replace_children_html`. Programmatic changes preserve unrelated
+form state and do not synthesize input events. Register `click`, `input`,
+`change`, `focus` or `blur` handlers with an element ID; ancestor IDs in an
+event's `path` also match, so a button handler receives clicks on its contents.
+`window.diagnostics()` reports bounded resource and renderer diagnostics.
+
+Create and run native applications on the main thread. Only `app.post()` and
+`app.stop()` are safe from worker threads. A posted callback runs on the UI owner
+and returns a Future with its result or exception; do not wait for an unfinished
+Future on the owner. Stop the app, let `run()` return and then dispose it through
+the context manager. An App runs once; create a fresh App for the next session.
+
+Run `python -m ui4me demo` for the packaged foundation application, which
+demonstrates these APIs with local HTML/CSS, a second window and background work.
+Current support limits and the native lifecycle contract are maintained at
+[github.com/ui4me/ui4me](https://github.com/ui4me/ui4me).

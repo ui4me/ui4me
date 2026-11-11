@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import threading
+from ._version import __version__
 
 
 class Ui4meError(RuntimeError):
@@ -54,19 +55,23 @@ class Library:
             "session_command": ([C.c_uint64, C.c_char_p, C.POINTER(C.c_void_p)], C.c_int32),
             "session_run": ([C.c_uint64], C.c_int32),
             "session_post": ([C.c_uint64, C.c_uint64], C.c_int32),
+            "session_complete": ([C.c_uint64, C.c_uint64], C.c_int32),
             "session_stop": ([C.c_uint64], C.c_int32),
             "session_destroy": ([C.c_uint64], C.c_int32),
         }
         for name, (args, result) in signatures.items():
-            function = getattr(self.dll, "ui4me_" + name)
+            try:
+                function = getattr(self.dll, "ui4me_" + name)
+            except AttributeError as error:
+                raise Ui4meError(f"Native runtime lacks ui4me_{name}; install the matching ui4me {__version__} package") from error
             function.argtypes = args
             function.restype = result
             setattr(self, name, function)
         if self.abi_version() != 1:
             raise Ui4meError("Unsupported ui4me ABI; this binding requires ABI 1")
         identity = json.loads(self.build_info())
-        if identity.get("product") != "ui4me" or identity.get("version") != "0.1.0":
-            raise Ui4meError("Native product/version does not match this ui4me 0.1.0 binding")
+        if identity.get("product") != "ui4me" or identity.get("version") != __version__:
+            raise Ui4meError(f"Native product/version does not match this ui4me {__version__} binding")
 
     def check(self, status: int) -> None:
         if status:
@@ -99,4 +104,4 @@ def library() -> Library:
 def build_info() -> dict:
     native = library()
     value = json.loads(native.build_info())
-    return {**value, "abi": int(native.abi_version()), "library_path": str(native.path)}
+    return {**value, "abi": int(native.abi_version()), "binding_version": __version__, "library_path": str(native.path)}

@@ -5,6 +5,8 @@ import os
 import shutil
 import sys
 import tempfile
+import subprocess
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -13,7 +15,15 @@ from .process import run
 
 
 def native_output(profile: str) -> Path:
-    return ROOT / "target" / ("release" if profile == "release" else "debug") / native_name()
+    return ROOT / "build/cargo" / host() / native_target() / ("release" if profile == "release" else "debug") / native_name()
+
+
+def native_target() -> str:
+    return {"linux-x64": "x86_64-unknown-linux-gnu", "win-x64": "x86_64-pc-windows-msvc"}[host()]
+
+
+def output_identity(path: Path, kind: str) -> dict:
+    return {"path": path.relative_to(ROOT).as_posix(), "sha256": sha256(path), "kind": kind}
 
 
 def lock_dependencies() -> None:
@@ -33,14 +43,22 @@ def require_locks(binding: str = "all") -> None:
 
 
 def build(binding: str, profile: str) -> Path:
+    from .versioning import synchronize
+    synchronize()
     require_locks(binding)
     folder = ROOT / "build" / host() / profile
     folder.mkdir(parents=True, exist_ok=True)
     receipt = {"schema": 1, "kind": "build", "status": "running", "source_id": source_id(), "platform": host(), "profile": profile, "binding": binding, "version": version(), "git_revision": revision(), "steps": []}
     write_json(folder / "build.json", receipt)
     env = dict(os.environ, UI4ME_SOURCE_ID=receipt["source_id"], UI4ME_GIT_REVISION=receipt["git_revision"])
+    env["CARGO_TARGET_DIR"] = str(ROOT / "build/cargo" / host())
+    env.pop("CARGO_BUILD_TARGET", None)
+    receipt["configuration"] = {"package": "ui4me-core", "features": "default", "target": native_target(),
+                                "toolchain": tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"],
+                                "rustflags": env.get("RUSTFLAGS", ""), "cargo_encoded_rustflags": env.get("CARGO_ENCODED_RUSTFLAGS", "")}
     try:
-        args = ["cargo", "build", "--locked", "-p", "ui4me-core"]
+        receipt["configuration"]["rustc"] = subprocess.check_output(["rustc", "--version"], cwd=ROOT, text=True, env=env).strip()
+        args = ["cargo", "build", "--locked", "--target", native_target(), "-p", "ui4me-core"]
         if profile == "release":
             args.append("--release")
         receipt["steps"].append(run(args, cwd=ROOT, log=folder / "cargo-build.log", env=env))
@@ -48,13 +66,23 @@ def build(binding: str, profile: str) -> Path:
             project = ROOT / "bindings/powershell/Ui4me.Managed/Ui4me.Managed.csproj"
             receipt["steps"].append(run(["dotnet", "restore", str(project), "--locked-mode"], cwd=ROOT, log=folder / "dotnet-restore.log"))
             managed = folder / "managed"
+            if managed.exists():
+                shutil.rmtree(managed)
+            receipt["configuration"]["dotnet_sdk"] = subprocess.check_output(["dotnet", "--version"], cwd=ROOT, text=True).strip()
             receipt["steps"].append(run(["dotnet", "build", str(project), "--no-restore", "--configuration", "Release" if profile == "release" else "Debug", "--output", str(managed)], cwd=ROOT, log=folder / "dotnet-build.log"))
         if source_id() != receipt["source_id"]:
             raise DevError("Source changed during build; repeat against a stable checkout")
         native = native_output(profile)
         if not native.is_file():
             raise DevError(f"Expected native output is missing: {native}")
-        receipt.update(status="passed", native_sha256=sha256(native))
+        outputs = [output_identity(native, "native")]
+        if binding in {"all", "powershell"}:
+            bridge = folder / "managed/Ui4me.Managed.dll"
+            if not bridge.is_file():
+                raise DevError("The managed build did not produce Ui4me.Managed.dll")
+            outputs.append(output_identity(bridge, "managed"))
+            outputs += [output_identity(p, "managed-dependencies") for p in sorted((folder / "managed").glob("*.deps.json"))]
+        receipt.update(status="passed", native_sha256=sha256(native), outputs=outputs)
     except BaseException as error:
         receipt.update(status="interrupted" if isinstance(error, KeyboardInterrupt) else "failed", error=str(error))
         raise
@@ -74,6 +102,17 @@ def checked_build(profile: str, binding: str) -> Path:
         raise DevError("Native output changed after the build receipt")
     if binding in {"all", "powershell"} and data.get("binding") not in {"all", "powershell"}:
         raise DevError("This build does not include PowerShell")
+    expected = {native_output(profile).relative_to(ROOT).as_posix()}
+    if data.get("binding") in {"all", "powershell"}:
+        expected.add((folder / "managed/Ui4me.Managed.dll").relative_to(ROOT).as_posix())
+        expected.update(p.relative_to(ROOT).as_posix() for p in (folder / "managed").glob("*.deps.json"))
+    outputs = data.get("outputs", [])
+    if {item.get("path") for item in outputs} != expected or len(outputs) != len(expected):
+        raise DevError("Build receipt does not identify every delivered output; rebuild")
+    for item in outputs:
+        path = (ROOT / item["path"]).resolve()
+        if not path.is_relative_to((ROOT / "build").resolve()) or not path.is_file() or sha256(path) != item.get("sha256"):
+            raise DevError(f"Build output changed after its receipt: {item['path']}")
     return folder
 
 
@@ -84,20 +123,11 @@ def notices(stage: Path, log_folder: Path) -> None:
     (log_folder / "cargo-metadata.log").write_text(metadata.stderr, encoding="utf-8")
     if metadata.returncode:
         raise DevError("Cannot obtain locked dependency inventory")
-    values = json.loads(metadata.stdout)
-    rows = []
-    licenses = stage / "licenses"
-    licenses.mkdir(parents=True, exist_ok=True)
-    for package in values["packages"]:
-        rows.append({k: package.get(k) for k in ("name", "version", "license", "repository", "source")})
-        directory = Path(package["manifest_path"]).parent
-        candidates = [directory / package["license_file"]] if package.get("license_file") else list(directory.glob("LICENSE*")) + list(directory.glob("COPYING*"))
-        for path in candidates:
-            if path.is_file() and path.stat().st_size < 1024 * 1024:
-                target = licenses / (package["name"] + "-" + package["version"])
-                target.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, target / path.name)
-    write_json(stage / "third-party.json", {"notice": "Resolved Cargo dependency inventory; maintainers must review licensing before release.", "packages": rows})
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ui4me_build_support", ROOT / "bindings/python/_build_support.py")
+    support = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(support)
+    support.collect_notices(json.loads(metadata.stdout), stage)
     if (ROOT / "LICENSE").is_file():
         shutil.copy2(ROOT / "LICENSE", stage / "LICENSE")
 

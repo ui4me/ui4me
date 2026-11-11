@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui4me"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small native UI runtime for Python and PowerShell"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -31,4 +31,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-ui4me = ["_native/*", "_notices/*", "_notices/licenses/*/*", "resources/*.html", "py.typed"]
+ui4me = ["_native/*", "_notices/**/*", "resources/**/*", "py.typed"]

@@ -2,6 +2,7 @@
 mod document;
 #[cfg(feature = "native")]
 mod native;
+mod protocol;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -115,7 +116,8 @@ pub extern "C" fn ui4me_build_info() -> *const c_char {
             json!({
                 "product":"ui4me", "version":env!("CARGO_PKG_VERSION"), "abi":1,
                 "source_id":env!("UI4ME_SOURCE_ID"), "git_revision":env!("UI4ME_GIT_REVISION"),
-                "target":env!("UI4ME_BUILD_TARGET"), "renderer":"minimal-form",
+                "target":env!("UI4ME_BUILD_TARGET"), "renderer":"foundation", "profile":"ui4me-foundation-0.2",
+                "capabilities":["html","css","text","flex","controls","local-assets","multi-window","reserved-completions"],
                 "native_compiled":cfg!(feature="native")
             })
             .to_string(),
@@ -197,4 +199,10 @@ pub extern "C" fn ui4me_session_stop(session: u64) -> i32 {
 #[no_mangle]
 pub extern "C" fn ui4me_session_destroy(session: u64) -> i32 {
     guard(|| runtime::destroy(session))
+}
+
+/// Publish a previously reserved completion ticket from any thread.
+#[no_mangle]
+pub extern "C" fn ui4me_session_complete(session: u64, token: u64) -> i32 {
+    guard(|| runtime::get(session)?.complete(token))
 }

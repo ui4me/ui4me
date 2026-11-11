@@ -2,5 +2,5 @@
 from ._native import Ui4meError, build_info
 from .app import App, Window, Subscription, Timer
 
-__version__ = "0.1.0"
+from ._version import __version__
 __all__ = ["App", "Window", "Subscription", "Timer", "Ui4meError", "build_info", "__version__"]

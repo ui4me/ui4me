@@ -67,19 +67,50 @@ try {
             $null = New-Item -ItemType Directory -Path $directory
             try {
                 $path = Join-Path $directory 'form ü.html'
-                Copy-Item -LiteralPath (Join-Path $moduleDirectory 'resources/demo.html') -Destination $path
+                Get-ChildItem -LiteralPath (Join-Path $moduleDirectory 'resources') | Copy-Item -Destination $directory -Recurse
+                Move-Item -LiteralPath (Join-Path $directory 'index.html') -Destination $path
                 Invoke-Ui4meApp -Backend headless -ArgumentList @($path) {
                     param($app, $path)
                     $window = New-Ui4meWindow -Path $path
-                    if ((Get-Ui4meValue $window name) -ne 'World') { throw 'Resource value mismatch' }
-                    $null = $app.On('started', { param($event) $app.Stop() })
+                    if ((Get-Ui4meValue $window name) -ne 'Příliš žluťoučký kůň') { throw 'Resource value mismatch' }
+                    $directory = [IO.Path]::GetDirectoryName($path)
+                    $probeFile = Join-Path $directory 'assets ü.html'
+                    @'
+<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body>
+<div id="paint" style="width:120px;height:120px;padding:0"></div>
+<img id="asset" width="28" height="28" style="position:absolute;left:8px;top:8px;width:28px;height:28px">
+</body></html>
+'@ | Set-Content -LiteralPath $probeFile -Encoding utf8
+                    $probe = $app.OpenFile($probeFile, 'Asset probe', 160, 160)
+                    $capture = Join-Path $directory 'assets.png'
+                    $null = $probe.Snapshot($capture)
+                    $state = @{phase='css'; previous=[Convert]::ToBase64String([IO.File]::ReadAllBytes($capture))}
+                    $probe.AddClass('paint', 'sidebar')
+                    $null = $app.Timer(10, {
+                        $null = $probe.Snapshot($capture)
+                        $pixels = [Convert]::ToBase64String([IO.File]::ReadAllBytes($capture))
+                        if ($pixels -eq $state.previous) { return }
+                        $state.previous = $pixels
+                        if ($state.phase -eq 'css') {
+                            $state.phase = 'image'
+                            $probe.SetAttribute('asset', 'src', 'icon.png')
+                        }
+                        else {
+                            $diagnostics = $probe.DiagnosticsJson() | ConvertFrom-Json
+                            if (@($diagnostics.diagnostics | Where-Object stage -eq 'resource').Count) { throw 'Local asset produced a resource error' }
+                            $state.phase = 'done'
+                            $app.Stop()
+                        }
+                    }, $true)
+                    $null = $app.Timer(3000, { throw ('Local stylesheet/image did not change rendered pixels: ' + $state.phase) }, $false)
+                    $null = $app.On('stopped', { if ($state.phase -ne 'done') { throw 'Local asset probe incomplete' } })
                 }
                 if (-not $identity.source_id) { throw 'Missing source identity' }
             }
             finally { Remove-Item -LiteralPath $directory -Recurse -Force }
-        } 'Explicit Unicode/space resource path and source diagnostics'
+        } 'Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear'
         Test-Case F12 {
-            if ($identity.version -ne '0.1.0' -or $identity.binding_version -ne '0.1.0') { throw 'Version mismatch' }
+            if ($identity.version -ne $identity.binding_version -or $identity.version -ne (Import-PowerShellDataFile -LiteralPath $manifest).ModuleVersion) { throw 'Version mismatch' }
             if (-not $identity.source_id -or -not (Test-Path -LiteralPath $identity.library_path)) { throw 'Missing candidate identity' }
             1..2 | ForEach-Object {
                 Invoke-Ui4meApp -Backend headless {
@@ -174,7 +205,7 @@ catch { $fatal = $_.Exception.ToString() }
 finally {
     $path = [IO.Path]::GetFullPath($ResultPath)
     $null = New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($path)) -Force
-    @{binding='powershell'; backend=$(if ($Native) {'native'} else {'headless'}); build_info=$identity;
+    @{binding='powershell'; powershell_version=$PSVersionTable.PSVersion.ToString(); backend=$(if ($Native) {'native'} else {'headless'}); build_info=$identity;
       cases=@($cases.ToArray()); observations=@($state.observations.ToArray());
       manual_review_required=[bool]$Native; native_capture=$false; error=$fatal} |
         ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path -Encoding utf8

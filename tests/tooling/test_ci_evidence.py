@@ -94,6 +94,48 @@ class CiEvidenceTests(unittest.TestCase):
         data["installation_checks"] = {}
         self.assertTrue(any("Missing negative-loader or exact-reinstall" in error for error in self.errors()))
 
+    def test_second_release_requires_floor_and_real_upgrades(self):
+        self.manifest["version"] = "0.2.0"
+        errors = self.errors()
+        self.assertEqual(sum("Missing previous-version upgrade" in error for error in errors), 4)
+        self.assertEqual(sum("Missing PowerShell 7.4 floor consumer" in error for error in errors), 2)
+
+    def add_upgrades(self):
+        self.manifest["version"] = "0.2.0"
+        for _, data in self.values:
+            if data["binding"] == "powershell" and data["suite"] == "installed":
+                data["harness"]["powershell"] = "7.6.9"
+        for platform in ci.PLATFORMS:
+            self.add_receipt(platform, "powershell", "installed")
+            self.values[-1][1]["harness"]["powershell"] = "7.4.0"
+            for binding in ("python", "powershell"):
+                self.add_receipt(platform, binding, "upgrade")
+                path, data = self.values[-1]
+                data.update(cases=[{"id": "UPGRADE-" + binding, "status": "passed"}],
+                            previous_version="0.1.0", previous_native_sha256="a" * 64)
+                previous = path.parent / "consumer-previous.json"
+                write_json(previous, {"version": "0.1.0"})
+                data["proof_files"] += [{"path": file.name, "sha256": sha256(file)}
+                                        for file in (previous, path.parent / "consumer.json")]
+
+    def test_second_release_complete_upgrade_matrix_passes(self):
+        self.add_upgrades()
+        self.assertEqual(self.errors(), [])
+
+    def test_floor_consumer_cannot_replace_the_current_host(self):
+        self.add_upgrades()
+        self.values = [(p, d) for p, d in self.values if d.get("harness", {}).get("powershell") != "7.6.9"]
+        self.assertEqual(sum("Missing installed consumer:" in error for error in self.errors()), 2)
+
+    def test_upgrade_failure_and_changed_previous_proof_are_rejected(self):
+        self.add_upgrades()
+        path, data = next((p, d) for p, d in self.values if d["suite"] == "upgrade")
+        data["status"] = "failed"
+        (path.parent / "consumer-previous.json").write_text("changed", encoding="utf-8")
+        errors = self.errors()
+        self.assertTrue(any("Previous-version upgrade did not pass" in error for error in errors))
+        self.assertTrue(any("Missing or changed proof" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

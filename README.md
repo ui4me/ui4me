@@ -1,29 +1,38 @@
 # ui4me
 
-ui4me is a small native UI runtime for applications written in Python or
-PowerShell. A Rust engine owns windows, a minimal HTML form renderer and the
-application event loop; application logic stays in the host language. The
-bindings communicate with the engine through a versioned C ABI.
+UI4ME is a native desktop UI runtime for applications written in **Python or
+PowerShell**. Applications supply HTML and CSS; Rust owns layout, text shaping,
+painting, input and native windows. Application logic stays in the host language.
 
-Version 0.1.0 is available for **Linux x86-64** and **Windows x64**, using
-**Python 3.11–3.14** or **PowerShell 7.4+**. Python wheels and the PowerShell
-module include their native libraries; consumers do not need Rust or a .NET SDK.
-Linux requires a working Wayland or X11 desktop and the native system libraries
-listed in [PROJECT_STATUS](docs/PROJECT_STATUS.md).
+This checkout implements **0.2.0**, the application foundation. It targets
+**Linux x86-64 (Wayland/X11)** and **Windows x64**, with **Python 3.11–3.14** or
+**PowerShell 7.4+**. It uses a software renderer, not a browser or JavaScript
+runtime. Consumers of packaged wheels/modules do not need Rust or a .NET SDK.
 
-## Install
+**This is a source delivery for local verification.** Compilation, automated
+checks and installed-package checks are recorded separately from real desktop
+acceptance. This ZIP is not a published or fully qualified public release.
+See [PROJECT_STATUS](docs/PROJECT_STATUS.md) for the current contract, remaining
+platform checks and the ready-to-use verification prompt.
 
-From [PyPI](https://pypi.org/project/ui4me/):
+## What 0.2 adds
 
-```sh
-python -m pip install ui4me==0.1.0
-```
+- Nested HTML, local stylesheets, inline CSS, selectors and cascade.
+- Block/inline and flex layouts, wrapping, spacing, borders, backgrounds,
+  clipping and scrolling.
+- Shaped Unicode text, font fallback, system fonts and local `@font-face`.
+- Text/password inputs, textarea, buttons, checkboxes, radio groups and labels;
+  selection, plain-text clipboard, undo/redo and keyboard focus.
+- Targeted text/value/checked/attribute/class updates and atomic replacement of
+  one element's children, with unrelated input state preserved.
+- Independent documents in multiple native windows, close interception,
+  timers, owner-thread dispatch and background work.
+- A bounded asset service shared across sessions, local asset roots, stale-node
+  retirement and explicit error outcomes when capacity is exhausted.
 
-From [PowerShell Gallery](https://www.powershellgallery.com/packages/Ui4me/):
-
-```powershell
-Install-PSResource -Name Ui4me -Version 0.1.0 -Scope CurrentUser
-```
+Grid, select widgets, table layout, advanced rendering, accessibility and full
+platform IME qualification are outside the promoted 0.2 feature set. Some backend
+algorithms are retained internally; their presence is not a support claim.
 
 ## Python
 
@@ -31,10 +40,28 @@ Install-PSResource -Name Ui4me -Version 0.1.0 -Scope CurrentUser
 from ui4me import App
 
 with App() as app:
-    window = app.open('<h1>Hello</h1><button id="quit">Quit</button>')
-    window.on("click", lambda event: app.stop(), element="quit")
+    window = app.open('''
+        <style>
+          body { font-family: sans-serif; padding: 24px; background: #f2f5fa; }
+          .row { display: flex; gap: 12px; align-items: center; }
+          input, button { padding: 10px; }
+        </style>
+        <h1>Hello from UI4ME</h1>
+        <div class="row">
+          <input id="name" value="Příliš žluťoučký kůň">
+          <button id="greet">Greet</button>
+        </div>
+        <p id="status">Ready.</p>
+    ''', width=720, height=360)
+    window.on("click", lambda event: window.set_text(
+        "status", f"Hello, {window.get_value('name')}!"), element="greet")
     app.run()
 ```
+
+For an application with separate files, use
+`app.open_file("path/to/index.html")`. Its directory becomes the permitted local
+asset root. `app.open(html, base_path="path/to/assets")` explicitly establishes
+an asset root for a string document.
 
 ## PowerShell
 
@@ -42,41 +69,67 @@ with App() as app:
 Import-Module Ui4me
 Invoke-Ui4meApp {
     param($app)
-    $window = New-Ui4meWindow '<h1>Hello</h1><button id="quit">Quit</button>'
-    $null = Register-Ui4meEvent $window click { $app.Stop() } -Element quit
+    $window = New-Ui4meWindow @'
+<style>body { font-family: sans-serif; padding: 24px; }
+input, button { padding: 10px; }</style>
+<h1>Hello from UI4ME</h1>
+<input id="name" value="Příliš žluťoučký kůň">
+<button id="greet">Greet</button><p id="status">Ready.</p>
+'@
+    $null = Register-Ui4meEvent $window click {
+        $window.SetText('status', "Hello, $($window.GetValue('name'))!")
+    } -Element greet
 }
 ```
 
-Both calls return control to the host when the application stops. Larger examples
-in [`examples/`](examples/) demonstrate input, a second window, resizing,
-close interception and background work.
+`Invoke-Ui4meApp` runs the initializer and handlers on a retained UI owner thread
+in a fresh runspace. Pass external values through `-ArgumentList`; see the
+complete example in [`examples/powershell/hello.ps1`](examples/powershell/hello.ps1).
 
-## Features and limitations
+## Build and try it
 
-The runtime provides multiple native windows, text and button events, close
-veto, forced shutdown, timers, bounded deferred work, owner-thread dispatch,
-and same-process sequential sessions. The renderer supports a small fixed-layout
-HTML subset, text input, and limited inline colors. It is **not a browser**:
-stylesheets, CSS layout, JavaScript, network loading, IME, full text shaping,
-clipboard/selection and an accessibility bridge are not implemented.
-
-## Develop and test
-
-Install Python 3.11+, Rust 1.90 (selected by `rust-toolchain.toml`), a native
-compiler, .NET SDK 10 and PowerShell 7.4+. Create a virtual environment, then:
+Install Python 3.11+, the Rust toolchain selected by `rust-toolchain.toml`
+(**1.99.1**), a C/C++ compiler, **.NET SDK 10** and **PowerShell 7.4+**. Linux
+requires Wayland/X11 development and runtime libraries; Windows requires the
+MSVC x64 build tools. Detailed setup is in
+[PROJECT_STATUS](docs/PROJECT_STATUS.md#development).
 
 ```sh
+python -m venv .venv
+# Linux: source .venv/bin/activate
+# PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 python dev.py doctor
+python dev.py version --check
 python dev.py build --binding all --profile dev
 python dev.py test --binding all --suite unit --profile dev
 ```
 
-For targeted work use `--binding core`, `python`, `powershell`, or `tools` as
-appropriate. Build and installed-package tests are separate; see
-[PROJECT_STATUS](docs/PROJECT_STATUS.md) for complete platform prerequisites,
-packaging, native tests, verification history and release procedures. Build
-outputs and test evidence stay in ignored `build/` and `dist/` directories.
+The same small foundation app is supplied in both bindings. It uses one local
+HTML/CSS fixture, editable controls, a result list, a settings window and a
+background action. Run it from installed packages using `python -m ui4me demo`, or
+run `examples/python/hello.py` / `examples/powershell/hello.ps1` with the explicit
+development setup documented in PROJECT_STATUS.
+
+For distributable candidates:
+
+```sh
+python dev.py build --binding all --profile release
+python dev.py package --binding all --profile release
+python dev.py test --binding all --suite installed --manifest dist/linux-x64/manifest.json
+```
+
+Use `dist/win-x64/manifest.json` on Windows. Package assembly combines the two
+platforms only after both were built from the same committed source. Registry
+publication is an explicit later operation. Do not substitute `pip install
+ui4me` for testing this source: that installs whichever version is public.
+
+## Repository
+
+The native application host, document model, renderer and asset service have
+separate owners under [`crates/`](crates/). Python and PowerShell share the
+versioned [`C ABI`](include/ui4me.h). Build, package and evidence tooling remains
+in the new repository structure; `build/`, `dist/` and compiler caches are ignored.
 
 [Source and issues](https://github.com/ui4me/ui4me) ·
 [PyPI](https://pypi.org/project/ui4me/) ·

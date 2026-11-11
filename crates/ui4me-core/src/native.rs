@@ -1,7 +1,7 @@
-//! Desktop adapter. All OS objects stay on the first native owner thread.
-//! The model and callback contract live separately so foreign reentry never borrows this adapter.
-use crate::document::{Kind, MAX_PIXELS};
-use crate::runtime::{lock, Session, WindowModel};
+//! Retained winit 0.30 host. Native objects never leave their owning thread.
+//! This layer translates OS input and presents pixels; document semantics live in the renderer.
+use crate::document::{Clipboard, ImeState, Input, MAX_PIXELS};
+use crate::runtime::{lock, Session, WindowInfo};
 use crate::{Error, Result};
 use serde_json::json;
 use softbuffer::{Context, Surface};
@@ -13,12 +13,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, ThreadId};
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey, PhysicalKey};
 use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, ImePurpose, Window, WindowId};
 
 thread_local! { static LOOP: RefCell<Option<EventLoop<()>>> = const { RefCell::new(None) }; }
 static NATIVE_OWNER: OnceLock<Mutex<Option<ThreadId>>> = OnceLock::new();
@@ -66,17 +66,49 @@ pub fn run(session: Arc<Session>) -> Result<()> {
         }
         let event_loop = storage.as_mut().ok_or_else(|| Error::native("missing native event loop"))?;
         *lock(&session.proxy) = Some(event_loop.create_proxy());
-        let mut app = Desktop { session, windows: BTreeMap::new(), started:false, resumed:false };
+        let clipboard = Rc::new(RefCell::new(arboard::Clipboard::new().map_err(|e| e.to_string())));
+        let mut app = Desktop { session, windows: BTreeMap::new(), started: false, resumed: false, clipboard };
         let result = event_loop.run_app_on_demand(&mut app).map_err(|e| Error::native(format!("native event loop: {e}")));
-        // No Window survives between run_app_on_demand invocations.
         app.windows.clear();
         if result.is_err() { INITIALIZATION_FAILED.store(true, Ordering::Release); }
         result
     })
 }
 
+type SharedClipboard = Rc<RefCell<std::result::Result<arboard::Clipboard, String>>>;
+struct NativeClipboard(SharedClipboard);
+impl Clipboard for NativeClipboard {
+    fn read_text(&mut self) -> std::result::Result<Option<String>, String> {
+        let mut shared = self
+            .0
+            .try_borrow_mut()
+            .map_err(|_| "clipboard is busy".to_owned())?;
+        let clipboard = shared.as_mut().map_err(|e| e.clone())?;
+        match clipboard.get_text() {
+            Ok(text) if text.len() <= 16 * 1024 * 1024 => Ok(Some(text)),
+            Ok(_) => Err("clipboard text exceeds 16 MiB".into()),
+            Err(arboard::Error::ContentNotAvailable) => Ok(None),
+            Err(error) => Err(format!("system clipboard read: {error}")),
+        }
+    }
+    fn write_text(&mut self, text: &str) -> std::result::Result<(), String> {
+        if text.len() > 16 * 1024 * 1024 {
+            return Err("clipboard text exceeds 16 MiB".into());
+        }
+        let mut shared = self
+            .0
+            .try_borrow_mut()
+            .map_err(|_| "clipboard is busy".to_owned())?;
+        shared
+            .as_mut()
+            .map_err(|e| e.clone())?
+            .set_text(text.to_owned())
+            .map_err(|e| format!("system clipboard write: {e}"))
+    }
+}
+
 struct NativeWindow {
-    // Field order matters: surface -> context -> final window handle.
+    // Drop order: surface, context, final window handle.
     surface: Surface<Rc<Window>, Rc<Window>>,
     _context: Context<Rc<Window>>,
     window: Rc<Window>,
@@ -84,14 +116,19 @@ struct NativeWindow {
     resize_revision: u64,
     last_reported_size: Option<PhysicalSize<u32>>,
     cursor: PhysicalPosition<f64>,
-    pressed: Option<usize>,
+    modifiers: ModifiersState,
+    composing: bool,
+    visible: bool,
+    shown_pending: bool,
+    last_ime: Option<ImeState>,
+    last_cursor: CursorIcon,
 }
-
 struct Desktop {
     session: Arc<Session>,
     windows: BTreeMap<u64, NativeWindow>,
     started: bool,
     resumed: bool,
+    clipboard: SharedClipboard,
 }
 
 pub(crate) fn new_size(last: &mut Option<PhysicalSize<u32>>, size: PhysicalSize<u32>) -> bool {
@@ -101,30 +138,23 @@ pub(crate) fn new_size(last: &mut Option<PhysicalSize<u32>>, size: PhysicalSize<
     *last = Some(size);
     true
 }
-
 pub(crate) fn report_resize(session: &Session, id: u64, size: PhysicalSize<u32>) {
-    let exists = {
-        let mut state = lock(&session.state);
-        if let Some(model) = state.windows.get_mut(&id) {
-            model.pixel_width = size.width;
-            model.pixel_height = size.height;
-            model.dirty = true;
-            true
-        } else {
-            false
-        }
+    let Some(info) = session.window_info(id) else {
+        return;
     };
-    if exists {
-        session.emit(json!({"type":"resized","window":id,"width":size.width,"height":size.height,"units":"physical_pixels"}));
+    if session
+        .update_geometry(id, size.width, size.height, info.scale)
+        .is_ok()
+    {
+        session.emit(json!({"type":"resized","window":id,"width":size.width,"height":size.height,"scale":info.scale,"units":"physical_pixels"}));
     }
 }
-
 impl Desktop {
     fn create_window(
         &mut self,
         event_loop: &ActiveEventLoop,
         id: u64,
-        model: &WindowModel,
+        model: &WindowInfo,
     ) -> Result<()> {
         let attributes = Window::default_attributes()
             .with_title(model.title.clone())
@@ -160,52 +190,51 @@ impl Desktop {
         let surface = Surface::new(&context, window.clone())
             .map_err(|e| Error::native(format!("create software surface: {e}")))?;
         let size = window.inner_size();
-        {
-            let mut state = lock(&self.session.state);
-            if let Some(w) = state.windows.get_mut(&id) {
-                w.pixel_width = size.width;
-                w.pixel_height = size.height;
-                w.scale = window.scale_factor();
-                w.dirty = true;
-            }
-        }
+        self.session
+            .update_geometry(id, size.width, size.height, window.scale_factor())?;
+        self.session
+            .install_clipboard(id, Box::new(NativeClipboard(self.clipboard.clone())))?;
         self.windows.insert(
             id,
             NativeWindow {
                 surface,
                 _context: context,
-                window: window.clone(),
+                window,
                 title: model.title.clone(),
                 resize_revision: model.resize_revision,
                 last_reported_size: None,
                 cursor: PhysicalPosition::new(-1.0, -1.0),
-                pressed: None,
+                modifiers: ModifiersState::empty(),
+                composing: false,
+                visible: false,
+                shown_pending: false,
+                last_ime: None,
+                last_cursor: CursorIcon::Default,
             },
         );
-        window.set_visible(true);
-        window.request_redraw();
+        // Paint before reveal. Some backends do not send redraw while a window is hidden.
+        // An initial render has no last-good frame to retain. Return its error
+        // through run instead of leaving an invisible, unfinishable window.
+        self.draw(id)?;
         Ok(())
     }
-
     fn close(&mut self, id: u64) {
-        // The surface and OS window are dropped before the `closed` callback.
         self.windows.remove(&id);
         self.session.closed(id);
     }
-
     fn synchronize(&mut self, event_loop: &ActiveEventLoop) {
         if !self.resumed || self.session.should_stop() {
             return;
         }
-        let models: Vec<(u64, WindowModel)> = lock(&self.session.state)
-            .windows
-            .iter()
-            .map(|(id, w)| (*id, w.clone()))
-            .collect();
-        for (id, model) in models {
+        for id in self.session.window_ids() {
             if self.session.should_stop() {
                 break;
             }
+            // Fetch each small descriptor immediately before using it. Prior callbacks may
+            // have changed or closed later windows; documents are never cloned here.
+            let Some(model) = self.session.window_info(id) else {
+                continue;
+            };
             if model.closing {
                 if self.session.close_requested(id) {
                     self.close(id);
@@ -218,32 +247,44 @@ impl Desktop {
                     break;
                 }
             }
+            let Some(current) = self.session.window_info(id) else {
+                self.windows.remove(&id);
+                continue;
+            };
             let mut applied_size = None;
             if let Some(native) = self.windows.get_mut(&id) {
-                if native.title != model.title {
-                    native.window.set_title(&model.title);
-                    native.title = model.title;
+                if native.title != current.title {
+                    native.window.set_title(&current.title);
+                    native.title = current.title;
                 }
-                if native.resize_revision != model.resize_revision {
+                if native.resize_revision != current.resize_revision {
                     applied_size = native.window.request_inner_size(LogicalSize::new(
-                        model.width as f64,
-                        model.height as f64,
+                        current.width as f64,
+                        current.height as f64,
                     ));
-                    native.resize_revision = model.resize_revision;
+                    native.resize_revision = current.resize_revision;
                 }
-                if model.dirty {
+                if current.dirty {
                     native.window.request_redraw();
                 }
             }
-            // Some backends apply the request immediately and do not send a
-            // Resized event. Process the actual returned physical size through
-            // the same path as an asynchronous window-system notification.
             if let Some(size) = applied_size {
                 self.resized(id, size);
             }
+            self.update_input_state(id);
+            let shown = self.windows.get_mut(&id).is_some_and(|w| {
+                if self.started && w.shown_pending {
+                    w.shown_pending = false;
+                    true
+                } else {
+                    false
+                }
+            });
+            if shown {
+                self.session.emit(json!({"type":"shown","window":id}));
+            }
         }
     }
-
     fn resized(&mut self, id: u64, size: PhysicalSize<u32>) {
         let Some(native) = self.windows.get_mut(&id) else {
             return;
@@ -253,7 +294,6 @@ impl Desktop {
         }
         report_resize(&self.session, id, size);
     }
-
     fn draw(&mut self, id: u64) -> Result<()> {
         let Some(native) = self.windows.get_mut(&id) else {
             return Ok(());
@@ -269,20 +309,9 @@ impl Desktop {
                 "native window exceeds the 16,777,216 pixel budget",
             ));
         }
-        let pixels = {
-            let mut state = lock(&self.session.state);
-            let Some(model) = state.windows.get_mut(&id) else {
-                return Ok(());
-            };
-            model.pixel_width = size.width;
-            model.pixel_height = size.height;
-            model.scale = native.window.scale_factor();
-            let pixels = model
-                .document
-                .render(size.width, size.height, model.scale)?;
-            model.dirty = false;
-            pixels
-        };
+        self.session
+            .update_geometry(id, size.width, size.height, native.window.scale_factor())?;
+        let pixels = self.session.render(id)?;
         native
             .surface
             .resize(width, height)
@@ -297,97 +326,136 @@ impl Desktop {
         buffer.copy_from_slice(&pixels);
         buffer
             .present()
-            .map_err(|e| Error::native(format!("present software buffer: {e}")))
+            .map_err(|e| Error::native(format!("present software buffer: {e}")))?;
+        if !native.visible {
+            native.window.set_visible(true);
+            native.visible = true;
+            native.shown_pending = true;
+        }
+        Ok(())
     }
-
-    fn pointer_button(&mut self, id: u64, pressed: bool) {
+    fn send_input(&mut self, id: u64, input: Input) {
+        if self.session.should_stop() || self.session.window_info(id).is_none() {
+            return;
+        }
+        if let Err(error) = self.session.input(id, input) {
+            self.session.report_document_error(id, error);
+        }
+        self.update_input_state(id);
+    }
+    fn update_input_state(&mut self, id: u64) {
         let Some(native) = self.windows.get_mut(&id) else {
             return;
         };
-        let mut state = lock(&self.session.state);
-        let Some(model) = state.windows.get_mut(&id) else {
+        let cursor = match self.session.cursor(id).as_str() {
+            "text" => CursorIcon::Text,
+            "pointer" => CursorIcon::Pointer,
+            "crosshair" => CursorIcon::Crosshair,
+            "move" => CursorIcon::Move,
+            "wait" => CursorIcon::Wait,
+            "progress" => CursorIcon::Progress,
+            "not-allowed" => CursorIcon::NotAllowed,
+            "grab" => CursorIcon::Grab,
+            "grabbing" => CursorIcon::Grabbing,
+            "ew-resize" | "col-resize" => CursorIcon::EwResize,
+            "ns-resize" | "row-resize" => CursorIcon::NsResize,
+            _ => CursorIcon::Default,
+        };
+        if native.last_cursor != cursor {
+            native.window.set_cursor(cursor);
+            native.last_cursor = cursor;
+        }
+        let current = self.session.ime_request(id);
+        if current != native.last_ime {
+            if let Some(ime) = &current {
+                if native.last_ime.as_ref().map(|i| i.password) != Some(ime.password) {
+                    native.window.set_ime_purpose(if ime.password {
+                        ImePurpose::Password
+                    } else {
+                        ImePurpose::Normal
+                    });
+                }
+                let (x, y, width, height) = ime.cursor_area;
+                native.window.set_ime_cursor_area(
+                    LogicalPosition::new(x, y),
+                    LogicalSize::new(width.max(1.0), height.max(1.0)),
+                );
+                if native.last_ime.is_none() {
+                    native.window.set_ime_allowed(true);
+                }
+            } else if native.last_ime.is_some() {
+                native.window.set_ime_allowed(false);
+            }
+            native.last_ime = current;
+        }
+    }
+    fn pointer_button(&mut self, id: u64, pressed: bool, button: MouseButton) {
+        let button = match button {
+            MouseButton::Left => 0,
+            MouseButton::Middle => 1,
+            MouseButton::Right => 2,
+            _ => return,
+        };
+        let Some(native) = self.windows.get(&id) else {
             return;
         };
-        let scale = model.scale.max(0.5);
-        let hit = model.document.hit(
-            native.cursor.x / scale,
-            native.cursor.y / scale,
-            model.pixel_width as f64 / scale,
+        let scale = native.window.scale_factor();
+        let (x, y) = (native.cursor.x / scale, native.cursor.y / scale);
+        self.send_input(
+            id,
+            Input::PointerButton {
+                pressed,
+                button,
+                x,
+                y,
+            },
         );
-        let hit = hit.filter(|index| {
-            matches!(
-                model.document.elements[*index].kind,
-                Kind::Input | Kind::Button
-            )
-        });
-        if pressed {
-            native.pressed = hit;
-            model.document.focus = hit;
-            model.dirty = true;
-        } else {
-            let click = hit
-                .filter(|index| {
-                    Some(*index) == native.pressed
-                        && model.document.elements[*index].kind == Kind::Button
-                })
-                .map(|index| model.document.elements[index].id.clone());
-            native.pressed = None;
-            drop(state);
-            if let Some(element) = click {
-                self.session
-                    .emit(json!({"type":"click","window":id,"element":element}));
-            }
-        }
     }
-
     fn keyboard(&mut self, id: u64, event: winit::event::KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        let mut state = lock(&self.session.state);
-        let Some(model) = state.windows.get_mut(&id) else {
+        let Some(native) = self.windows.get(&id) else {
             return;
         };
-        let mut emitted = None;
-        match &event.logical_key {
-            Key::Named(NamedKey::Tab) => model.document.next_focus(),
-            Key::Named(NamedKey::Backspace) => {
-                if let Some((element, value)) = model.document.edit(None, true) {
-                    emitted =
-                        Some(json!({"type":"change","window":id,"element":element,"value":value}));
+        let m = native.modifiers;
+        let composing = native.composing;
+        let key = match &event.logical_key {
+            Key::Character(value) => value.to_string(),
+            Key::Named(NamedKey::Space) => " ".into(),
+            Key::Named(value) => format!("{value:?}"),
+            Key::Dead(_) => "Dead".into(),
+            Key::Unidentified(_) => "Unidentified".into(),
+        };
+        let code = match event.physical_key {
+            PhysicalKey::Code(value) => format!("{value:?}"),
+            PhysicalKey::Unidentified(_) => "Unidentified".into(),
+        };
+        let pressed = event.state == ElementState::Pressed;
+        self.send_input(
+            id,
+            Input::Key {
+                key,
+                code,
+                pressed,
+                repeat: event.repeat,
+                shift: m.shift_key(),
+                ctrl: m.control_key(),
+                alt: m.alt_key(),
+                meta: m.super_key(),
+            },
+        );
+        // Ctrl+Alt permits AltGr characters. Ordinary Ctrl/Meta shortcuts never insert text.
+        if pressed
+            && !composing
+            && !m.super_key()
+            && ((!m.control_key() && !m.alt_key()) || (m.control_key() && m.alt_key()))
+        {
+            if let Some(text) = event.text.as_deref() {
+                let text: String = text.chars().filter(|c| !c.is_control()).collect();
+                if !text.is_empty() {
+                    self.send_input(id, Input::Text(text));
                 }
             }
-            Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
-                let button = model
-                    .document
-                    .focus
-                    .and_then(|i| model.document.elements.get(i))
-                    .filter(|e| e.kind == Kind::Button)
-                    .map(|e| e.id.clone());
-                if let Some(element) = button {
-                    emitted = Some(json!({"type":"click","window":id,"element":element}));
-                } else if event.logical_key == Key::Named(NamedKey::Space) {
-                    if let Some((element, value)) = model.document.edit(Some(" "), false) {
-                        emitted = Some(
-                            json!({"type":"change","window":id,"element":element,"value":value}),
-                        );
-                    }
-                }
-            }
-            _ => {
-                if let Some((element, value)) = model.document.edit(event.text.as_deref(), false) {
-                    emitted =
-                        Some(json!({"type":"change","window":id,"element":element,"value":value}));
-                }
-            }
-        }
-        model.dirty = true;
-        drop(state);
-        if let Some(event) = emitted {
-            self.session.emit(event);
         }
     }
-
     fn stop_if_requested(&mut self, event_loop: &ActiveEventLoop) -> bool {
         if self.session.should_stop() {
             self.windows.clear();
@@ -398,7 +466,6 @@ impl Desktop {
         }
     }
 }
-
 impl ApplicationHandler<()> for Desktop {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.resumed = true;
@@ -413,6 +480,9 @@ impl ApplicationHandler<()> for Desktop {
     }
     fn suspended(&mut self, _: &ActiveEventLoop) {
         self.resumed = false;
+        for id in self.session.window_ids() {
+            let _ = self.session.input(id, Input::Focus(false));
+        }
         self.windows.clear();
     }
     fn user_event(&mut self, _: &ActiveEventLoop, _: ()) {}
@@ -430,9 +500,7 @@ impl ApplicationHandler<()> for Desktop {
             .iter()
             .find(|(_, w)| w.window.id() == window_id)
             .map(|(id, _)| *id);
-        let Some(id) = id else {
-            return;
-        };
+        let Some(id) = id else { return };
         match event {
             WindowEvent::CloseRequested => {
                 if self.session.close_requested(id) {
@@ -441,48 +509,105 @@ impl ApplicationHandler<()> for Desktop {
             }
             WindowEvent::RedrawRequested => {
                 if let Err(error) = self.draw(id) {
-                    self.session.fail(error);
+                    self.session.report_document_error(id, error);
                 }
             }
-            WindowEvent::Resized(size) => {
-                self.resized(id, size);
-            }
+            WindowEvent::Resized(size) => self.resized(id, size),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                if let Some(model) = lock(&self.session.state).windows.get_mut(&id) {
-                    model.scale = scale_factor;
-                    model.dirty = true;
+                if let Some(native) = self.windows.get(&id) {
+                    let size = native.window.inner_size();
+                    let _ = self
+                        .session
+                        .update_geometry(id, size.width, size.height, scale_factor);
+                    self.session
+                        .emit(json!({"type":"scale_changed","window":id,"scale":scale_factor}));
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(native) = self.windows.get_mut(&id) {
                     native.cursor = position;
+                    let scale = native.window.scale_factor();
+                    self.send_input(
+                        id,
+                        Input::PointerMoved {
+                            x: position.x / scale,
+                            y: position.y / scale,
+                        },
+                    );
                 }
             }
             WindowEvent::CursorLeft { .. } => {
                 if let Some(native) = self.windows.get_mut(&id) {
                     native.cursor = PhysicalPosition::new(-1.0, -1.0);
-                    native.pressed = None;
                 }
+                self.send_input(id, Input::PointerLeft);
             }
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Left,
-                ..
-            } => self.pointer_button(id, state == ElementState::Pressed),
+            WindowEvent::MouseInput { state, button, .. } => {
+                self.pointer_button(id, state == ElementState::Pressed, button)
+            }
             WindowEvent::MouseWheel { delta, .. } => {
-                if let Some(model) = lock(&self.session.state).windows.get_mut(&id) {
-                    let delta = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y as f64 * 36.0,
-                        MouseScrollDelta::PixelDelta(p) => p.y / model.scale.max(0.5),
+                if let Some(native) = self.windows.get(&id) {
+                    let scale = native.window.scale_factor();
+                    let (dx, dy) = match delta {
+                        MouseScrollDelta::LineDelta(x, y) => {
+                            (-f64::from(x) * 36.0, -f64::from(y) * 36.0)
+                        }
+                        MouseScrollDelta::PixelDelta(p) => (-p.x / scale, -p.y / scale),
                     };
-                    let max = (model.document.elements.len() as f64 * 44.0 + 40.0
-                        - model.pixel_height as f64 / model.scale.max(0.5))
-                    .max(0.0);
-                    model.document.scroll = (model.document.scroll - delta).clamp(0.0, max);
-                    model.dirty = true;
+                    let (x, y) = (native.cursor.x / scale, native.cursor.y / scale);
+                    self.send_input(id, Input::Wheel { dx, dy, x, y });
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => self.keyboard(id, event),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                let state = modifiers.state();
+                if let Some(native) = self.windows.get_mut(&id) {
+                    native.modifiers = state;
+                }
+                self.send_input(
+                    id,
+                    Input::Modifiers {
+                        shift: state.shift_key(),
+                        ctrl: state.control_key(),
+                        alt: state.alt_key(),
+                        meta: state.super_key(),
+                    },
+                );
+            }
+            // Focus changes synthesize key presses/releases on Windows and X11.
+            // They must not type characters or activate a newly focused control.
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => self.keyboard(id, event),
+            WindowEvent::Focused(focused) => {
+                if !focused {
+                    if let Some(native) = self.windows.get_mut(&id) {
+                        native.modifiers = ModifiersState::empty();
+                        native.composing = false;
+                    }
+                }
+                self.send_input(id, Input::Focus(focused));
+            }
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                if let Some(native) = self.windows.get_mut(&id) {
+                    native.composing = !text.is_empty();
+                }
+                self.send_input(id, Input::ImePreedit { text, cursor });
+            }
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                if let Some(native) = self.windows.get_mut(&id) {
+                    native.composing = false;
+                }
+                self.send_input(id, Input::ImeCommit(text));
+            }
+            WindowEvent::Ime(Ime::Enabled) => self.send_input(id, Input::ImeEnabled),
+            WindowEvent::Ime(Ime::Disabled) => {
+                if let Some(native) = self.windows.get_mut(&id) {
+                    native.composing = false;
+                }
+                self.send_input(id, Input::ImeDisabled);
+            }
             _ => {}
         }
         self.synchronize(event_loop);
@@ -498,10 +623,10 @@ impl ApplicationHandler<()> for Desktop {
             event_loop.set_control_flow(ControlFlow::Poll);
         } else if let Some(deadline) = self.session.deadline() {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
-            lock(&self.session.state).stats.wait_requests += 1;
+            self.session.note_wait();
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
-            lock(&self.session.state).stats.wait_requests += 1;
+            self.session.note_wait();
         }
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {

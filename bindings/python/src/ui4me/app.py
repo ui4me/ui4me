@@ -73,6 +73,7 @@ class App:
         self._token_lock = threading.Lock()
         self._native = library()
         self._state = "created"
+        self._run_active = False
         self._stopping = False
         self._session = 0
         self._sequence = itertools.count(1)
@@ -98,8 +99,8 @@ class App:
 
     def _active(self) -> None:
         self._owner_only()
-        if self._state not in ("created", "running"):
-            raise RuntimeError(f"Application session is {self._state}; create a fresh App")
+        if self._state not in ("created", "running") or self._stopping:
+            raise RuntimeError("Application session is stopping or terminal; create a fresh App")
 
     def _command(self, command: dict) -> dict:
         self._active()
@@ -118,14 +119,23 @@ class App:
         self._handlers[token] = (event, window, element, handler)
         return Subscription(self, token)
 
-    def open(self, html: str, *, title: str = "ui4me", width: int = 640, height: int = 480) -> Window:
-        result = self._command({"op": "open", "title": title, "html": html, "width": width, "height": height})
+    def _opened(self, result: dict) -> Window:
         window = Window(self, result["window"])
         self._windows[window.id] = window
         return window
 
-    def open_file(self, path, **options) -> Window:
-        return self.open(Path(path).read_text(encoding="utf-8"), **options)
+    def open(self, html: str, *, title: str = "ui4me", width: int = 640, height: int = 480,
+             base_path=None) -> Window:
+        """Open HTML. Relative assets require an explicit base directory."""
+        command = {"op": "open", "title": title, "html": html, "width": width, "height": height}
+        if base_path is not None:
+            command["base_path"] = str(Path(base_path).resolve())
+        return self._opened(self._command(command))
+
+    def open_file(self, path, *, title: str = "ui4me", width: int = 640, height: int = 480) -> Window:
+        """Load a document and resolve its assets against the file's directory."""
+        return self._opened(self._command({"op": "open_file", "path": str(Path(path).resolve(strict=True)),
+                                          "title": title, "width": width, "height": height}))
 
     def timer(self, milliseconds: int, handler: Callable[[dict], object], *, repeat: bool = False) -> Timer:
         self._active()
@@ -141,7 +151,7 @@ class App:
             raise TypeError("callback must be callable")
         future = OwnerFuture(self._owner)
         with self._lock:
-            if self._state not in ("created", "running"):
+            if self._state not in ("created", "running") or self._stopping:
                 future.set_exception(RuntimeError("Application is no longer accepting work"))
                 return future
             if len(self._pending) >= 512:
@@ -149,13 +159,16 @@ class App:
                 return future
             token = self._next_token()
             self._pending[token] = (future, callback)
-        try:
-            self._native.check(self._native.session_post(self._session, token))
-        except BaseException as error:
-            with self._lock:
-                entry = self._pending.pop(token, None)
-            if entry is not None and not future.done():
-                future.set_exception(error)
+            # post/stop/destroy do not dispatch callbacks. Keep admission and
+            # disposal linearized so an accepted post never uses a freed session.
+            try:
+                self._native.check(self._native.session_post(self._session, token))
+                failure = None
+            except BaseException as error:
+                self._pending.pop(token, None)
+                failure = error
+        if failure is not None:
+            future.set_exception(failure)
         return future
 
     def stop(self) -> None:
@@ -164,14 +177,20 @@ class App:
                 return
             identifier = self._session
             self._stopping = True
-        self._native.check(self._native.session_stop(identifier))
+            self._native.check(self._native.session_stop(identifier))
 
     def _dispatch(self, _session, raw, _user) -> int:
         try:
             event = json.loads(raw)
             kind = event["type"]
             if kind == "stopped":
-                self._stopping = True
+                with self._lock:
+                    self._stopping = True
+                    self._state = "stopped"
+            if kind == "closed":
+                window = self._windows.pop(event.get("window"), None)
+                if window:
+                    window._closed = True
             if kind == "post":
                 with self._lock:
                     entry = self._pending.pop(event["token"], None)
@@ -179,9 +198,11 @@ class App:
                     future, callback = entry
                     if future.set_running_or_notify_cancel():
                         try:
-                            future.set_result(callback())
+                            result = callback()
                         except BaseException as error:
                             future.set_exception(error)
+                        else:
+                            future.set_result(result)
             elif kind == "timer":
                 entry = self._timers.get(event["token"])
                 if entry:
@@ -190,15 +211,16 @@ class App:
                         self._timers.pop(event["token"], None)
                     handler(event)
             veto = False
-            for event_type, window_id, element_id, handler in tuple(self._handlers.values()):
+            for token in tuple(self._handlers):
+                entry = self._handlers.get(token)
+                if entry is None:
+                    continue
+                event_type, window_id, element_id, handler = entry
                 if (event_type == kind and (window_id is None or window_id == event.get("window"))
-                        and (element_id is None or element_id == event.get("element"))):
+                        and (element_id is None or element_id == event.get("element") or element_id in (event.get("path") or ()))):
                     if handler(event) is False and kind == "close_requested":
                         veto = True
             if kind == "closed":
-                window = self._windows.pop(event.get("window"), None)
-                if window:
-                    window._closed = True
                 self._handlers = {key: item for key, item in self._handlers.items() if item[1] != event.get("window")}
             return 1 if veto else 0
         except BaseException as error:
@@ -210,7 +232,7 @@ class App:
             return -1
 
     def run(self) -> None:
-        self._active()
+        self._owner_only()
         if self._state != "created":
             raise RuntimeError("Application is already running")
         previous_handler = None
@@ -220,7 +242,7 @@ class App:
             # Reserve before changing the signal handler or session state. Failure is retryable.
             try:
                 bridge = self.timer(100, lambda _: None, repeat=True)
-            except Ui4meError:
+            except (Ui4meError, RuntimeError):
                 # A concurrent stop can win between the check and the native command.
                 if not self._stopping:
                     raise
@@ -241,7 +263,9 @@ class App:
                     self._native.session_stop(self._session)
 
             signal.signal(signal.SIGINT, interrupt)
-        self._state = "running"
+        with self._lock:
+            self._state = "running"
+            self._run_active = True
         try:
             status = self._native.session_run(self._session)
             if self._callback_error is not None:
@@ -252,15 +276,16 @@ class App:
                 signal.signal(signal.SIGINT, previous_handler)
             with self._lock:
                 self._state = "stopped"
+                self._run_active = False
                 pending = list(self._pending.values())
                 self._pending.clear()
-            for future, _ in pending:
-                future.cancel()
             self._timers.clear()
             for window in self._windows.values():
                 window._closed = True
             self._windows.clear()
             self._handlers.clear()
+            for future, _ in pending:
+                future.cancel()
 
     def stats(self) -> dict:
         self._owner_only()
@@ -270,23 +295,24 @@ class App:
 
     def close(self) -> None:
         self._owner_only()
-        if self._state == "closed":
-            return
-        if self._state == "running":
-            raise RuntimeError("Call stop() during run(); close the App after run() returns")
-        self._native.check(self._native.session_destroy(self._session))
         with self._lock:
+            if self._state == "closed":
+                return
+            if self._run_active:
+                raise RuntimeError("Call stop() during run(); close the App after run() returns")
+            self._native.check(self._native.session_destroy(self._session))
             self._state = "closed"
+            self._stopping = True
             pending = list(self._pending.values())
             self._pending.clear()
-        for future, _ in pending:
-            future.cancel()
         self._handlers.clear()
         self._timers.clear()
         for window in self._windows.values():
             window._closed = True
         self._windows.clear()
         _live_apps.pop(self._session, None)
+        for future, _ in pending:
+            future.cancel()
 
     def __enter__(self):
         return self
@@ -319,6 +345,44 @@ class Window:
 
     def get_value(self, element: str) -> str:
         return self._command("get_value", element=element)["value"]
+
+    def diagnostics(self) -> dict:
+        """Return bounded document/resource/render diagnostics for this window."""
+        return self._command("diagnostics")
+
+    def set_value(self, element: str, value: str) -> None:
+        self._command("set_value", element=element, value=value)
+
+    def get_checked(self, element: str) -> bool:
+        return self._command("get_checked", element=element)["checked"]
+
+    def set_checked(self, element: str, checked: bool) -> None:
+        if not isinstance(checked, bool):
+            raise TypeError("checked must be bool")
+        self._command("set_checked", element=element, checked=checked)
+
+    def set_attribute(self, element: str, name: str, value: str) -> None:
+        self._command("set_attribute", element=element, name=name, value=value)
+
+    def remove_attribute(self, element: str, name: str) -> None:
+        self._command("remove_attribute", element=element, name=name)
+
+    def add_class(self, element: str, name: str) -> None:
+        self._command("add_class", element=element, name=name)
+
+    def remove_class(self, element: str, name: str) -> None:
+        self._command("remove_class", element=element, name=name)
+
+    def focus(self, element: str) -> None:
+        self._command("focus", element=element)
+
+    def replace_children_html(self, element: str, html: str) -> None:
+        """Replace a subtree after validation; rejection leaves it unchanged."""
+        self._command("replace_children_html", element=element, html=html)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
 
     def set_title(self, title: str) -> None:
         self._command("set_title", title=title)

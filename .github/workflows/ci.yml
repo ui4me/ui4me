@@ -40,7 +40,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Rust toolchain
-        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - name: Linux native prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1
@@ -53,10 +53,12 @@ jobs:
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
       - name: Prerequisite report
         run: python dev.py doctor
+      - name: Package version consistency
+        run: python dev.py version --check
       - name: Rust formatting
         run: cargo fmt --all -- --check
       - name: Rust lint contracts
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Build from committed dependency locks
         run: python dev.py build --binding all --profile release
       - name: Unit and binding contracts
@@ -140,6 +142,7 @@ jobs:
         os: [ubuntu-22.04, windows-2022]
         binding: [core, python, powershell]
         python: ['3.12']
+        powershell_host: ['7.6.9']
         include:
           - {os: ubuntu-22.04, binding: python, python: '3.11'}
           - {os: ubuntu-22.04, binding: python, python: '3.13'}
@@ -147,6 +150,8 @@ jobs:
           - {os: windows-2022, binding: python, python: '3.11'}
           - {os: windows-2022, binding: python, python: '3.13'}
           - {os: windows-2022, binding: python, python: '3.14'}
+          - {os: ubuntu-22.04, binding: powershell, python: '3.12', powershell_host: '7.4.0', floor: true}
+          - {os: windows-2022, binding: powershell, python: '3.12', powershell_host: '7.4.0', floor: true}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -163,7 +168,17 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/setup-msvc.ps1
       - run: python .github/scripts/setup-powershell.py
-        if: matrix.binding == 'powershell'
+        if: matrix.binding == 'powershell' && !matrix.floor
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: matrix.floor
+        with:
+          dotnet-version: '8.0.x'
+      - name: Oldest supported PowerShell host
+        if: matrix.floor
+        shell: bash
+        run: |
+          dotnet tool install PowerShell --version 7.4.0 --tool-path build/powershell-floor
+          python -c "import os; from pathlib import Path; p=Path('build/powershell-floor').resolve(); Path(os.environ['GITHUB_PATH']).open('a',encoding='utf-8').write(str(p)+'\n')"
       - shell: pwsh
         if: matrix.binding == 'powershell'
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
@@ -172,12 +187,15 @@ jobs:
           name: release-candidate
           path: dist/release
       - run: python dev.py test --binding ${{ matrix.binding }} --suite installed --manifest dist/release/manifest.json
+      - name: Upgrade an installed public 0.1 package
+        if: matrix.python == '3.12' && (matrix.binding == 'python' || (matrix.binding == 'powershell' && !matrix.floor))
+        run: python dev.py upgrade-check --binding ${{ matrix.binding }} --manifest dist/release/manifest.json --previous-version 0.1.0
       - run: python dev.py report --manifest dist/release/manifest.json
         if: always()
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: installed-${{ matrix.os }}-${{ matrix.binding }}-py${{ matrix.python }}
+          name: installed-${{ matrix.os }}-${{ matrix.binding }}-py${{ matrix.python }}-ps${{ matrix.powershell_host }}
           path: build/reports/
           if-no-files-found: error
           retention-days: 30

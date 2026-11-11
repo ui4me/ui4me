@@ -14,7 +14,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cat <<'TEXT'
 Python development tools are ready in .venv.
-Install Rust 1.90 via rustup, .NET SDK 10 and PowerShell 7.6 from their official installers.
+Install Rust 1.99.1 via rustup, .NET SDK 10 and PowerShell 7.6 from their official installers.
 The supported native build host is Linux x86-64 with Wayland or X11 development libraries.
 Next: source .venv/bin/activate
 Then: python dev.py doctor

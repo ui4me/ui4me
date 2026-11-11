@@ -15,6 +15,10 @@ def parser() -> argparse.ArgumentParser:
     subs = root.add_subparsers(dest="command", required=True)
     subs.add_parser("doctor", help="Show prerequisite paths and supported host information")
     subs.add_parser("lock", help="Resolve Cargo and NuGet lock files; review/commit before building")
+    metadata = subs.add_parser("version", help="Check or synchronize metadata from VERSION")
+    group = metadata.add_mutually_exclusive_group()
+    group.add_argument("--check", action="store_true")
+    group.add_argument("--set", dest="new_version")
     for name in ("build", "package", "test"):
         item = subs.add_parser(name)
         item.add_argument("--binding", choices=("all", "core", "python", "powershell", "tools"), default="all")
@@ -49,6 +53,10 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--execute", action="store_true", help="Perform the external publication; default is a dry run")
     source = subs.add_parser("source-zip")
     source.add_argument("--out", type=Path, default=ROOT / "dist" / "ui4me-source.zip")
+    upgrade = subs.add_parser("upgrade-check", help="Install a previous public package, then upgrade to exact candidate bytes in fresh processes")
+    upgrade.add_argument("--binding", choices=("python", "powershell"), required=True)
+    upgrade.add_argument("--manifest", type=Path, required=True)
+    upgrade.add_argument("--previous-version", default="0.1.0")
     return root
 
 
@@ -62,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
         if sys.version_info < (3, 11):
             raise DevError("Python 3.11 or newer is required for repository tooling")
         from . import evidence, packages, publishing, testing
-        if args.command == "lock":
+        if args.command == "version":
+            from .versioning import synchronize
+            synchronize(args.new_version)
+        elif args.command == "lock":
             packages.lock_dependencies()
         elif args.command == "build":
             if args.binding == "tools":
@@ -98,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if publishing.verify(args.manifest, args.registry) else 1
         elif args.command == "source-zip":
             publishing.source_zip(args.out)
+        elif args.command == "upgrade-check":
+            return 0 if testing.upgrade(args.binding, args.manifest, args.previous_version) else 1
         return 0
     except (DevError, OSError, ValueError, KeyError) as error:
         print(f"ui4me: {error}", file=sys.stderr)

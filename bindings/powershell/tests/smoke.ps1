@@ -20,7 +20,7 @@ try {
     Import-Module -Name $manifest -ErrorAction Stop
     $identity = Get-Ui4meInfo
     Test-Case 'PS01_version_abi' {
-        if ($identity.version -ne '0.1.0' -or $identity.abi -ne 1 -or $identity.product -ne 'ui4me') { throw 'Version/ABI mismatch' }
+        if ($identity.version -ne $identity.binding_version -or $identity.abi -ne 1 -or $identity.product -ne 'ui4me') { throw 'Version/ABI mismatch' }
     }
     Test-Case 'PS02_session_cleanup' {
         1..2 | ForEach-Object {
@@ -195,6 +195,119 @@ try {
         }
         if (-not $failed) { throw 'Initializer error was swallowed' }
     }
+
+    Test-Case 'PS17_transactional_registration' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            foreach ($i in 1..6) {
+                $failed = $false
+                try { $null = $app.Work($null, @(), {}) } catch { $failed = $true }
+                if (-not $failed) { throw 'Null work script accepted' }
+                $failed = $false
+                try { $null = $app.Timer(1, $null, $true) } catch { $failed = $true }
+                if (-not $failed) { throw 'Null timer handler accepted' }
+            }
+            if (($app.StatsJson() | ConvertFrom-Json).timers -ne 0) { throw 'Failed timer registrations leaked' }
+            $null = $app.Work({ 42 }, @(), { param($values, $error)
+                if ($error -or $values[0] -ne 42) { throw 'Worker capacity leaked after rejected calls' }
+                $app.Stop()
+            })
+            $null = $app.Timer(5000, { throw 'Valid work after failure timed out' }, $false)
+        }
+    }
+    Test-Case 'PS18_completion_survives_post_saturation' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{completed=0}
+            foreach ($i in 1..512) { $null = $app.Post({}) }
+            $worker = $app.Work({ 42 }, @(), { param($values, $error)
+                if ($error -or $values[0] -ne 42) { throw 'Reserved completion returned wrong result' }
+                $state.completed++
+                $app.Stop()
+            })
+            $deadline = [DateTime]::UtcNow.AddSeconds(5)
+            while (-not $worker.IsExecutionCompleted -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }
+            if (-not $worker.IsExecutionCompleted) { throw 'Background execution did not finish before run' }
+            if ($worker.GetResult()[0] -ne 42) { throw 'Work handle did not preserve result' }
+            $null = $app.Timer(5000, { throw 'Reserved completion timed out with full post queue' }, $false)
+            $null = $app.On('stopped', { if ($state.completed -ne 1) { throw 'Completion was lost or duplicated' } })
+        }
+    }
+    Test-Case 'PS19_background_failure_is_observable' {
+        $worker = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $worker = $app.Work({ throw 'Observable worker failure' }, @(), { param($values, $error)
+                if ($null -eq $error -or $error.ToString() -notmatch 'Observable worker failure') { throw 'Worker error missing' }
+                $app.Stop()
+            })
+            $null = $app.Timer(5000, { throw 'Worker failure callback timed out' }, $false)
+            Write-Output -NoEnumerate $worker
+        }
+        if ($worker.Status -ne 'failed' -or $null -eq $worker.Error -or -not $worker.IsExecutionCompleted) { throw 'Work failure state missing' }
+        $failed = $false
+        try { $null = $worker.GetResult() } catch { $failed = $true }
+        if (-not $failed) { throw 'Failed Work.GetResult did not throw' }
+    }
+    Test-Case 'PS20_subscription_reentry_and_terminal_guard' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $state = @{later=$null; guarded=$false}
+            $null = $app.On('started', { $state.later.Dispose() })
+            $state.later = $app.On('started', { throw 'Removed listener ran in current dispatch' })
+            $null = $app.On('started', { $app.Stop() })
+            $null = $app.On('stopped', {
+                try { $app.Dispose() } catch { $state.guarded = $true }
+                if (-not $state.guarded) { throw 'Dispose was allowed inside active run' }
+            })
+        }
+    }
+    Test-Case 'PS21_document_updates' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<div id="rows"><p id="old">One</p></div><input id="name" value="Keep"><input id="flag" type="checkbox">')
+            $window.SetValue('name', 'Příliš žluťoučký')
+            $window.SetChecked('flag', $true)
+            if (-not $window.GetChecked('flag')) { throw 'Checked state not updated' }
+            $window.SetAttribute('rows', 'class', 'list')
+            $window.AddClass('rows', 'active')
+            $window.RemoveClass('rows', 'list')
+            $window.ReplaceChildrenHtml('rows', '<p id="new">Two</p>')
+            $window.SetText('new', 'Updated')
+            if ($window.GetValue('name') -ne 'Příliš žluťoučký') { throw 'Subtree update erased unrelated input' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
+    Test-Case 'PS22_cancel_completed_work_before_delivery' {
+        $worker = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $worker = $app.Work({ 42 }, @(), { throw 'Cancelled completion was delivered' })
+            $deadline = [DateTime]::UtcNow.AddSeconds(5)
+            while (-not $worker.IsExecutionCompleted -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }
+            if (-not $worker.IsExecutionCompleted) { throw 'Work did not finish before cancellation' }
+            $worker.Cancel()
+            $null = $app.Timer(20, { $app.Stop() }, $false)
+            Write-Output -NoEnumerate $worker
+        }
+        if (-not $worker.IsCancellationRequested -or $worker.CompletionDelivered -or -not $worker.IsDeliveryCompleted) { throw 'Cancelled delivery state is incorrect' }
+        if ($worker.GetResult()[0] -ne 42) { throw 'Late cancellation erased an already completed result' }
+    }
+    Test-Case 'PS23_cancel_active_work_is_observable' {
+        $worker = Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $worker = $app.Work({ Start-Sleep -Seconds 3; 42 }, @(), { throw 'Cancelled active work was delivered' })
+            $worker.Cancel()
+            if (-not $worker.IsCancelled) { throw 'Cancellation did not settle work outcome' }
+            $null = $app.Timer(20, { $app.Stop() }, $false)
+            Write-Output -NoEnumerate $worker
+        }
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not $worker.IsExecutionCompleted -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }
+        if (-not $worker.IsExecutionCompleted -or -not $worker.IsCancelled -or $worker.CompletionDelivered) { throw 'Cancelled execution did not settle and leave' }
+        $failed = $false
+        try { $null = $worker.GetResult() } catch { $failed = $true }
+        if (-not $failed) { throw 'Cancelled Work.GetResult did not throw' }
+    }
+
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {

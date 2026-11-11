@@ -9,20 +9,10 @@ sys.path.insert(0, str(ROOT))
 from tools.ui4me_dev.common import find_artifact, load_manifest, read_json, revision, sha256, write_json
 from tools.ui4me_dev.evidence import evidence_errors, receipts
 from tools.ui4me_dev.testing import INSTALLED
+from tools.ui4me_dev.validation import proof_errors, upgrade_errors
 
 PLATFORMS = ("linux-x64", "win-x64")
 PYTHONS = ("3.11", "3.12", "3.13", "3.14")
-
-
-def proof_errors(path: Path, data: dict) -> list[str]:
-    errors = []
-    if not data.get("proof_files"):
-        errors.append(f"Missing proof files: {path}")
-    for item in data.get("proof_files", []):
-        proof = (path.parent / item["path"]).resolve()
-        if not proof.is_relative_to(path.parent.resolve()) or not proof.is_file() or sha256(proof) != item["sha256"]:
-            errors.append(f"Missing or changed proof: {path} {item['path']}")
-    return errors
 
 
 def check_receipts(values: list[tuple[Path, dict]], manifest: dict, manifest_hash: str) -> list[str]:
@@ -43,7 +33,8 @@ def check_receipts(values: list[tuple[Path, dict]], manifest: dict, manifest_has
             for python in PYTHONS if binding == "python" else (None,):
                 label = f"{platform}/{binding}" + (f"/Python {python}" if python else "")
                 matches = [(p, d) for p, d in values if (d.get("platform"), d.get("binding"), d.get("suite")) == (platform, binding, "installed")
-                           and (python is None or d.get("harness", {}).get("python", "").startswith(python + "."))]
+                           and (python is None or d.get("harness", {}).get("python", "").startswith(python + "."))
+                           and (binding != "powershell" or manifest.get("version", "0.1.0") == "0.1.0" or d.get("harness", {}).get("powershell", "").startswith("7.6."))]
                 if not matches:
                     errors.append(f"Missing installed consumer: {label}")
                     continue
@@ -59,6 +50,21 @@ def check_receipts(values: list[tuple[Path, dict]], manifest: dict, manifest_has
                 errors.extend(proof_errors(path, data))
                 if binding != "core":
                     errors.extend(evidence_errors(path, data, {}))
+        if manifest.get("version", "0.1.0") != "0.1.0":
+            floor = [(p, d) for p, d in values if (d.get("platform"), d.get("binding"), d.get("suite")) == (platform, "powershell", "installed")
+                     and d.get("harness", {}).get("powershell", "").startswith("7.4.")]
+            if not floor:
+                errors.append(f"Missing PowerShell 7.4 floor consumer: {platform}")
+            else:
+                path, data = floor[-1]
+                cases = data.get("cases", [])
+                if data.get("status") != "passed" or len(cases) != len(INSTALLED) or {c.get("id") for c in cases} != INSTALLED or any(c.get("status") != "passed" for c in cases):
+                    errors.append(f"PowerShell 7.4 floor consumer did not pass: {platform}")
+                if data.get("manifest_sha256") != manifest_hash or data.get("consumed_artifact") != find_artifact(manifest, "powershell-package"):
+                    errors.append(f"PowerShell 7.4 floor consumer used different artifacts: {platform}")
+                errors.extend(proof_errors(path, data))
+                errors.extend(evidence_errors(path, data, {}))
+    errors.extend(upgrade_errors(values, manifest, manifest_hash)[0])
     return errors
 
 
@@ -82,11 +88,11 @@ def main() -> None:
         if not archive.is_relative_to(folder.resolve()) or not archive.is_file() or sha256(archive) != report.get("sdist", {}).get("sha256") or not consumer.is_file() or sha256(consumer) != report.get("consumer_sha256"):
             errors.append(f"Source-distribution proof missing or changed: {platform}")
     write_json(ROOT / "build/reports/ci-summary.json", {"status": "failed" if errors else "passed", "source_id": manifest["source_id"],
-               "git_revision": manifest["git_revision"], "unit_suites": 8, "installed_consumers": 12, "source_checks": 2,
+               "git_revision": manifest["git_revision"], "unit_suites": 8, "installed_consumers": 14, "upgrade_checks": 4, "source_checks": 2,
                "python_versions": list(PYTHONS), "native_desktop_acceptance": "not_run", "errors": errors})
     if errors:
         raise SystemExit("CI evidence incomplete:\n" + "\n".join(errors))
-    print("CI evidence passed: 8 unit suites, 12 installed consumers, 2 standalone source-distribution checks.")
+    print("CI evidence passed: 8 unit suites, 14 installed consumers, 4 previous-version upgrades, 2 standalone source-distribution checks.")
     print("Native desktop acceptance remains separate and is not implied by this gate.")
 
 

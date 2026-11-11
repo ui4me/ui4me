@@ -1,60 +1,46 @@
-"""A small native application; install the ui4me wheel before running it."""
+"""Run after installing the ui4me wheel. Only public App/Window methods are used."""
+from pathlib import Path
 from threading import Thread
-
 from ui4me import App
 
 
-FORM = '''<body style="background-color: #F3F6FA">
-<h1 style="color: blue">ui4me foundation</h1>
-<label>Your name:</label>
-<input id="name" type="text" value="World">
-<button id="greet">Greet</button>
-<button id="second">Open second window</button>
-<button id="resize">Resize this window</button>
-<button id="work">Run background work</button>
-<button id="quit">Quit now</button>
-<p id="status">Try a button. The first close request is intercepted.</p>
-</body>'''
+def run(source: Path | None = None) -> None:
+    source = source or Path(__file__).resolve().parents[1] / "foundation"
+    with App() as app:
+        window = app.open_file(source / "index.html", title="UI4ME · Python", width=1000, height=820)
+        state = {"rows": 4, "highlight": False}
 
+        def greet(_):
+            enabled = "on" if window.get_checked("enabled") else "off"
+            window.set_text("status", f"Hello, {window.get_value('name')}! Notifications: {enabled}.")
 
-with App() as app:
-    window = app.open(FORM, title="ui4me - Python", width=760, height=700)
-    state = {"confirm_close": False, "closed": False}
+        def add(_):
+            state["rows"] += 1
+            window.replace_children_html("rows", "".join(
+                f'<p class="row">{i} · Result row updated by Python</p>' for i in range(1, state["rows"] + 1)))
+            window.set_text("status", f"{state['rows']} rows. Your other inputs are unchanged.")
 
-    def greet(_event):
-        window.set_text("status", f"Hello, {window.get_value('name')}!")
+        def highlight(_):
+            state["highlight"] = not state["highlight"]
+            (window.add_class if state["highlight"] else window.remove_class)("form", "highlight")
 
-    def open_second(_event):
-        app.open('<h1>Second window</h1><p>Close this window independently.</p>',
-                 title="ui4me - second window", width=500, height=300)
+        def work(_):
+            window.set_text("status", "Calculating in a background thread…")
+            def calculate():
+                total = sum(range(100_000))
+                def show():
+                    if not window.closed:
+                        window.set_text("status", f"Background result: {total:,}. Callback is on the UI owner.")
+                app.post(show)
+            Thread(target=calculate, name="ui4me-example-worker", daemon=True).start()
 
-    def close_requested(_event):
-        if not state["confirm_close"]:
-            state["confirm_close"] = True
-            window.set_text("status", "Close again to exit, or use Quit now.")
-            return False
+        window.on("click", greet, element="greet")
+        window.on("click", add, element="add")
+        window.on("click", highlight, element="accent")
+        window.on("click", work, element="work")
+        window.on("click", lambda _: app.open_file(source / "settings.html", title="UI4ME · Settings", width=520, height=380), element="settings")
+        window.on("click", lambda _: app.stop(), element="quit")
+        app.run()
 
-    def work(_event):
-        window.set_text("status", "Working in a background thread...")
-
-        def calculate():
-            result = sum(range(100_000))
-
-            def display():
-                if not state["closed"]:
-                    window.set_text("status", f"Background result: {result}")
-
-            # Posting is safe from the worker. The returned future is settled or
-            # cancelled by the app; never wait on it from the UI thread.
-            app.post(display)
-
-        Thread(target=calculate, name="ui4me-demo-worker", daemon=True).start()
-
-    window.on("click", greet, element="greet")
-    window.on("click", open_second, element="second")
-    window.on("click", lambda _: window.resize(860, 760), element="resize")
-    window.on("click", work, element="work")
-    window.on("click", lambda _: app.stop(), element="quit")
-    window.on("close_requested", close_requested)
-    window.on("closed", lambda _: state.update(closed=True))
-    app.run()
+if __name__ == "__main__":
+    run()

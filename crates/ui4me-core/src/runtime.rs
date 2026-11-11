@@ -1,11 +1,18 @@
-use crate::document::Document;
+//! Session ownership. The process registry stores only thread-safe control data.
+//! DOM, rendering, windows and timers live in OWNER on their creating thread.
+#[cfg(any(feature = "native", test))]
+use crate::document::Input;
+use crate::document::{Document, MAX_PIXELS};
+use crate::protocol::{self, Backend, Command, Config};
 use crate::{Error, Result};
 use serde_json::{json, Value};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 use std::fs::File;
-use std::io::BufWriter;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::{BufWriter, Read};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread::{self, ThreadId};
 use std::time::{Duration, Instant};
@@ -13,6 +20,9 @@ use std::time::{Duration, Instant};
 pub type Callback = extern "C" fn(u64, *const c_char, *mut c_void) -> i32;
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static ACTIVE: OnceLock<Mutex<Option<Arc<Session>>>> = OnceLock::new();
+thread_local! { static OWNER: RefCell<Option<OwnerSession>> = const { RefCell::new(None) }; }
+const MAX_POSTS: usize = 512;
+const MAX_COMPLETIONS: usize = 128;
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -22,20 +32,18 @@ fn active() -> &'static Mutex<Option<Arc<Session>>> {
 }
 fn next_id() -> Result<u64> {
     NEXT_ID
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
         .map_err(|_| Error::limit("identifier space exhausted"))
 }
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Ready,
     Running,
+    Stopping,
     Stopped,
 }
-
-#[derive(Clone)]
-pub struct WindowModel {
-    pub document: Document,
+#[derive(Clone, Debug)]
+pub struct WindowInfo {
     pub title: String,
     pub width: u32,
     pub height: u32,
@@ -46,10 +54,21 @@ pub struct WindowModel {
     pub dirty: bool,
     pub resize_revision: u64,
 }
-pub struct Timer {
-    pub due: Instant,
-    pub interval: Duration,
-    pub repeat: bool,
+struct WindowState {
+    info: WindowInfo,
+    document: Document,
+    last_error: Option<(i32, String)>,
+}
+struct Timer {
+    due: Instant,
+    interval: Duration,
+    repeat: bool,
+}
+struct OwnerSession {
+    id: u64,
+    windows: BTreeMap<u64, WindowState>,
+    timers: BTreeMap<u64, Timer>,
+    had_window: bool,
 }
 #[derive(Default)]
 pub struct Stats {
@@ -59,14 +78,17 @@ pub struct Stats {
     pub callbacks: u64,
     pub loop_turns: u64,
     pub wait_requests: u64,
+    pub completions_delivered: u64,
+    pub completions_cancelled: u64,
 }
-pub struct State {
+pub struct Control {
     pub phase: Phase,
     pub stop: bool,
-    pub windows: BTreeMap<u64, WindowModel>,
-    pub had_window: bool,
-    pub posts: VecDeque<u64>,
-    pub timers: BTreeMap<u64, Timer>,
+    wake_generation: u64,
+    posts: VecDeque<u64>,
+    // false = reserved; true = published and waiting for owner delivery.
+    completions: BTreeMap<u64, bool>,
+    ready_completions: VecDeque<u64>,
     pub failure: Option<Error>,
     pub stats: Stats,
 }
@@ -75,13 +97,29 @@ pub struct Session {
     pub owner: ThreadId,
     pub native: bool,
     pub app_id: String,
+    // Retained in portable configuration even when only headless is compiled.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub allow_any_thread: bool,
     callback: Option<Callback>,
     user: usize,
-    pub state: Mutex<State>,
+    pub control: Mutex<Control>,
     changed: Condvar,
+    run_active: AtomicBool,
+    callback_depth: AtomicUsize,
     #[cfg(feature = "native")]
     pub proxy: Mutex<Option<winit::event_loop::EventLoopProxy<()>>>,
+}
+struct RunLease<'a>(&'a Session);
+impl Drop for RunLease<'_> {
+    fn drop(&mut self) {
+        self.0.run_active.store(false, Ordering::Release);
+    }
+}
+struct CallbackLease<'a>(&'a Session);
+impl Drop for CallbackLease<'_> {
+    fn drop(&mut self) {
+        self.0.callback_depth.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 pub fn get(id: u64) -> Result<Arc<Session>> {
@@ -91,88 +129,60 @@ pub fn get(id: u64) -> Result<Arc<Session>> {
         .cloned()
         .ok_or_else(|| Error::stale("unknown or destroyed session"))
 }
-pub fn create(config: Value, callback: Option<Callback>, user: *mut c_void) -> Result<u64> {
+pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Result<u64> {
     if crate::POISONED.load(Ordering::Acquire) {
         return Err(Error::poison("runtime is poisoned; start a fresh process"));
     }
-    let map = config
-        .as_object()
-        .ok_or_else(|| Error::arg("configuration must be a JSON object"))?;
-    for key in map.keys() {
-        if key != "backend" && key != "app_id" && key != "allow_any_thread" {
-            return Err(Error::arg(format!("unknown configuration field: {key}")));
-        }
-    }
-    let backend = config
-        .get("backend")
-        .map(|v| {
-            v.as_str()
-                .ok_or_else(|| Error::arg("backend must be a string"))
-        })
-        .transpose()?
-        .unwrap_or("native");
-    if !matches!(backend, "native" | "headless") {
-        return Err(Error::arg("backend must be native or headless"));
-    }
-    let app_id = config
-        .get("app_id")
-        .map(|v| {
-            v.as_str()
-                .ok_or_else(|| Error::arg("app_id must be a string"))
-        })
-        .transpose()?
-        .unwrap_or("org.ui4me.app")
-        .to_owned();
-    let allow_any_thread = config
-        .get("allow_any_thread")
-        .map(|v| {
-            v.as_bool()
-                .ok_or_else(|| Error::arg("allow_any_thread must be boolean"))
-        })
-        .transpose()?
-        .unwrap_or(false);
-    if app_id.is_empty()
-        || app_id.len() > 128
-        || !app_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-    {
-        return Err(Error::arg(
-            "app_id must be 1..128 ASCII letters, digits, dot, hyphen or underscore",
-        ));
-    }
+    let config = Config::parse(value)?;
     #[cfg(not(feature = "native"))]
-    if backend == "native" {
+    if config.backend == Backend::Native {
         return Err(Error::native(
             "this build does not include the native backend",
         ));
     }
-    let mut active = lock(active());
-    if active.is_some() {
+    let mut registry = lock(active());
+    if registry.is_some() {
         return Err(Error::state(
             "another session exists; destroy it before creating a new one",
         ));
     }
     let id = next_id()?;
-    *active = Some(Arc::new(Session {
+    OWNER.with(|cell| {
+        let mut slot = cell
+            .try_borrow_mut()
+            .map_err(|_| Error::state("owner state is currently borrowed"))?;
+        if slot.is_some() {
+            return Err(Error::state("owner state from an earlier session remains"));
+        }
+        *slot = Some(OwnerSession {
+            id,
+            windows: BTreeMap::new(),
+            timers: BTreeMap::new(),
+            had_window: false,
+        });
+        Ok(())
+    })?;
+    *registry = Some(Arc::new(Session {
         id,
         owner: thread::current().id(),
-        native: backend == "native",
-        app_id,
-        allow_any_thread,
+        native: config.backend == Backend::Native,
+        app_id: config.app_id,
+        allow_any_thread: config.allow_any_thread,
         callback,
         user: user as usize,
-        state: Mutex::new(State {
+        control: Mutex::new(Control {
             phase: Phase::Ready,
             stop: false,
-            windows: BTreeMap::new(),
-            had_window: false,
+            wake_generation: 0,
             posts: VecDeque::new(),
-            timers: BTreeMap::new(),
+            completions: BTreeMap::new(),
+            ready_completions: VecDeque::new(),
             failure: None,
             stats: Stats::default(),
         }),
         changed: Condvar::new(),
+        run_active: AtomicBool::new(false),
+        callback_depth: AtomicUsize::new(0),
         #[cfg(feature = "native")]
         proxy: Mutex::new(None),
     }));
@@ -181,13 +191,57 @@ pub fn create(config: Value, callback: Option<Callback>, user: *mut c_void) -> R
 
 impl Session {
     pub fn assert_owner(&self) -> Result<()> {
-        if self.owner != thread::current().id() {
+        if self.owner == thread::current().id() {
+            Ok(())
+        } else {
             Err(Error::thread("operation requires the session owner thread"))
+        }
+    }
+    fn with_owner<R>(&self, action: impl FnOnce(&mut OwnerSession) -> Result<R>) -> Result<R> {
+        self.assert_owner()?;
+        OWNER.with(|cell| {
+            let mut slot = cell
+                .try_borrow_mut()
+                .map_err(|_| Error::state("document operation reentered an active engine pass"))?;
+            let owner = slot
+                .as_mut()
+                .filter(|o| o.id == self.id)
+                .ok_or_else(|| Error::stale("owner session was destroyed"))?;
+            action(owner)
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn exercise_owner_borrow<R>(&self, action: impl FnOnce() -> R) -> Result<R> {
+        self.with_owner(|_| Ok(action()))
+    }
+    fn with_window<R>(
+        &self,
+        id: u64,
+        action: impl FnOnce(&mut WindowState) -> Result<R>,
+    ) -> Result<R> {
+        self.with_owner(|o| {
+            action(
+                o.windows
+                    .get_mut(&id)
+                    .ok_or_else(|| Error::stale("unknown or closed window"))?,
+            )
+        })
+    }
+    fn require_active(&self) -> Result<()> {
+        let state = lock(&self.control);
+        if state.stop || matches!(state.phase, Phase::Stopping | Phase::Stopped) {
+            Err(Error::state("session is stopping or stopped"))
         } else {
             Ok(())
         }
     }
     pub fn wake(&self) {
+        // Synchronize predicate changes with Condvar waiting; a decode completing
+        // between polling and waiting must not lose its wakeup.
+        {
+            let mut control = lock(&self.control);
+            control.wake_generation = control.wake_generation.wrapping_add(1);
+        }
         self.changed.notify_all();
         #[cfg(feature = "native")]
         if let Some(proxy) = lock(&self.proxy).as_ref() {
@@ -195,46 +249,81 @@ impl Session {
         }
     }
     pub fn stop(&self) -> Result<()> {
-        let mut s = lock(&self.state);
-        // stop is idempotent for an existing terminal session.
-        s.stop = true;
-        drop(s);
+        let mut state = lock(&self.control);
+        state.stop = true;
+        if state.phase == Phase::Running {
+            state.phase = Phase::Stopping;
+        }
+        drop(state);
         self.wake();
         Ok(())
     }
     pub fn post(&self, token: u64) -> Result<()> {
-        let mut s = lock(&self.state);
-        if s.stop || s.phase == Phase::Stopped {
+        let mut state = lock(&self.control);
+        if state.stop || state.phase == Phase::Stopped {
             return Err(Error::state("session is stopping or stopped"));
         }
-        if s.posts.len() >= 512 {
+        if state.posts.len() >= MAX_POSTS {
             return Err(Error::limit("deferred queue is full (512)"));
         }
-        s.posts.push_back(token);
-        s.stats.posted += 1;
-        drop(s);
+        state.posts.push_back(token);
+        state.stats.posted += 1;
+        drop(state);
+        self.wake();
+        Ok(())
+    }
+    /// Cross-thread publication uses capacity reserved on the owner before starting work.
+    pub fn complete(&self, token: u64) -> Result<()> {
+        let mut state = lock(&self.control);
+        if state.stop || state.phase == Phase::Stopped {
+            return Err(Error::state("session is stopping or stopped"));
+        }
+        let ready = state
+            .completions
+            .get_mut(&token)
+            .ok_or_else(|| Error::stale("completion ticket is unknown or retired"))?;
+        if *ready {
+            return Err(Error::stale("completion ticket was already published"));
+        }
+        *ready = true;
+        state.ready_completions.push_back(token);
+        drop(state);
         self.wake();
         Ok(())
     }
     pub fn fail(&self, error: Error) {
-        let mut s = lock(&self.state);
-        if s.failure.is_none() {
-            s.failure = Some(error);
+        let mut state = lock(&self.control);
+        if state.failure.is_none() {
+            state.failure = Some(error);
         }
-        s.stop = true;
-        drop(s);
+        state.stop = true;
+        if state.phase == Phase::Running {
+            state.phase = Phase::Stopping;
+        }
+        drop(state);
         self.wake();
     }
-    /// No lock is held when the foreign callback executes. Reentrant commands are supported.
+    /// No engine borrow or control lock is held while foreign code executes.
     pub fn emit(&self, event: Value) -> i32 {
+        if self.assert_owner().is_err() {
+            self.fail(Error::thread("callback attempted off owner thread"));
+            return -1;
+        }
+        // An Arc may outlive registry retirement (for example in a producer).
+        // Registry retirement is also the callback-root lifetime boundary.
+        if get(self.id).is_err() {
+            return -1;
+        }
         let Some(callback) = self.callback else {
             return 0;
         };
-        lock(&self.state).stats.callbacks += 1;
         let Ok(text) = CString::new(event.to_string()) else {
             self.fail(Error::arg("event serialization contains NUL"));
             return -1;
         };
+        self.callback_depth.fetch_add(1, Ordering::AcqRel);
+        let _lease = CallbackLease(self);
+        lock(&self.control).stats.callbacks += 1;
         let result = callback(self.id, text.as_ptr(), self.user as *mut c_void);
         if result < 0 {
             self.fail(Error::callback(
@@ -243,112 +332,292 @@ impl Session {
         }
         result
     }
+    fn emit_document_events(&self, window: u64, events: Vec<Value>) {
+        for mut event in events {
+            if self.should_stop() || self.window_info(window).is_none() {
+                break;
+            }
+            if !self
+                .with_window(window, |w| Ok(w.document.event_is_current(&event)))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if let Some(object) = event.as_object_mut() {
+                object.remove("_target");
+                object.remove("_element");
+                object.insert("window".into(), json!(window));
+            }
+            self.emit(event);
+        }
+    }
     pub fn should_stop(&self) -> bool {
-        lock(&self.state).stop
+        lock(&self.control).stop
+    }
+    pub fn window_ids(&self) -> Vec<u64> {
+        self.with_owner(|o| Ok(o.windows.keys().copied().collect()))
+            .unwrap_or_default()
+    }
+    pub fn window_info(&self, id: u64) -> Option<WindowInfo> {
+        self.with_window(id, |w| Ok(w.info.clone())).ok()
     }
     pub fn close_requested(&self, id: u64) -> bool {
-        if !lock(&self.state).windows.contains_key(&id) {
+        if self.window_info(id).is_none() {
             return false;
         }
         let veto = self.emit(json!({"type":"close_requested","window":id})) == 1;
-        let mut state = lock(&self.state);
-        if let Some(w) = state.windows.get_mut(&id) {
-            w.closing = false;
-        }
-        !veto || state.stop
+        let exists = self
+            .with_window(id, |w| {
+                w.info.closing = false;
+                Ok(())
+            })
+            .is_ok();
+        exists && (!veto || self.should_stop())
     }
-    /// Native resources must already have been dropped before calling this.
+    /// Native surface/window must be dropped before this notification.
     pub fn closed(&self, id: u64) {
-        if lock(&self.state).windows.remove(&id).is_some() {
+        let removed = self
+            .with_owner(|o| Ok(o.windows.remove(&id)))
+            .ok()
+            .flatten();
+        let existed = removed.is_some();
+        drop(removed); // Retire document resources before callbacks.
+        if existed {
             self.emit(json!({"type":"closed","window":id}));
         }
-        let mut state = lock(&self.state);
-        if state.had_window && state.windows.is_empty() {
-            state.stop = true;
+        if self
+            .with_owner(|o| Ok(o.had_window && o.windows.is_empty()))
+            .unwrap_or(false)
+        {
+            let _ = self.stop();
         }
     }
+    #[cfg(feature = "native")]
+    pub fn update_geometry(&self, id: u64, width: u32, height: u32, scale: f64) -> Result<()> {
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(Error::arg("scale must be finite and positive"));
+        }
+        self.with_window(id, |w| {
+            w.info.pixel_width = width;
+            w.info.pixel_height = height;
+            w.info.scale = scale;
+            w.info.dirty = true;
+            Ok(())
+        })
+    }
+    #[cfg(any(feature = "native", test))]
+    pub fn input(&self, id: u64, input: Input) -> Result<()> {
+        self.require_active()?;
+        let events = self.with_window(id, |w| {
+            let events = w.document.handle_input(input)?;
+            w.info.dirty |= w.document.needs_repaint();
+            Ok(events)
+        })?;
+        self.emit_document_events(id, events);
+        self.wake();
+        Ok(())
+    }
+    pub fn render(&self, id: u64) -> Result<Vec<u32>> {
+        self.with_window(id, |w| {
+            let i = &w.info;
+            if (i.pixel_width as usize).saturating_mul(i.pixel_height as usize) > MAX_PIXELS {
+                return Err(Error::limit("window exceeds the 16,777,216 pixel budget"));
+            }
+            let pixels = w.document.render(i.pixel_width, i.pixel_height, i.scale)?;
+            w.info.dirty = false;
+            w.last_error = None;
+            Ok(pixels)
+        })
+    }
+    pub fn report_document_error(&self, id: u64, error: Error) {
+        let key = (error.code, error.message.clone());
+        let fresh = self
+            .with_window(id, |w| {
+                // Do not continuously redraw a failing revision. A later edit/resource/resize retries.
+                w.info.dirty = false;
+                if w.last_error.as_ref() == Some(&key) {
+                    return Ok(false);
+                }
+                w.last_error = Some(key);
+                Ok(true)
+            })
+            .unwrap_or(false);
+        if fresh {
+            self.emit(
+                json!({"type":"error","window":id,"code":error.code,"message":error.message}),
+            );
+        }
+    }
+    #[cfg(feature = "native")]
+    pub fn ime_request(&self, id: u64) -> Option<crate::document::ImeState> {
+        self.with_window(id, |w| Ok(w.document.ime_request().cloned()))
+            .ok()
+            .flatten()
+    }
+    #[cfg(feature = "native")]
+    pub fn cursor(&self, id: u64) -> String {
+        self.with_window(id, |w| Ok(w.document.cursor().to_owned()))
+            .unwrap_or_else(|_| "default".into())
+    }
+    #[cfg(feature = "native")]
+    pub fn install_clipboard(
+        &self,
+        id: u64,
+        clipboard: Box<dyn crate::document::Clipboard>,
+    ) -> Result<()> {
+        self.with_window(id, |w| {
+            w.document.set_clipboard(clipboard);
+            Ok(())
+        })
+    }
     pub fn process_work(&self) {
-        lock(&self.state).stats.loop_turns += 1;
-        // A bounded batch allows OS input and timers to make progress under producer load.
-        for _ in 0..64 {
+        lock(&self.control).stats.loop_turns += 1;
+        // Reserved completions make progress even when the ordinary post queue is saturated.
+        for _ in 0..16 {
             let token = {
-                let mut s = lock(&self.state);
-                if s.stop {
+                let mut state = lock(&self.control);
+                if state.stop {
                     None
                 } else {
-                    let p = s.posts.pop_front();
-                    if p.is_some() {
-                        s.stats.executed += 1;
+                    let token = state.ready_completions.pop_front();
+                    if let Some(token) = token {
+                        state.completions.remove(&token);
+                        state.stats.completions_delivered += 1;
                     }
-                    p
+                    token
                 }
             };
-            let Some(token) = token else {
-                break;
+            let Some(token) = token else { break };
+            self.emit(json!({"type":"completion","token":token}));
+        }
+        for _ in 0..64 {
+            let token = {
+                let mut state = lock(&self.control);
+                if state.stop {
+                    None
+                } else {
+                    let token = state.posts.pop_front();
+                    if token.is_some() {
+                        state.stats.executed += 1;
+                    }
+                    token
+                }
             };
+            let Some(token) = token else { break };
             self.emit(json!({"type":"post","token":token}));
         }
         let now = Instant::now();
-        let due: Vec<u64> = lock(&self.state)
-            .timers
-            .iter()
-            .filter(|(_, t)| t.due <= now)
-            .map(|(id, _)| *id)
-            .collect();
+        let due = self
+            .with_owner(|o| {
+                Ok(o.timers
+                    .iter()
+                    .filter(|(_, t)| t.due <= now)
+                    .map(|(id, _)| *id)
+                    .collect::<Vec<_>>())
+            })
+            .unwrap_or_default();
         for token in due {
-            let fire = {
-                let mut s = lock(&self.state);
-                if s.stop {
-                    false
-                } else if let Some(timer) = s.timers.get_mut(&token) {
+            if self.should_stop() {
+                break;
+            }
+            let fire = self
+                .with_owner(|o| {
+                    let Some(timer) = o.timers.get_mut(&token) else {
+                        return Ok(false);
+                    };
                     if timer.due > now {
-                        false
-                    } else {
-                        if timer.repeat {
-                            timer.due = now + timer.interval;
-                        } else {
-                            s.timers.remove(&token);
-                        }
-                        true
+                        return Ok(false);
                     }
-                } else {
-                    false
-                }
-            };
+                    if timer.repeat {
+                        timer.due = now + timer.interval;
+                    } else {
+                        o.timers.remove(&token);
+                    }
+                    Ok(true)
+                })
+                .unwrap_or(false);
             if fire {
                 self.emit(json!({"type":"timer","token":token}));
             }
         }
+        if !self.should_stop() {
+            for id in self.window_ids() {
+                let result = self.with_window(id, |w| {
+                    if w.document.poll_resources()? {
+                        w.info.dirty = true;
+                    }
+                    Ok(w.document.drain_events())
+                });
+                match result {
+                    Ok(events) => self.emit_document_events(id, events),
+                    Err(error) => self.report_document_error(id, error),
+                }
+                if self.should_stop() {
+                    break;
+                }
+            }
+        }
     }
     pub fn deadline(&self) -> Option<Instant> {
-        lock(&self.state).timers.values().map(|t| t.due).min()
+        self.with_owner(|o| {
+            let mut deadline = o.timers.values().map(|t| t.due).min();
+            if let Some(delay) = o
+                .windows
+                .values()
+                .filter_map(|w| w.document.next_wake_in())
+                .min()
+            {
+                let wake = Instant::now() + delay;
+                deadline = Some(deadline.map_or(wake, |d| d.min(wake)));
+            }
+            Ok(deadline)
+        })
+        .ok()
+        .flatten()
     }
+    #[cfg(feature = "native")]
     pub fn has_work(&self) -> bool {
-        let s = lock(&self.state);
-        s.stop || !s.posts.is_empty() || s.windows.values().any(|w| w.closing)
+        {
+            let state = lock(&self.control);
+            if state.stop || !state.posts.is_empty() || !state.ready_completions.is_empty() {
+                return true;
+            }
+        }
+        self.with_owner(|o| Ok(o.windows.values().any(|w| w.info.closing)))
+            .unwrap_or(false)
+    }
+    #[cfg(feature = "native")]
+    pub fn note_wait(&self) {
+        lock(&self.control).stats.wait_requests += 1;
     }
     pub fn finish(&self) -> Result<()> {
-        // Called after the native adapter drops surfaces/windows, or after a headless loop.
-        let windows = {
-            let mut s = lock(&self.state);
-            s.stop = true;
-            let cancelled = s.posts.len() as u64;
-            s.stats.cancelled += cancelled;
-            s.posts.clear();
-            s.timers.clear();
-            s.windows.keys().copied().collect::<Vec<_>>()
-        };
-        for id in windows {
+        self.assert_owner()?;
+        {
+            let mut state = lock(&self.control);
+            state.stop = true;
+            state.phase = Phase::Stopping;
+            let n = state.posts.len() as u64;
+            state.stats.cancelled += n;
+            state.posts.clear();
+            let n = state.completions.len() as u64;
+            state.stats.completions_cancelled += n;
+            state.completions.clear();
+            state.ready_completions.clear();
+        }
+        self.with_owner(|o| {
+            o.timers.clear();
+            Ok(())
+        })?;
+        for id in self.window_ids() {
             self.closed(id);
         }
-        lock(&self.state).phase = Phase::Stopped;
+        lock(&self.control).phase = Phase::Stopped;
         self.emit(json!({"type":"stopped"}));
         #[cfg(feature = "native")]
         {
             *lock(&self.proxy) = None;
         }
-        let error = lock(&self.state).failure.clone();
-        if let Some(error) = error {
+        if let Some(error) = lock(&self.control).failure.clone() {
             Err(error)
         } else {
             Ok(())
@@ -357,14 +626,18 @@ impl Session {
     pub fn run(self: &Arc<Self>) -> Result<()> {
         self.assert_owner()?;
         {
-            let mut s = lock(&self.state);
-            if s.phase != Phase::Ready {
+            let mut state = lock(&self.control);
+            if state.phase != Phase::Ready {
                 return Err(Error::state(
                     "a session can run only once; create a fresh session",
                 ));
             }
-            s.phase = Phase::Running;
+            if self.run_active.swap(true, Ordering::AcqRel) {
+                return Err(Error::state("nested run is not supported"));
+            }
+            state.phase = Phase::Running;
         }
+        let _run_lease = RunLease(self);
         if !self.should_stop() {
             if self.native {
                 #[cfg(feature = "native")]
@@ -374,31 +647,29 @@ impl Session {
                 #[cfg(not(feature = "native"))]
                 self.fail(Error::native("native backend is not compiled"));
             } else {
-                self.emit(json!({"type":"started","backend":"headless"}));
+                self.emit(json!({"type":"started","backend":"headless","app_id":self.app_id}));
                 while !self.should_stop() {
+                    let observed_wake = lock(&self.control).wake_generation;
                     self.process_work();
-                    let closing: Vec<u64> = lock(&self.state)
-                        .windows
-                        .iter()
-                        .filter(|(_, w)| w.closing)
-                        .map(|(id, _)| *id)
-                        .collect();
-                    for id in closing {
+                    for id in self.window_ids() {
                         if self.should_stop() {
                             break;
                         }
-                        if self.close_requested(id) {
+                        if self.window_info(id).is_some_and(|w| w.closing)
+                            && self.close_requested(id)
+                        {
                             self.closed(id);
                         }
                     }
-                    let mut state = lock(&self.state);
+                    let deadline = self.deadline();
+                    let mut state = lock(&self.control);
                     if state.stop
                         || !state.posts.is_empty()
-                        || state.windows.values().any(|w| w.closing)
+                        || !state.ready_completions.is_empty()
+                        || state.wake_generation != observed_wake
                     {
                         continue;
                     }
-                    let deadline = state.timers.values().map(|t| t.due).min();
                     state.stats.wait_requests += 1;
                     if let Some(deadline) = deadline {
                         let timeout = deadline.saturating_duration_since(Instant::now());
@@ -414,56 +685,241 @@ impl Session {
         }
         self.finish()
     }
-
     pub fn command(&self, value: Value) -> Result<Value> {
         self.assert_owner()?;
-        let op = string(&value, "op")?;
-        let fields: &[&str] = match op {
-            "open" => &["op", "html", "title", "width", "height"],
-            "set_text" => &["op", "window", "element", "text"],
-            "get_value" => &["op", "window", "element"],
-            "close" => &["op", "window"],
-            "set_title" => &["op", "window", "title"],
-            "resize" => &["op", "window", "width", "height"],
-            "snapshot" => &["op", "window", "path"],
-            "timer" => &["op", "token", "milliseconds", "repeat"],
-            "cancel_timer" => &["op", "token"],
-            "stats" => &["op"],
-            _ => return Err(Error::arg(format!("unknown operation: {op}"))),
-        };
-        for key in value
-            .as_object()
-            .ok_or_else(|| Error::arg("command must be a JSON object"))?
-            .keys()
-        {
-            if !fields.contains(&key.as_str()) {
-                return Err(Error::arg(format!("unknown {op} field: {key}")));
-            }
+        let command = Command::parse(value)?;
+        if matches!(command, Command::Stats) {
+            return self.stats();
         }
-        if op == "stats" {
-            let s = lock(&self.state);
-            return Ok(
-                json!({"phase":format!("{:?}", s.phase).to_ascii_lowercase(),"windows":s.windows.len(),"pending_posts":s.posts.len(),"timers":s.timers.len(),"posted":s.stats.posted,"executed":s.stats.executed,"cancelled":s.stats.cancelled,"callbacks":s.stats.callbacks,"loop_turns":s.stats.loop_turns,"wait_requests":s.stats.wait_requests}),
-            );
-        }
-        let mut s = lock(&self.state);
-        if s.stop || s.phase == Phase::Stopped {
-            return Err(Error::state("session is stopping or stopped"));
-        }
-        let result = match op {
-            "open" => {
-                if s.windows.len() >= 32 {
-                    return Err(Error::limit("at most 32 windows"));
+        self.require_active()?;
+        let result = match command {
+            Command::Open {
+                html,
+                title,
+                width,
+                height,
+                base_path,
+            } => self.open_document(html, base_path, title, width, height)?,
+            Command::OpenFile {
+                path,
+                title,
+                width,
+                height,
+            } => {
+                protocol::validate_size(width, height)?;
+                protocol::validate_title(&title)?;
+                let path = std::fs::canonicalize(path)
+                    .map_err(|e| Error::io(format!("open_file: {e}")))?;
+                let file = File::open(&path).map_err(|e| Error::io(format!("open_file: {e}")))?;
+                let mut html = String::new();
+                file.take(1024 * 1024 + 1)
+                    .read_to_string(&mut html)
+                    .map_err(|e| Error::io(format!("open_file UTF-8: {e}")))?;
+                if html.len() > 1024 * 1024 {
+                    return Err(Error::limit("HTML exceeds 1 MiB"));
                 }
-                let document = Document::parse(string(&value, "html")?)?;
-                let title = optional_text(&value, "title", "ui4me", 4096)?;
-                let width = dimension(&value, "width", 640, 160)?;
-                let height = dimension(&value, "height", 480, 120)?;
-                let id = next_id()?;
-                s.windows.insert(
-                    id,
-                    WindowModel {
-                        document,
+                self.open_document(
+                    html,
+                    path.parent().map(Path::to_owned),
+                    title,
+                    width,
+                    height,
+                )?
+            }
+            Command::SetText {
+                window,
+                element,
+                text,
+            } => self.mutate(window, |d| d.set_text(&element, &text))?,
+            Command::GetValue { window, element } => self.with_window(window, |w| {
+                Ok(json!({"value":w.document.get_value(&element)?}))
+            })?,
+            Command::SetValue {
+                window,
+                element,
+                value,
+            } => self.mutate(window, |d| d.set_value(&element, &value))?,
+            Command::GetChecked { window, element } => self.with_window(window, |w| {
+                Ok(json!({"checked":w.document.get_checked(&element)?}))
+            })?,
+            Command::SetChecked {
+                window,
+                element,
+                checked,
+            } => self.mutate(window, |d| d.set_checked(&element, checked))?,
+            Command::SetAttribute {
+                window,
+                element,
+                name,
+                value,
+            } => self.mutate(window, |d| d.set_attribute(&element, &name, Some(&value)))?,
+            Command::RemoveAttribute {
+                window,
+                element,
+                name,
+            } => self.mutate(window, |d| d.set_attribute(&element, &name, None))?,
+            Command::AddClass {
+                window,
+                element,
+                name,
+            } => self.mutate(window, |d| d.add_class(&element, &name))?,
+            Command::RemoveClass {
+                window,
+                element,
+                name,
+            } => self.mutate(window, |d| d.remove_class(&element, &name))?,
+            Command::Focus { window, element } => self.mutate(window, |d| d.focus(&element))?,
+            Command::ReplaceChildrenHtml {
+                window,
+                element,
+                html,
+            } => self.mutate(window, |d| d.replace_children_html(&element, &html))?,
+            Command::Diagnostics { window } => self.with_window(window, |w| {
+                let mut diagnostics = w.document.diagnostics();
+                if let Some((code, message)) = &w.last_error {
+                    diagnostics.push(json!({"code":code,"message":message,"stage":"render"}));
+                }
+                Ok(json!({"diagnostics":diagnostics}))
+            })?,
+            Command::Close { window } => self.with_window(window, |w| {
+                w.info.closing = true;
+                Ok(json!({}))
+            })?,
+            Command::SetTitle { window, title } => {
+                protocol::validate_title(&title)?;
+                self.with_window(window, |w| {
+                    w.info.title = title;
+                    Ok(json!({}))
+                })?
+            }
+            Command::Resize {
+                window,
+                width,
+                height,
+            } => {
+                protocol::validate_size(width, height)?;
+                self.with_window(window, |w| {
+                    let revision = w
+                        .info
+                        .resize_revision
+                        .checked_add(1)
+                        .ok_or_else(|| Error::limit("resize revision exhausted"))?;
+                    w.info.width = width;
+                    w.info.height = height;
+                    w.info.resize_revision = revision;
+                    w.info.dirty = true;
+                    if !self.native {
+                        w.info.pixel_width = width;
+                        w.info.pixel_height = height;
+                    }
+                    Ok(json!({}))
+                })?
+            }
+            Command::Snapshot { window, path } => self.snapshot(window, &path)?,
+            Command::Timer {
+                token,
+                milliseconds,
+                repeat,
+            } => {
+                if !(1..=86_400_000).contains(&milliseconds) {
+                    return Err(Error::arg(
+                        "timer interval must be 1..86400000 milliseconds",
+                    ));
+                }
+                self.with_owner(|o| {
+                    if o.timers.len() >= 128 && !o.timers.contains_key(&token) {
+                        return Err(Error::limit("at most 128 timers"));
+                    }
+                    let interval = Duration::from_millis(milliseconds);
+                    o.timers.insert(
+                        token,
+                        Timer {
+                            due: Instant::now() + interval,
+                            interval,
+                            repeat,
+                        },
+                    );
+                    Ok(json!({"token":token}))
+                })?
+            }
+            Command::CancelTimer { token } => {
+                self.with_owner(|o| Ok(json!({"cancelled":o.timers.remove(&token).is_some()})))?
+            }
+            Command::ReserveCompletion { token } => {
+                let mut state = lock(&self.control);
+                if state.stop {
+                    return Err(Error::state("session is stopping"));
+                }
+                if state.completions.contains_key(&token) {
+                    return Err(Error::arg("completion token is already reserved"));
+                }
+                if state.completions.len() >= MAX_COMPLETIONS {
+                    return Err(Error::limit("completion capacity is full (128)"));
+                }
+                state.completions.insert(token, false);
+                json!({"token":token})
+            }
+            Command::CancelCompletion { token } => {
+                let mut state = lock(&self.control);
+                let cancelled = state.completions.remove(&token).is_some();
+                state.ready_completions.retain(|t| *t != token);
+                if cancelled {
+                    state.stats.completions_cancelled += 1;
+                }
+                json!({"cancelled":cancelled})
+            }
+            Command::Stats => unreachable!(),
+        };
+        self.wake();
+        Ok(result)
+    }
+    fn open_document(
+        &self,
+        html: String,
+        base: Option<PathBuf>,
+        title: String,
+        width: u32,
+        height: u32,
+    ) -> Result<Value> {
+        protocol::validate_title(&title)?;
+        protocol::validate_size(width, height)?;
+        self.with_owner(|o| {
+            if o.windows.len() >= 32 {
+                Err(Error::limit("at most 32 windows"))
+            } else {
+                Ok(())
+            }
+        })?;
+        if html.len() > 1024 * 1024 {
+            return Err(Error::limit("HTML exceeds 1 MiB"));
+        }
+        let base = base
+            .map(|p| {
+                let p =
+                    std::fs::canonicalize(p).map_err(|e| Error::io(format!("asset base: {e}")))?;
+                if !p.is_dir() {
+                    return Err(Error::arg("base_path must name a directory"));
+                }
+                Ok(p)
+            })
+            .transpose()?;
+        let mut document = Document::parse_with_source(&html, base.as_deref(), width, height)?;
+        let weak = Arc::downgrade(&get(self.id)?);
+        document.set_waker(Arc::new(move || {
+            if let Some(session) = weak.upgrade() {
+                session.wake();
+            }
+        }));
+        // Stop may have been requested while a large document was parsing.
+        self.require_active()?;
+        let id = next_id()?;
+        self.with_owner(|o| {
+            o.windows.insert(
+                id,
+                WindowState {
+                    document,
+                    last_error: None,
+                    info: WindowInfo {
                         title,
                         width,
                         height,
@@ -474,196 +930,115 @@ impl Session {
                         dirty: true,
                         resize_revision: 0,
                     },
-                );
-                s.had_window = true;
-                json!({"window":id})
-            }
-            "timer" => {
-                let token = number(&value, "token")?;
-                let ms = number(&value, "milliseconds")?;
-                if !(1..=86_400_000).contains(&ms) {
-                    return Err(Error::arg(
-                        "timer interval must be 1..86400000 milliseconds",
-                    ));
-                }
-                if s.timers.len() >= 128 && !s.timers.contains_key(&token) {
-                    return Err(Error::limit("at most 128 timers"));
-                }
-                let repeat = value
-                    .get("repeat")
-                    .map(|v| {
-                        v.as_bool()
-                            .ok_or_else(|| Error::arg("repeat must be boolean"))
-                    })
-                    .transpose()?
-                    .unwrap_or(false);
-                let interval = Duration::from_millis(ms);
-                s.timers.insert(
-                    token,
-                    Timer {
-                        due: Instant::now() + interval,
-                        interval,
-                        repeat,
-                    },
-                );
-                json!({"token":token})
-            }
-            "cancel_timer" => {
-                json!({"cancelled":s.timers.remove(&number(&value, "token")?).is_some()})
-            }
-            "set_text" | "get_value" | "close" | "set_title" | "resize" | "snapshot" => {
-                let id = number(&value, "window")?;
-                let w = s
-                    .windows
-                    .get_mut(&id)
-                    .ok_or_else(|| Error::stale("unknown or closed window"))?;
-                match op {
-                    "set_text" => {
-                        w.document
-                            .set_text(string(&value, "element")?, string(&value, "text")?)?;
-                        w.dirty = true;
-                        json!({})
-                    }
-                    "get_value" => {
-                        json!({"value":w.document.element(string(&value, "element")?)?.text})
-                    }
-                    "close" => {
-                        w.closing = true;
-                        json!({})
-                    }
-                    "set_title" => {
-                        w.title = optional_text(&value, "title", "", 4096)?;
-                        w.dirty = true;
-                        json!({})
-                    }
-                    "resize" => {
-                        // Validate the complete request before changing the model. A bad
-                        // height must not leave a successfully parsed width behind.
-                        let width = dimension(&value, "width", w.width, 160)?;
-                        let height = dimension(&value, "height", w.height, 120)?;
-                        w.width = width;
-                        w.height = height;
-                        w.resize_revision += 1;
-                        w.dirty = true;
-                        if !self.native {
-                            w.pixel_width = w.width;
-                            w.pixel_height = w.height;
-                        }
-                        json!({})
-                    }
-                    "snapshot" => {
-                        let path = string(&value, "path")?;
-                        let pixels = w.document.render(w.pixel_width, w.pixel_height, w.scale)?;
-                        let file =
-                            File::create(path).map_err(|e| Error::io(format!("snapshot: {e}")))?;
-                        let mut encoder =
-                            png::Encoder::new(BufWriter::new(file), w.pixel_width, w.pixel_height);
-                        encoder.set_color(png::ColorType::Rgb);
-                        encoder.set_depth(png::BitDepth::Eight);
-                        let mut writer = encoder
-                            .write_header()
-                            .map_err(|e| Error::io(e.to_string()))?;
-                        let bytes: Vec<u8> = pixels
-                            .iter()
-                            .flat_map(|p| {
-                                [
-                                    ((p >> 16) & 255) as u8,
-                                    ((p >> 8) & 255) as u8,
-                                    (p & 255) as u8,
-                                ]
-                            })
-                            .collect();
-                        writer
-                            .write_image_data(&bytes)
-                            .map_err(|e| Error::io(e.to_string()))?;
-                        writer.finish().map_err(|e| Error::io(e.to_string()))?;
-                        json!({"path":path,"width":w.pixel_width,"height":w.pixel_height,"native_capture":false})
-                    }
-                    _ => unreachable!(),
-                }
-            }
-            _ => return Err(Error::arg(format!("unknown operation: {op}"))),
-        };
-        drop(s);
-        self.wake();
-        Ok(result)
+                },
+            );
+            o.had_window = true;
+            Ok(())
+        })?;
+        Ok(json!({"window":id}))
+    }
+    fn mutate(
+        &self,
+        id: u64,
+        action: impl FnOnce(&mut Document) -> std::result::Result<(), ui4me_renderer::Error>,
+    ) -> Result<Value> {
+        let events = self.with_window(id, |w| {
+            action(&mut w.document)?;
+            w.info.dirty = true;
+            Ok(w.document.drain_events())
+        })?;
+        self.emit_document_events(id, events);
+        Ok(json!({}))
+    }
+    fn snapshot(&self, id: u64, path: &Path) -> Result<Value> {
+        let info = self
+            .window_info(id)
+            .ok_or_else(|| Error::stale("unknown or closed window"))?;
+        let pixels = self.render(id)?;
+        // All document borrows and control locks are released before filesystem I/O.
+        let file = File::create(path).map_err(|e| Error::io(format!("snapshot: {e}")))?;
+        let mut encoder =
+            png::Encoder::new(BufWriter::new(file), info.pixel_width, info.pixel_height);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| Error::io(e.to_string()))?;
+        let bytes: Vec<u8> = pixels
+            .iter()
+            .flat_map(|p| {
+                [
+                    ((p >> 16) & 255) as u8,
+                    ((p >> 8) & 255) as u8,
+                    (p & 255) as u8,
+                ]
+            })
+            .collect();
+        writer
+            .write_image_data(&bytes)
+            .map_err(|e| Error::io(e.to_string()))?;
+        writer.finish().map_err(|e| Error::io(e.to_string()))?;
+        Ok(
+            json!({"path":path,"width":info.pixel_width,"height":info.pixel_height,"native_capture":false}),
+        )
+    }
+    fn stats(&self) -> Result<Value> {
+        let (windows, timers) = self.with_owner(|o| Ok((o.windows.len(), o.timers.len())))?;
+        let s = lock(&self.control);
+        Ok(
+            json!({"phase":format!("{:?}",s.phase).to_ascii_lowercase(),"windows":windows,"timers":timers,"pending_posts":s.posts.len(),"reserved_completions":s.completions.len(),"pending_completions":s.ready_completions.len(),"posted":s.stats.posted,"executed":s.stats.executed,"cancelled":s.stats.cancelled,"callbacks":s.stats.callbacks,"loop_turns":s.stats.loop_turns,"wait_requests":s.stats.wait_requests,"completions_delivered":s.stats.completions_delivered,"completions_cancelled":s.stats.completions_cancelled,"run_active":self.run_active.load(Ordering::Acquire),"callback_depth":self.callback_depth.load(Ordering::Acquire)}),
+        )
     }
 }
 
 pub fn destroy(id: u64) -> Result<()> {
     let session = get(id)?;
     session.assert_owner()?;
+    if session.run_active.load(Ordering::Acquire)
+        || session.callback_depth.load(Ordering::Acquire) != 0
     {
-        let mut s = lock(&session.state);
-        if s.phase == Phase::Running {
-            return Err(Error::state("stop and return from run before destroy"));
-        }
-        let cancelled = s.posts.len() as u64;
-        s.stats.cancelled += cancelled;
-        s.posts.clear();
-        s.timers.clear();
-        s.windows.clear();
-        s.phase = Phase::Stopped;
-        s.stop = true;
+        return Err(Error::state(
+            "stop and return from run and callbacks before destroy",
+        ));
     }
-    let mut active = lock(active());
-    if active.as_ref().is_some_and(|s| s.id == id) {
-        *active = None;
+    {
+        let mut state = lock(&session.control);
+        state.stop = true;
+        state.phase = Phase::Stopped;
+        let count = state.posts.len() as u64;
+        state.stats.cancelled += count;
+        state.posts.clear();
+        let count = state.completions.len() as u64;
+        state.stats.completions_cancelled += count;
+        state.completions.clear();
+        state.ready_completions.clear();
+    }
+    let retired = OWNER.with(|cell| {
+        let mut slot = cell
+            .try_borrow_mut()
+            .map_err(|_| Error::state("owner state is currently borrowed"))?;
+        if slot.as_ref().is_some_and(|o| o.id == id) {
+            Ok(slot.take())
+        } else {
+            Err(Error::stale("owner session was destroyed"))
+        }
+    })?;
+    drop(retired);
+    let mut registry = lock(active());
+    if registry.as_ref().is_some_and(|s| s.id == id) {
+        *registry = None;
     }
     Ok(())
 }
 
 pub fn poison_active() {
     if let Some(session) = lock(active()).clone() {
-        let mut s = lock(&session.state);
-        s.failure = Some(Error::poison(
-            "native panic contained; destroy session and exit process",
+        // Poisoning never grants permission to destroy while run/callback leases exist.
+        session.fail(Error::poison(
+            "native panic contained; destroy after run returns and restart process",
         ));
-        s.stop = true;
-        s.phase = Phase::Stopped;
-        let cancelled = s.posts.len() as u64;
-        s.stats.cancelled += cancelled;
-        s.posts.clear();
-        s.timers.clear();
-        s.windows.clear();
-        drop(s);
-        session.wake();
+        if !session.run_active.load(Ordering::Acquire) {
+            lock(&session.control).phase = Phase::Stopped;
+        }
     }
-}
-
-fn string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| Error::arg(format!("{key} must be a string")))
-}
-fn number(value: &Value, key: &str) -> Result<u64> {
-    value
-        .get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| Error::arg(format!("{key} must be an unsigned integer")))
-}
-fn optional_text(value: &Value, key: &str, default: &str, max: usize) -> Result<String> {
-    let text = if value.get(key).is_none() {
-        default
-    } else {
-        string(value, key)?
-    };
-    if text.len() > max || text.contains('\0') {
-        return Err(Error::arg(format!("{key} is too long or contains NUL")));
-    }
-    Ok(text.to_owned())
-}
-fn dimension(value: &Value, key: &str, default: u32, min: u32) -> Result<u32> {
-    let v = if value.get(key).is_none() {
-        default as u64
-    } else {
-        number(value, key)?
-    };
-    if v < min as u64 || v > 4096 {
-        return Err(Error::arg(format!(
-            "{key} must be {min}..4096 logical pixels"
-        )));
-    }
-    Ok(v as u32)
 }
