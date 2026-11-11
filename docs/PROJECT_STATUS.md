@@ -1,4 +1,4 @@
-# UI4ME Core 0.8: implementation status and contract
+# UI4ME Core 0.9: implementation status and contract
 
 This is the authoritative engineering status of UI4ME Core. The public native
 boundary is [`include/ui4me.h`](../include/ui4me.h) (ABI 1). The wire requests
@@ -6,6 +6,14 @@ are defined in [`protocol.rs`](../crates/ui4me-core/src/protocol.rs). Bindings:
 Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
+
+**Core 0.9.0 is the current candidate** (advanced CSS, SVG and typography;
+[`core-roadmap/versions/0_9.md`](core-roadmap/versions/0_9.md)): CSS transitions and keyframe
+animations on the document clock with `@starting-style`, `content-visibility`,
+`contain-intrinsic-size`, `field-sizing`, `resize`, inline SVG with per-shape hit testing and
+a fixed static SVG profile, more hyphenation languages, `backdrop-filter` and `light-dark()`
+images, and conformance fixtures for layout, typography and framework-style markup. CSS profile
+1.26.0.
 
 **Core 0.8.0 is released** (PyPI, PowerShell Gallery, GitHub; advanced interaction and editing;
 [`core-roadmap/versions/0_8.md`](core-roadmap/versions/0_8.md)): plain-text `contenteditable`
@@ -316,6 +324,31 @@ returns to the invoker; the invoker exposes `expanded`. Anchor positioning: `anc
 `position-area` and `position-try*` are not implemented and reported Off). Range ignores
 `readonly` (HTML), mirrors under `dir=rtl` and reports its sanitized value; a number is never
 changed by the wheel and parses only the HTML floating-point syntax.
+
+**0.9 contract.** CSS profile 1.26.0 (carried Stylo patches P-006-18, P-006-19). Transitions
+and `@keyframes` animations run on the document clock shared with smooth scrolling: a window
+requests frames (about 60 Hz) only while one runs, `display: none` cancels them, removal drops
+them, and the `transition*`/`animation*` events reach hosts with `property_name`/
+`animation_name`, `elapsed_time` and `pseudo_element`. `@starting-style` gives inserted or
+newly displayed elements their before-change style; `prefers-reduced-motion` is honoured by
+author CSS through the media query (Core does not disable author animations);
+`animation-timeline`/`animation-range` and `display` transitions are not implemented
+(reported). `content-visibility: hidden` skips the contents (no boxes, paint, hit testing,
+focus or accessibility); `auto` implies containment and always renders.
+`contain-intrinsic-size` sizes size-contained boxes; `field-sizing: content` sizes text inputs
+and textareas to their value; `resize` lets a corner drag set the inline `width`/`height`.
+Inline `<svg>` renders through the bounded vector raster path with document CSS for SVG
+presentation properties; a click on a shape reports the shape's id; `pointer-events`,
+`role="img"`/`aria-label`/`<title>` are honoured; limits and the supported subset are in
+[`core-roadmap/data/SVG_PROFILE_V0_9.md`](core-roadmap/data/SVG_PROFILE_V0_9.md) (SVG `<text>`,
+`foreignObject`, scripting, animation and external references are not supported, and
+reported). Hyphenation covers en-US, de, fr, es, pt, nl, sk, pl and uk (Czech patterns are
+GPL-only and not shipped). `backdrop-filter` is On (its `url()` forms stay reported); a
+`border-radius` box no longer hits outside its rounded border; blur deviations are bounded.
+Framework-style markup is covered by fixtures with documented exceptions
+([`core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md`](core-roadmap/data/FRAMEWORK_FIXTURES_V0_9.md)).
+Ruby layout, `shape-outside`, `clip-path`/`filter` `url()` references, `cross-fade()`,
+`shape()` and `corner-shape` are not implemented.
 
 `set_text` inserts literal text; it never treats that text as markup. For 0.1
 compatibility, calling it on a supported value control updates its value.

@@ -142,6 +142,17 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F19 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $w = $app.Open('<style>body{margin:0}#f{field-sizing:content;padding:0;border:0}#cv{content-visibility:hidden}@keyframes spin{to{transform:rotate(1turn)}}#a{animation:spin 1s infinite}</style><input id=f value=ab><div id=cv><p id=in>hidden</p></div><div id=a>a</div><svg id=s width=20 height=20 viewBox=''0 0 10 10''><circle id=c cx=5 cy=5 r=5 fill=currentColor /></svg>')
+                if ($w.GetRect('f').Width -ge 40) { throw 'field-sizing' }
+                if ($w.GetRect('cv').Height -ne 0 -or $null -ne $w.GetRect('in')) { throw 'content-visibility' }
+                if (($w.ComputedStyleJson('a', 'animation-name') | ConvertFrom-Json).properties.'animation-name'.value -ne 'spin') { throw 'animation' }
+                if ($w.GetRect('s').Width -ne 20) { throw 'svg' }
+                $null = $app.On('started', { $app.Stop() })
+            }
+        } '0.9 Core contract: field-sizing, content-visibility, CSS animations, inline SVG box'
         Test-Case F18 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)

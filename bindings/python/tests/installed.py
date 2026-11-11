@@ -284,11 +284,22 @@ def installed_cases():
             app.on("started", lambda _: app.stop())
             app.run()
 
+    def core_09_contract():
+        with App(backend="headless", handle_sigint=False) as app:
+            w = app.open("<style>body{margin:0}#f{field-sizing:content;padding:0;border:0}#cv{content-visibility:hidden}@keyframes spin{to{transform:rotate(1turn)}}#a{animation:spin 1s infinite}</style><input id=f value=ab><div id=cv><p id=in>hidden</p></div><div id=a>a</div><svg id=s width=20 height=20 viewBox='0 0 10 10'><circle id=c cx=5 cy=5 r=5 fill=currentColor /></svg>")
+            assert w.get_rect("f")["width"] < 40, "field-sizing: content"
+            assert w.get_rect("cv")["height"] == 0 and w.get_rect("in") is None, "content-visibility: hidden"
+            assert w.computed_style("a", "animation-name")["animation-name"]["value"] == "spin"
+            assert w.get_rect("s")["width"] == 20, "inline svg"
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
+    check("F19", core_09_contract, "0.9 Core contract: field-sizing, content-visibility, CSS animations parse and compute, inline SVG box")
     check("F18", core_08_contract, "0.8 Core contract: popover show/toggle, scroll snapping, smooth scroll animation, pointer capture needs a press, range sanitizing")
     check("F17", core_07_contract, "0.7 Core contract: desktop services refuse honestly without a desktop, menu accelerators, pointer grab status, rich clipboard sanitizing")
     check("F16", core_06_contract, "0.6 Core contract: HTML serialization, stylesheets, node traversal and stale references, text geometry, computed style, validity, file input, link policy")

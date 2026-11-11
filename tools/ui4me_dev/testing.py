@@ -11,7 +11,7 @@ from .common import ROOT, DevError, clean_environment, find_artifact, host, load
 from .packages import checked_build, native_output, native_target, stage_powershell
 from .process import run
 
-INSTALLED = {"F01", "F09", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18"}
+INSTALLED = {"F01", "F09", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19"}
 NATIVE = {"F02", "F03", "F04", "F05", "F06", "F07", "F08", "F10"}
 
 
@@ -187,7 +187,7 @@ def installed(binding: str, manifest_path: Path, native: bool = False, interacti
                 else:
                     cases = data.get("cases", [])
                     if {c.get("id") for c in cases} != INSTALLED or len(cases) != len(INSTALLED):
-                        raise DevError("Installed consumer must report each of F01/F09/F11/F12/F13/F14/F15/F16/F17/F18 exactly once")
+                        raise DevError("Installed consumer must report each of F01/F09/F11/F12/F13/F14/F15/F16/F17/F18/F19 exactly once")
                     if any(c.get("status") != "passed" for c in cases):
                         raise DevError("Initial installed consumer did not pass every required case")
                     shutil.copy2(result, folder / "consumer-initial.json")
