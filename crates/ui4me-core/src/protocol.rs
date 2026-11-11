@@ -198,6 +198,15 @@ pub enum Command {
         x: f64,
         y: f64,
     },
+    /// Computed style introspection (0.6 F0609).
+    GetComputedStyle {
+        window: u64,
+        #[serde(default)]
+        element: Option<String>,
+        #[serde(default)]
+        node: Option<String>,
+        properties: Vec<String>,
+    },
     /// Author stylesheets (0.6 F0602).
     AddStylesheet {
         window: u64,

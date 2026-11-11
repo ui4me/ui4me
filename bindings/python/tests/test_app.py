@@ -322,6 +322,10 @@ class BindingTests(unittest.TestCase):
             text = kids["children"][1]["node"]
             self.assertEqual(w.get_node(text)["text"], "žluť")
             self.assertEqual(w.get_html(node=kids["children"][0]["node"], outer=True), "<span>no id</span>")
+            cs = w.computed_style("box", "color", "width", "--brand", "not-a-property")
+            self.assertEqual(cs["color"]["status"], "supported")
+            self.assertTrue(cs["color"]["inherited"])
+            self.assertEqual(cs["not-a-property"]["status"], "invalid")
             geo = w.text_rects("box")
             self.assertEqual((geo["text"], geo["length"]), ("no idžluť", 9))
             self.assertTrue(geo["rects"] and all(r["width"] > 0 for r in geo["rects"]))

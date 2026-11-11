@@ -772,8 +772,7 @@ impl Document {
             .order
             .iter()
             .copied()
-            .filter(|p| d.arena().is_inclusive_ancestor(index.paras[p].root, scope))
-            .last()
+            .rfind(|p| d.arena().is_inclusive_ancestor(index.paras[p].root, scope))
             .into_iter()
             .collect()
     }

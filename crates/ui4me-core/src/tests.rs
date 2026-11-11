@@ -1855,3 +1855,49 @@ fn text_range_geometry_and_point_to_text() {
         4
     );
 }
+
+#[test]
+fn computed_style_reports_values_inheritance_and_unsupported_names() {
+    // 0.6 F0609.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<style>#a{color:rgb(1,2,3);--brand:#123;width:50px} #hid{display:none;color:red}</style><div id=a><span id=s>x</span></div><p id=hid>h</p>"})).unwrap()["window"].as_u64().unwrap();
+    let cs = cmd(json!({"op":"get_computed_style","window":id,"element":"s","properties":["color","width","--brand","colr"]})).unwrap();
+    assert_eq!(cs["schema"], 1);
+    let p = &cs["properties"];
+    assert_eq!(
+        p["color"],
+        json!({"status":"supported","value":"rgb(1, 2, 3)","inherited":true})
+    );
+    assert_eq!(
+        (
+            p["width"]["value"].as_str(),
+            p["width"]["inherited"].as_bool()
+        ),
+        (Some("auto"), Some(false))
+    );
+    assert_eq!(p["--brand"]["value"], "#123", "custom properties inherit");
+    assert_eq!(p["colr"]["status"], "invalid");
+    // An undisplayed element resolves on demand.
+    let hid = cmd(json!({"op":"get_computed_style","window":id,"element":"hid","properties":["color","display"]})).unwrap();
+    assert_eq!(
+        (
+            hid["properties"]["color"]["value"].as_str(),
+            hid["properties"]["display"]["value"].as_str()
+        ),
+        (Some("rgb(255, 0, 0)"), Some("none"))
+    );
+    assert_eq!(
+        cmd(json!({"op":"get_computed_style","window":id,"element":"s","properties":[]}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    let many: Vec<String> = (0..65).map(|_| "color".to_string()).collect();
+    assert_eq!(
+        cmd(json!({"op":"get_computed_style","window":id,"element":"s","properties":many}))
+            .unwrap_err()
+            .code,
+        1
+    );
+}

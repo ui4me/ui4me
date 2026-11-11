@@ -537,6 +537,8 @@ public sealed class Window
     }
     /// <summary>The text under a viewport point as JSON (null when there is none).</summary>
     public string TextAtPointJson(double x, double y) { Check(); return app.Command(new { op = "text_at_point", window = Id, x, y }).GetProperty("hit").GetRawText(); }
+    /// <summary>Computed values (schema 1) of properties of an element, as JSON.</summary>
+    public string ComputedStyleJson(string element, params string[] properties) { Check(); return app.Command(new { op = "get_computed_style", window = Id, element, properties }).GetRawText(); }
     /// <summary>Attach an author stylesheet; returns JSON {sheet, diagnostics}.</summary>
     public string AddStylesheet(string css) { Check(); return app.Command(new { op = "add_stylesheet", window = Id, css }).GetRawText(); }
     public string ReplaceStylesheet(long sheet, string css) { Check(); return app.Command(new { op = "replace_stylesheet", window = Id, sheet, css }).GetRawText(); }

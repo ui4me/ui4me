@@ -1122,6 +1122,15 @@ impl Session {
                 }
                 self.with_window(window, |w| Ok(json!({"hit": w.document.text_at_point(x, y)?})))?
             }
+            Command::GetComputedStyle {
+                window,
+                element,
+                node,
+                properties,
+            } => self.with_window(window, |w| {
+                Ok(w.document
+                    .computed_style(element.as_deref(), node.as_deref(), &properties)?)
+            })?,
             Command::AddStylesheet { window, css } => {
                 let mut out = Value::Null;
                 self.mutate(window, |d| {

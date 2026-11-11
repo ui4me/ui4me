@@ -504,6 +504,12 @@ class Window:
         (UTF-16, in that element's rendered text) and ``block``; ``None`` without text."""
         return self._command("text_at_point", x=x, y=y)["hit"]
 
+    def computed_style(self, element: str | None = None, *properties: str, node: str | None = None) -> dict:
+        """Computed values (schema 1) of up to 64 properties: ``{name: {"status": "supported",
+        "value", "inherited"} | {"status": "unsupported", "feature"} | {"status": "invalid",
+        "reason"}}``."""
+        return self._command("get_computed_style", element=element, node=node, properties=list(properties))["properties"]
+
     def add_stylesheet(self, css: str) -> dict:
         """Attach an author stylesheet after the document's own; returns ``{"sheet": id,
         "diagnostics": [...]}`` (invalid rules are reported and dropped)."""

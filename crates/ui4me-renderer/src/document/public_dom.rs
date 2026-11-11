@@ -19,6 +19,8 @@ const MAX_CSS: usize = 1024 * 1024;
 const MAX_SHEET_DIAGNOSTICS: usize = 50;
 /// Children listed per call.
 pub const MAX_CHILDREN: usize = 4096;
+/// Properties per `computed_style` call.
+pub const MAX_STYLE_PROPERTIES: usize = 64;
 /// Rectangles returned by one `text_rects` call.
 const MAX_TEXT_RECTS: usize = 4096;
 
@@ -347,5 +349,54 @@ impl Document {
             "offset": offset,
             "block": node_ref(root),
         }))
+    }
+
+    /// Computed values of up to [`MAX_STYLE_PROPERTIES`] properties of an element (0.6 F0609),
+    /// schema 1: per property `{"status": "supported", "value", "inherited"}`, or `unsupported`
+    /// (profile-excluded, with the feature id) or `invalid` (unknown name). Custom properties
+    /// (`--x`) are allowed. An element without a box resolves its values on demand.
+    pub fn computed_style(
+        &mut self,
+        element: Option<&str>,
+        node: Option<&str>,
+        properties: &[String],
+    ) -> Result<Value> {
+        if properties.is_empty() || properties.len() > MAX_STYLE_PROPERTIES {
+            return Err(arg(format!(
+                "properties must list 1..{MAX_STYLE_PROPERTIES} names"
+            )));
+        }
+        let n = self.target_of(element, node)?;
+        if self.pipeline.document().node_kind(n)? != NodeKind::Element {
+            return Err(arg("computed style needs an element"));
+        }
+        self.pipeline.flush()?;
+        let mut out = serde_json::Map::new();
+        for name in properties {
+            let entry = match self.pipeline.style_bridge().computed_value(
+                self.pipeline.document(),
+                n,
+                name,
+            ) {
+                Ok(value) => {
+                    let inherited =
+                        style::properties::PropertyId::parse_enabled_for_all_content(name)
+                            .ok()
+                            .and_then(|id| id.longhand_id())
+                            .map(|l| l.inherited());
+                    json!({"status": "supported", "value": value, "inherited": inherited.unwrap_or(name.starts_with("--"))})
+                }
+                Err(e)
+                    if e.code == ui4me_engine_types::codes_generated::Code::UnsupportedFeature =>
+                {
+                    json!({"status": "unsupported", "feature": e.message})
+                }
+                Err(e) => {
+                    json!({"status": "invalid", "reason": if e.message.is_empty() { e.code.name().to_owned() } else { e.message.clone() }})
+                }
+            };
+            out.insert(name.clone(), entry);
+        }
+        Ok(json!({"schema": 1, "properties": out}))
     }
 }
