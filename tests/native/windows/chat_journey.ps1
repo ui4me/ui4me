@@ -54,7 +54,13 @@ public static class Win {
 '@
 
 function Read-State {
-    try { Get-Content -Raw -LiteralPath $statePath -Encoding utf8 | ConvertFrom-Json -AsHashtable } catch { @{} }
+    # Share delete access: the app replaces the file atomically while we read it (Windows
+    # otherwise denies the replace and the app's save fails).
+    try {
+        $stream = [IO.FileStream]::new($statePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+        try { $text = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8).ReadToEnd() } finally { $stream.Dispose() }
+        $text | ConvertFrom-Json -AsHashtable
+    } catch { @{} }
 }
 function Get-Field($s, [string[]] $names) {
     foreach ($n in $names) { if ($null -ne $s -and $s.ContainsKey($n)) { return $s[$n] } }
@@ -147,8 +153,20 @@ try {
     }
     Case 'J05_drag_select_document_text' {
         # Let the streamed replies finish so the conversation stops scrolling, then use fresh state.
-        $done = Wait-State { param($s) $s.replies -ge 2 } 30
-        $null = Wait-State { param($s) $s.lines -gt $done.lines + 25 } 10
+        # Streaming stops when the conversation's scroll extent stops growing across saves.
+        $last = $null; $since = [DateTime]::UtcNow; $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            $cur = (Get-Scroll (Read-State) 'msgs_scroll').max
+            if ($cur -ne $last) { $last = $cur; $since = [DateTime]::UtcNow }
+            elseif (([DateTime]::UtcNow - $since).TotalSeconds -gt 2.5) { break }
+            Start-Sleep -Milliseconds 200
+        }
+        # Bring the first message into view (a small screen scrolls it away), then use fresh state.
+        $xy = At (Read-State) 'msgs'; [Win]::Move($xy[0], $xy[1])
+        1..10 | ForEach-Object { [Win]::Wheel(3) }
+        $null = Wait-State { param($s) (Get-Scroll $s 'msgs_scroll').y -eq 0 } 10
+        $before = (Read-State).lines
+        $null = Wait-State { param($s) $s.lines -gt $before + 25 } 10
         $s = Read-State
         $a = At $s 'm0' 0 0.75 12; $b = At $s 'm0' 0.98 0.75
         [Win]::Move($a[0], $a[1]); [Win]::Button($true)

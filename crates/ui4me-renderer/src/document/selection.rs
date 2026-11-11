@@ -246,16 +246,35 @@ impl Document {
         ))
     }
     /// The selectable text position nearest to a viewport point.
+    /// The element whose text a pointer at (x, y) selects: the nearest inclusive ancestor of
+    /// the hit element that contains selectable text. `None` (nothing hit, or no text above it)
+    /// lets the whole document compete, as when dragging outside every box.
+    fn text_scope(&mut self, index: &TextIndex, x: f64, y: f64) -> Result<Option<NodeId>> {
+        let id = self.id();
+        let Some(hit) = self.hit_test(id, x, y)? else {
+            return Ok(None);
+        };
+        let d = self.pipeline.document();
+        let roots: Vec<NodeId> = index.paras.values().map(|p| p.root).collect();
+        Ok(d.arena()
+            .inclusive_ancestors(hit)
+            .into_iter()
+            .find(|&a| roots.iter().any(|&r| d.arena().is_inclusive_ancestor(a, r))))
+    }
     fn position_at(
         &self,
         tree: &FragmentTree,
         index: &TextIndex,
+        scope: Option<NodeId>,
         x: f64,
         y: f64,
     ) -> Option<Resolved> {
         let mut scroll = HashMap::new();
         let mut best: Option<((f64, f64), Resolved)> = None;
-        for &para in &index.order {
+        let d = self.pipeline.document();
+        for &para in index.order.iter().filter(|p| {
+            scope.is_none_or(|s| d.arena().is_inclusive_ancestor(s, index.paras[p].root))
+        }) {
             for &f in &index.paras[&para].frags {
                 let Some((fx, fy, fw, fh, base, clusters)) =
                     self.frag_geometry(tree, f, &mut scroll)
@@ -543,7 +562,8 @@ impl Document {
                 };
                 let tree = &c.layout.fragments;
                 let index = TextIndex::build(tree, self.pipeline.document());
-                let Some(at) = self.position_at(tree, &index, x, y) else {
+                let scope = self.text_scope(&index, x, y)?;
+                let Some(at) = self.position_at(tree, &index, scope, x, y) else {
                     self.clear_selection_quiet();
                     return Ok(());
                 };
@@ -599,7 +619,8 @@ impl Document {
                 };
                 let tree = &c.layout.fragments;
                 let index = TextIndex::build(tree, self.pipeline.document());
-                if let Some(at) = self.position_at(tree, &index, x, y) {
+                let scope = self.text_scope(&index, x, y)?;
+                if let Some(at) = self.position_at(tree, &index, scope, x, y) {
                     match self.selection.unit {
                         Some(Unit::Range(ap, ab, bp, bb)) => {
                             let (us, ue) = (

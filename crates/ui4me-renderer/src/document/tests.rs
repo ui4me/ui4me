@@ -754,3 +754,20 @@ fn selection_drag_autoscrolls_and_reports_changes() {
     d.clear_selection();
     assert_eq!(changes(&d.drain_events()), 0, "no change, no event");
 }
+
+#[test]
+fn drag_past_line_end_stays_in_its_column() {
+    let mut d = Document::parse("<!doctype html><style>body{margin:0;font-size:14px;display:flex}#a{width:300px}#b{width:300px}p{margin:0}</style>\
+        <div id=a><p id=m0>Short text</p><p id=m1>second message</p></div><div id=b><p id=l0>log line zero is here</p><p id=l1>log line one</p></div>").unwrap();
+    d.render(640, 200, 1.0).unwrap();
+    let r = d.element_rect("m0").unwrap().unwrap();
+    button(&mut d, true, r.x + 1.0, r.y + r.height / 2.0);
+    // Past the end of "Short text" but inside #a: must not jump to the log column on the right.
+    d.handle_input(Input::PointerMoved {
+        x: r.x + 280.0,
+        y: r.y + r.height / 2.0,
+    })
+    .unwrap();
+    button(&mut d, false, r.x + 280.0, r.y + r.height / 2.0);
+    assert_eq!(d.selection_text().unwrap(), "Short text");
+}

@@ -59,7 +59,13 @@ public static class Win {
 '@
 
 function Read-State {
-    try { Get-Content -Raw -LiteralPath $statePath -Encoding utf8 | ConvertFrom-Json -AsHashtable } catch { @{} }
+    # Share delete access: the app replaces the file atomically while we read it (Windows
+    # otherwise denies the replace and the app's save fails).
+    try {
+        $stream = [IO.FileStream]::new($statePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+        try { $text = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8).ReadToEnd() } finally { $stream.Dispose() }
+        $text | ConvertFrom-Json -AsHashtable
+    } catch { @{} }
 }
 function Get-Field($s, [string[]] $names) {
     foreach ($n in $names) { if ($null -ne $s -and $s.ContainsKey($n)) { return $s[$n] } }

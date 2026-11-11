@@ -254,8 +254,23 @@ def journey(out: Path, command: list[str]) -> dict:
         def drag_select():
             # Let both streamed replies finish so the conversation stops scrolling, then use a
             # state saved after that (rectangles must match what is on screen).
-            done = wait(state_path, lambda s: s["replies"] >= 2, timeout=30)
-            wait(state_path, lambda s: s["lines"] > done["lines"] + 25, timeout=10)
+            # Streaming stops when the conversation's scroll extent stops growing across saves.
+            last, stable_since = None, time.monotonic()
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                cur = read_state(state_path).get("msgs_scroll", {}).get("max_y")
+                if cur != last:
+                    last, stable_since = cur, time.monotonic()
+                elif time.monotonic() - stable_since > 2.5:
+                    break
+                time.sleep(0.2)
+            # Bring the first message into view (a small window scrolls it away), then use fresh state.
+            fake(f"move {at(read_state(state_path), 'msgs')}")
+            for _ in range(10):
+                fake("wheel -5")
+            wait(state_path, lambda s: s["msgs_scroll"]["y"] == 0, timeout=10)
+            before = read_state(state_path)["lines"]
+            wait(state_path, lambda s: s["lines"] > before + 25, timeout=10)
             s = read_state(state_path)
             fake(f"move {at(s, 'm0', 0.0, 0.75, dx=12)}")
             fake("down")
