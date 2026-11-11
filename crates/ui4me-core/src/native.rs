@@ -51,7 +51,7 @@ pub fn run(session: Arc<Session>) -> Result<()> {
                 use winit::platform::windows::EventLoopBuilderExtWindows;
                 builder.with_any_thread(session.allow_any_thread);
                 // Menu commands of app windows reach the desktop services adapter (0.7 F0703).
-                builder.with_msg_hook(|msg| crate::services::windows_msg_hook(msg as *const std::ffi::c_void));
+                builder.with_msg_hook(crate::services::windows_msg_hook);
             }
             #[cfg(target_os = "linux")]
             {
@@ -981,8 +981,16 @@ impl ApplicationHandler<()> for Desktop {
             WindowEvent::Moved(_) | WindowEvent::Occluded(_) => self.observe(id),
             WindowEvent::DroppedFile(path) => {
                 let path = path.to_str().map(str::to_owned);
-                self.session
-                    .emit(json!({"type":"file_drop","window":id,"paths":path.map(|p| vec![p])}));
+                // The element under the pointer receives the drop (0.7 F0707).
+                let element = self.windows.get(&id).and_then(|w| {
+                    let s = w.window.scale_factor();
+                    (w.cursor.x >= 0.0)
+                        .then(|| self.session.element_at(id, w.cursor.x / s, w.cursor.y / s))
+                        .flatten()
+                });
+                self.session.emit(
+                    json!({"type":"file_drop","window":id,"paths":path.map(|p| vec![p]),"element":element}),
+                );
             }
             WindowEvent::HoveredFile(_) => {
                 self.session.emit(json!({"type":"file_hover","window":id}));

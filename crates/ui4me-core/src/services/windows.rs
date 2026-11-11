@@ -34,9 +34,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN,
 };
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_STATE, NIF_TIP,
-    NIIF_INFO, NIIF_NOSOUND, NIIF_WARNING, NIM_ADD, NIM_DELETE, NIM_MODIFY, NIM_SETVERSION,
-    NIS_HIDDEN, NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_STATE, NIF_TIP, NIIF_INFO,
+    NIIF_NOSOUND, NIIF_WARNING, NIM_ADD, NIM_DELETE, NIM_MODIFY, NIM_SETVERSION, NIS_HIDDEN,
+    NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -421,7 +421,13 @@ fn make_icon(rgba: &[u8], w: u32, h: u32) -> Option<HICON> {
         }
         std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits as *mut u8, bgra.len());
         let mask_bits = vec![0u8; ((w as usize).div_ceil(16) * 2) * h as usize];
-        let mask = CreateBitmap(w as i32, h as i32, 1, 1, mask_bits.as_ptr() as *const c_void);
+        let mask = CreateBitmap(
+            w as i32,
+            h as i32,
+            1,
+            1,
+            mask_bits.as_ptr() as *const c_void,
+        );
         if mask.is_null() {
             DeleteObject(color);
             return None;
@@ -532,8 +538,8 @@ fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> Option<LRESULT> {
             Some(0)
         }
         WM_TIMER if wp == TIMER_BALLOON => {
-            let ev = with_state(|s| s.balloon_event("expired").map(|e| (s.sink.clone(), e)))
-                .flatten();
+            let ev =
+                with_state(|s| s.balloon_event("expired").map(|e| (s.sink.clone(), e))).flatten();
             if let Some((sink, e)) = ev {
                 emit(&sink, vec![e]);
             }
@@ -697,7 +703,9 @@ fn show_pending_context() {
     with_state(|s| s.in_popup = false);
     if cmd > 0 {
         if let Some(command) = pending.ids.get(&(cmd as u16)) {
-            sink(json!({"type":"menu_command","source":"context","window":pending.window,"command":command}));
+            sink(
+                json!({"type":"menu_command","source":"context","window":pending.window,"command":command}),
+            );
         }
     }
 }
@@ -1058,9 +1066,7 @@ impl PlatformServices for WindowsServices {
             let ok = unsafe {
                 let ok = SetMenu(
                     hwnd as HWND,
-                    new.as_ref()
-                        .map(|m| m.hmenu as HMENU)
-                        .unwrap_or(null_mut()),
+                    new.as_ref().map(|m| m.hmenu as HMENU).unwrap_or(null_mut()),
                 ) != 0;
                 if ok {
                     DrawMenuBar(hwnd as HWND);

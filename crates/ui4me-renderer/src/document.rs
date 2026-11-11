@@ -205,6 +205,8 @@ pub struct Document {
     env: Environment,
     /// File inputs whose picker the host must open, and the files chosen per input (0.6 F0606).
     file_requests: Vec<NodeId>,
+    /// Element drag and drop (0.7 F0707).
+    drag: drag::DragState,
     input_files: HashMap<NodeId, Vec<String>>,
     repaint: bool,
     prevent: Vec<StoredRule>,
@@ -343,6 +345,7 @@ impl Document {
             window_focused: true,
             env: Environment::default(),
             file_requests: Vec::new(),
+            drag: Default::default(),
             input_files: HashMap::new(),
             repaint: true,
             prevent: Vec::new(),
@@ -1423,12 +1426,22 @@ impl Document {
             self.apply_follow()?;
         }
         let probe = input.clone();
+        if self.drag_input(&probe) {
+            // Pointer moves of a running drag (and the Escape that cancels it) stay out of the page.
+            if follow {
+                self.update_follow();
+            }
+            return Ok(self.drain_events());
+        }
+        let dragging = self.drag_owns_pointer();
         let result = self.handle_input_inner(input);
         if follow {
             self.update_follow();
         }
         let mut events = result?;
-        self.selection_input(&probe, &events)?;
+        if !dragging {
+            self.selection_input(&probe, &events)?;
+        }
         events.extend(self.drain_events());
         Ok(events)
     }
@@ -2540,6 +2553,7 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 mod a11y_text_tests;
 #[cfg(test)]
 mod bidi_tests;
+mod drag;
 pub mod file_input;
 #[cfg(test)]
 mod focus_pointer_tests;

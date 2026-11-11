@@ -1169,3 +1169,146 @@ fn file_input_choice_sets_files_fires_input_and_change_and_reset_clears() {
         .unwrap();
     assert!(d.drain_events().iter().all(|e| e["type"] != "change"));
 }
+
+#[test]
+fn draggable_elements_drag_between_targets_and_escape_cancels() {
+    fn send(d: &mut Document, all: &mut Vec<Value>, i: Input) {
+        all.extend(d.handle_input(i).unwrap());
+    }
+    // 0.7 F0707.
+    let mut d = Document::parse("<!doctype html><style>body{margin:0}div{width:100px;height:40px;margin:10px}</style><div id=card draggable=true><span id=inner>Card text</span></div><div id=lane1></div><div id=lane2></div>").unwrap();
+    d.render(300, 300, 1.0).unwrap();
+    let center = |d: &mut Document, e: &str| {
+        let (x, y, w, h) = rect(d, e);
+        (x + w / 2.0, y + h / 2.0)
+    };
+    let (cx, cy) = center(&mut d, "card");
+    let (l1x, l1y) = center(&mut d, "lane1");
+    let (l2x, l2y) = center(&mut d, "lane2");
+    let mut all: Vec<Value> = Vec::new();
+    send(&mut d, &mut all, Input::PointerMoved { x: cx, y: cy });
+    send(
+        &mut d,
+        &mut all,
+        Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: cx,
+            y: cy,
+        },
+    );
+    send(&mut d, &mut all, Input::PointerMoved { x: cx + 2.0, y: cy });
+    assert!(
+        all.iter().all(|e| e["type"] != "dragstart"),
+        "below the threshold"
+    );
+    send(&mut d, &mut all, Input::PointerMoved { x: l1x, y: l1y });
+    send(&mut d, &mut all, Input::PointerMoved { x: l2x, y: l2y });
+    send(
+        &mut d,
+        &mut all,
+        Input::PointerButton {
+            pressed: false,
+            button: 0,
+            x: l2x,
+            y: l2y,
+        },
+    );
+    let drag: Vec<(String, Value)> = all
+        .iter()
+        .filter(|e| {
+            matches!(
+                e["type"].as_str(),
+                Some("dragstart" | "dragover" | "drop" | "dragend")
+            )
+        })
+        .map(|e| (e["type"].as_str().unwrap().to_owned(), e["element"].clone()))
+        .collect();
+    assert_eq!(drag.first().map(|x| x.0.as_str()), Some("dragstart"));
+    assert_eq!(drag[0].1, "card", "the draggable ancestor is the source");
+    assert!(drag.iter().any(|(t, e)| t == "dragover" && e == "lane1"));
+    assert!(drag.iter().any(|(t, e)| t == "dragover" && e == "lane2"));
+    let drop = all.iter().find(|e| e["type"] == "drop").unwrap();
+    assert_eq!(
+        (drop["element"].as_str(), drop["source"].as_str()),
+        (Some("lane2"), Some("card"))
+    );
+    let end = all.iter().find(|e| e["type"] == "dragend").unwrap();
+    assert_eq!(
+        (end["dropped"].as_bool(), end["target"].as_str()),
+        (Some(true), Some("lane2"))
+    );
+    assert!(
+        all.iter().all(|e| e["type"] != "click"),
+        "a drag is not a click"
+    );
+    assert_eq!(
+        d.selection_text().unwrap(),
+        "",
+        "no text selection during a drag"
+    );
+    // Escape cancels a running drag.
+    let mut all: Vec<Value> = Vec::new();
+    send(
+        &mut d,
+        &mut all,
+        Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: cx,
+            y: cy,
+        },
+    );
+    send(&mut d, &mut all, Input::PointerMoved { x: l1x, y: l1y });
+    send(
+        &mut d,
+        &mut all,
+        Input::Key {
+            key: "Escape".into(),
+            code: "Escape".into(),
+            pressed: true,
+            repeat: false,
+            shift: false,
+            ctrl: false,
+            alt: false,
+            meta: false,
+        },
+    );
+    send(
+        &mut d,
+        &mut all,
+        Input::PointerButton {
+            pressed: false,
+            button: 0,
+            x: l1x,
+            y: l1y,
+        },
+    );
+    assert!(
+        all.iter()
+            .any(|e| e["type"] == "dragend" && e["dropped"] == false)
+    );
+    assert!(all.iter().all(|e| e["type"] != "drop"));
+    // A press and release without movement is still a click.
+    let mut all: Vec<Value> = Vec::new();
+    all.extend(
+        d.handle_input(Input::PointerButton {
+            pressed: true,
+            button: 0,
+            x: cx,
+            y: cy,
+        })
+        .unwrap(),
+    );
+    all.extend(
+        d.handle_input(Input::PointerButton {
+            pressed: false,
+            button: 0,
+            x: cx,
+            y: cy,
+        })
+        .unwrap(),
+    );
+    assert!(all.iter().any(|e| e["type"] == "click"));
+    assert!(all.iter().all(|e| e["type"] != "dragstart"));
+}

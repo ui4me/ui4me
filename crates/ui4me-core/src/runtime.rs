@@ -483,6 +483,12 @@ impl Session {
             self.emit(event);
         }
     }
+    /// The identified element under a window point in CSS px (0.7 F0707).
+    pub fn element_at(&self, window: u64, x: f64, y: f64) -> Option<String> {
+        self.with_window(window, |w| Ok(w.document.element_at(x, y)))
+            .ok()
+            .flatten()
+    }
     /// The menu command of a window accelerator matching this key, if any (0.7 F0703).
     #[allow(clippy::too_many_arguments)]
     pub fn menu_accelerator(
