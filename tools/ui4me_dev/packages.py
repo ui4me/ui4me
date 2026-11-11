@@ -119,7 +119,7 @@ def checked_build(profile: str, binding: str) -> Path:
 def notices(stage: Path, log_folder: Path) -> None:
     """Inventory the exact resolved native dependencies; retain available license text."""
     import subprocess
-    metadata = subprocess.run(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT, capture_output=True, text=True, timeout=120)
+    metadata = subprocess.run(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
     (log_folder / "cargo-metadata.log").write_text(metadata.stderr, encoding="utf-8")
     if metadata.returncode:
         raise DevError("Cannot obtain locked dependency inventory")
