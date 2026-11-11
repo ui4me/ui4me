@@ -6,7 +6,9 @@
 # ValuePattern. Writes DIR\uia.json. Automated; not a person.
 param(
     [Parameter(Mandatory)][string] $Python,
-    [Parameter(Mandatory)][string] $Out
+    [Parameter(Mandatory)][string] $Out,
+    # Optional: uia_native_text.py (needs comtypes) for the native COM client selection check.
+    [string] $NativeClient
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -32,6 +34,15 @@ line two</textarea>
         save()
     w.on("click", click, element="go")
     w.on("input", edited)
+    def selection(_):
+        nodes = w.accessibility_tree().get("nodes", [])
+        field = next((n for n in nodes if n.get("html_id") == "name"), {})
+        sel = field.get("selection")
+        value = ",".join(str(v) for v in sel["value"]) if sel else None
+        if value != state.get("selection"):
+            state["selection"] = value
+            save()
+    app.timer(200, selection, repeat=True)
     app.timer(60000, lambda _: app.stop())
     app.run()
 '@
@@ -41,6 +52,8 @@ Set-Content -LiteralPath $script -Value $app -Encoding utf8
 $p = Start-Process -FilePath $Python -ArgumentList @($script, $statePath) -PassThru -RedirectStandardError (Join-Path $Out 'uia_app.err.log')
 $cases = [ordered]@{}
 $details = [ordered]@{}
+$trace = Join-Path $Out 'uia_trace.log'
+function Trace([string] $step) { Add-Content -LiteralPath $trace -Value "$(Get-Date -Format o) $step" }
 function State { try { Get-Content -Raw -Encoding utf8 $statePath | ConvertFrom-Json -AsHashtable } catch { @{} } }
 function Poll([scriptblock] $get, $want, [double] $seconds = 5) {
     $deadline = [DateTime]::UtcNow.AddSeconds($seconds); $got = $null
@@ -79,34 +92,55 @@ try {
     # Text (0.5 F0504).
     $edit = @($all | Where-Object { $_.Current.Name -eq 'Your name' -and $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Edit' })[0]
     $notes = @($all | Where-Object { $_.Current.Name -eq 'Notes' -and $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Edit' })[0]
+    Trace 'patterns'
     $tp = $edit.GetCurrentPattern($TP::Pattern)
     $ntp = $notes.GetCurrentPattern($TP::Pattern)
-    $details.U11 = $tp.DocumentRange.GetText(-1)
+    Trace 'U11'
+    $details.U11 = $tp.DocumentRange.GetText(4096)
     $cases.U11_edit_text = $details.U11 -ceq 'Ada'
-    $details.U12 = $ntp.DocumentRange.GetText(-1)
+    Trace 'U12'
+    $details.U12 = $ntp.DocumentRange.GetText(4096)
     $cases.U12_textarea_text = ($details.U12 -replace "`r", '') -ceq "Line one`nline two"
+    Trace 'U13'
     # A range over characters 1..3 ("da"), selected through the pattern.
     $r = $tp.DocumentRange.Clone()
+    Trace 'U13 cloned'
     $null = $r.MoveEndpointByRange($End::End, $r, $End::Start)
-    $null = $r.MoveEndpointByUnit($End::End, $Unit::Character, 3)
-    $null = $r.MoveEndpointByUnit($End::Start, $Unit::Character, 1)
-    $details.U13_range = $r.GetText(-1)
+    Trace "U13 collapsed '$($r.GetText(4096))'"
+    $moved = $r.MoveEndpointByUnit($End::End, $Unit::Character, 3)
+    Trace "U13 end moved $moved"
+    Trace "U13 text '$($r.GetText(4096))'"
+    $moved = $r.MoveEndpointByUnit($End::Start, $Unit::Character, 1)
+    Trace "U13 start moved $moved"
+    $details.U13_range = $r.GetText(4096)
     $r.Select()
-    $details.U13 = Poll { @($tp.GetSelection())[0].GetText(-1) } 'da'
-    $cases.U13_select_range = $details.U13_range -ceq 'da' -and $details.U13 -ceq 'da'
+    # The managed System.Windows.Automation client crashes (0xC0000005) reading text from a
+    # GetSelection() range under PowerShell 7; the native COM client reads it correctly
+    # (uia_native_text.py). Here the app's own tree reports where the selection landed.
+    $details.U13 = Poll { (State).selection } '1,3'
+    $cases.U13_select_range = $details.U13_range -ceq 'da' -and $details.U13 -ceq '1,3'
+    Trace 'U14'
     $boxes = @($r.GetBoundingRectangles())
     $details.U14 = @($boxes | ForEach-Object { "$($_.X),$($_.Y),$($_.Width),$($_.Height)" })
     $cases.U14_bounding_rectangles = $boxes.Count -ge 1 -and $boxes[0].Width -gt 0 -and $boxes[0].Height -gt 0
+    Trace 'U15'
     # Line navigation in the textarea: the second line by moving one Line unit.
     $l = $ntp.DocumentRange.Clone()
     $null = $l.MoveEndpointByRange($End::End, $l, $End::Start)
     $null = $l.Move($Unit::Line, 1)
     $null = $l.ExpandToEnclosingUnit($Unit::Line)
-    $details.U15 = $l.GetText(-1)
+    $details.U15 = $l.GetText(4096)
     $cases.U15_line_navigation = ($details.U15 -replace "[`r`n]", '') -ceq 'line two'
+    Trace 'U16'
     $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('Grace')
     $details.U16 = Poll { (State).values.name } 'Grace'
-    $cases.U16_value_set = $details.U16 -ceq 'Grace' -and (Poll { $tp.DocumentRange.GetText(-1) } 'Grace') -ceq 'Grace'
+    $cases.U16_value_set = $details.U16 -ceq 'Grace' -and (Poll { $tp.DocumentRange.GetText(4096) } 'Grace') -ceq 'Grace'
+    if ($NativeClient) {
+        # The native COM client (Narrator's API) reads the selection back: text and bounds.
+        Trace 'native'
+        & $Python $NativeClient (Join-Path $Out 'uia_native.json') *> (Join-Path $Out 'uia_native.log')
+        $cases.U17_native_selection = $LASTEXITCODE -eq 0
+    }
     $result = [ordered]@{ status = $(if (@($cases.Values | Where-Object { -not $_ }).Count) { 'failed' } else { 'passed' }); cases = $cases; details = $details; items = $items }
 }
 catch { $result = [ordered]@{ status = 'failed'; error = $_.Exception.Message; at = $_.InvocationInfo.PositionMessage; cases = $cases; details = $details } }
