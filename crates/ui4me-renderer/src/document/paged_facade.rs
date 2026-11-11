@@ -117,7 +117,7 @@ impl Document {
         if b.format == crate::raster::headless::PixelFormat::Rgba8Premultiplied {
             // The page is opaque (white under everything): premultiplied equals straight.
             b.format = crate::raster::headless::PixelFormat::Rgba8Unpremultiplied;
-            for px in b.data.chunks_exact_mut(4) {
+            for px in b.data.as_chunks_mut::<4>().0 {
                 px[3] = 255;
             }
         }

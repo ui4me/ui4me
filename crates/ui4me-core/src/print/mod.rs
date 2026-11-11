@@ -42,7 +42,9 @@ impl Page {
         rgba: &[u8],
     ) -> Page {
         let rgb: Vec<u8> = rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2]])
             .collect();
         Page {
