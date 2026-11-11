@@ -4,6 +4,7 @@ import gc
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 
 from ui4me import App, Ui4meError, __version__, build_info
@@ -267,6 +268,20 @@ class BindingTests(unittest.TestCase):
             window.set_scroll_follow("log")
             window.append_html("log", '<div class="r"></div>')
             self.assertEqual(window.get_scroll("log")["y"], 80.0)
+
+    def test_scroll_behavior_argument(self):
+        with self.app() as app:
+            window = app.open('<style>body{margin:0}.r{height:100px}</style><div id="box" style="height:100px;overflow:auto">'
+                              + '<div class="r"></div>' * 4 + '</div>', width=400, height=300)
+            result = window.scroll_to("box", y=100)
+            self.assertEqual((result["y"], result["animating"]), (100.0, False))
+            self.assertEqual(window.scroll_by("box", dy=50, behavior="instant")["y"], 150.0)
+            self.assertTrue(window.scroll_to("box", y=0, behavior="smooth")["animating"])
+            time.sleep(0.6)
+            self.assertEqual(window.get_scroll("box"), {**window.get_scroll("box"), "y": 0.0, "animating": False})
+            with self.assertRaises(Ui4meError):
+                window.scroll_to("box", y=1, behavior="slow")
+            window.scroll_into_view("box", behavior="instant")
 
     def test_selection_and_clipboard(self):
         with self.app() as app:

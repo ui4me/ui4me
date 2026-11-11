@@ -341,6 +341,13 @@ try {
             if ($window.ScrollTo('log', $null, 1000).Y -ne 50) { throw 'scroll_to did not clamp' }
             if ($window.ScrollBy('log', 0, -20).Y -ne 30) { throw 'scroll_by is wrong' }
             $window.ScrollIntoView('r0', 'start', 'nearest')
+            $instant = $window.ScrollBy('log', 0, 10, 'instant')
+            if ($instant.Animating -or $instant.Y -ne 10) { throw 'scroll_by instant is wrong' }
+            $smooth = $window.ScrollTo('log', $null, 0, 'smooth')
+            if (-not $smooth.Animating) { throw 'smooth scroll_to did not animate' }
+            Start-Sleep -Milliseconds 600
+            if ($window.GetScroll('log').Animating -or $window.GetScroll('log').Y -ne 0) { throw 'smooth scroll did not finish' }
+            $window.ScrollIntoView('r0', 'start', 'nearest')
             $rect = $window.GetRect('r0')
             if ($rect.Y -ne 0 -or $rect.Width -ne 400) { throw 'Rect is wrong' }
             $window.SetScrollFollow('log', $true)

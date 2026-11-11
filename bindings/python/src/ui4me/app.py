@@ -548,18 +548,31 @@ class Window:
         args = {} if element is None else {"element": element}
         return self._command("get_scroll", **args)
 
-    def scroll_to(self, element: str | None = None, *, x: float | None = None, y: float | None = None) -> dict:
-        args = {key: value for key, value in (("element", element), ("x", x), ("y", y)) if value is not None}
+    def scroll_to(self, element: str | None = None, *, x: float | None = None, y: float | None = None,
+                  behavior: str | None = None) -> dict:
+        """Scroll ``element`` (``None`` = viewport) to ``x``/``y`` (an omitted axis keeps its offset).
+        ``behavior`` is ``"auto"`` (the element's CSS ``scroll-behavior``), ``"instant"`` or
+        ``"smooth"``; smooth scrolling runs on the owner clock (the result's ``animating`` says so),
+        a user scroll cancels it and reduced motion makes it instant. Snaps per ``scroll-snap-type``."""
+        args = {key: value for key, value in (("element", element), ("x", x), ("y", y), ("behavior", behavior))
+                if value is not None}
         return self._command("scroll_to", **args)
 
-    def scroll_by(self, element: str | None = None, *, dx: float = 0.0, dy: float = 0.0) -> dict:
+    def scroll_by(self, element: str | None = None, *, dx: float = 0.0, dy: float = 0.0,
+                  behavior: str | None = None) -> dict:
         args = {"dx": float(dx), "dy": float(dy)}
         if element is not None:
             args["element"] = element
+        if behavior is not None:
+            args["behavior"] = behavior
         return self._command("scroll_by", **args)
 
-    def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest") -> None:
-        self._command("scroll_into_view", element=element, block=block, inline=inline)
+    def scroll_into_view(self, element: str, *, block: str = "nearest", inline: str = "nearest",
+                         behavior: str | None = None) -> None:
+        args = {"element": element, "block": block, "inline": inline}
+        if behavior is not None:
+            args["behavior"] = behavior
+        self._command("scroll_into_view", **args)
 
     def set_menu(self, menu: list[dict] | None) -> dict:
         """Set (or clear with ``None``) the window's menu: items ``{"id", "label", "enabled",

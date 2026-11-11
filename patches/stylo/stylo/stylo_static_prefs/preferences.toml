@@ -60,6 +60,7 @@
 "layout.css.ruby.enabled" = false
 "layout.css.scroll-behavior.enabled" = false
 "layout.css.scroll-driven-animations.enabled" = false
+"layout.css.scroll-snap.enabled" = false
 "layout.css.scroll-state.enabled" = false
 "layout.css.scrollbar-styling.enabled" = false
 "layout.css.starting-style-at-rules.enabled" = false

@@ -1700,24 +1700,29 @@ impl Session {
                 element,
                 x,
                 y,
+                behavior,
             } => self.query(window, |d| {
-                d.scroll_to(element.as_deref(), x, y).map(scroll_json)
+                d.scroll_to_behavior(element.as_deref(), x, y, behavior.as_deref().unwrap_or("auto"))
+                    .map(scroll_json)
             })?,
             Command::ScrollBy {
                 window,
                 element,
                 dx,
                 dy,
+                behavior,
             } => self.query(window, |d| {
-                d.scroll_by(element.as_deref(), dx, dy).map(scroll_json)
+                d.scroll_by_behavior(element.as_deref(), dx, dy, behavior.as_deref().unwrap_or("auto"))
+                    .map(scroll_json)
             })?,
             Command::ScrollIntoView {
                 window,
                 element,
                 block,
                 inline,
+                behavior,
             } => self.query(window, |d| {
-                d.scroll_into_view(&element, &block, &inline)
+                d.scroll_into_view_behavior(&element, &block, &inline, behavior.as_deref().unwrap_or("auto"))
                     .map(|()| json!({}))
             })?,
             Command::SetEnvironment {
@@ -2501,7 +2506,7 @@ pub fn poison_active() {
 }
 fn scroll_json(s: ui4me_renderer::ScrollState) -> Value {
     json!({"x":s.x,"y":s.y,"min_x":s.min_x,"min_y":s.min_y,"max_x":s.max_x,"max_y":s.max_y,
-        "width":s.width,"height":s.height,"scrollable":s.scrollable})
+        "width":s.width,"height":s.height,"scrollable":s.scrollable,"animating":s.animating})
 }
 fn observed_json(o: &Observed) -> Value {
     json!({"visible":o.visible,"focused":o.focused,"minimized":o.minimized,

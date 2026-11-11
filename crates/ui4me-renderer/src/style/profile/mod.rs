@@ -94,7 +94,8 @@ pub const ID: &str = CssFeatureProfile::ID;
 /// 1.20.0 (experimental, pending 015 acceptance): CSS backdrop filter functions render; URL filters remain excluded.
 /// Desktop foundation: transitions, animations, and paged media are explicitly
 /// filtered until their host scheduling/lifetime contract is promoted.
-pub const VERSION: &str = "1.21.0";
+/// 1.22.0: `scroll-behavior`, `overscroll-behavior`, `scroll-snap-*`, `scroll-padding*`, `scroll-margin*` (0.8 F0803/F0804; carried patch P-006-16).
+pub const VERSION: &str = "1.22.0";
 /// The single Stylo revision of the workspace (engine/Cargo.toml; X-DEPS).
 pub const ENGINE_REVISION: &str = "37c1ed3b707c8f333304de2107c13b68fbc1057c";
 

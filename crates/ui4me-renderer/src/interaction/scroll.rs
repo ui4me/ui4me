@@ -9,7 +9,9 @@
 //! Not done (012 T100-T104 stay open): the wheel transaction target and 500 ms timeout,
 //! `scrollend` after a wheel (there is no transaction end yet), passive-by-default wheel
 //! listeners, scrollbar parts (hit routing, drag, paging, visibility), `scrollIntoView`, the
-//! focus-scrolls-into-view rule, `scroll-behavior: smooth` (006 drops it).
+//! focus-scrolls-into-view rule. Smooth scrolling, snapping and overscroll containment (0.8
+//! F0803/F0804) are policy of the host (`scroll_user_by`, `scroll_user_settle`, `scroll_cancel`) and of
+//! `Document` (`document/scroll_anim.rs`).
 
 use crate::interaction::dispatch::{DispatchHost, eng, operation, rt, run_dispatch};
 use crate::interaction::frame::{EventInit, EventInterface, Modifiers};
@@ -81,6 +83,7 @@ pub(crate) fn scrollbar_down(
                 scale: (max - min) / travel,
                 moved: false,
             };
+            host.scroll_cancel(doc, target)?;
             eng(host, doc, |ix, _| {
                 if let Some(s) = ix.docs.get_mut(&doc) {
                     s.scrollbar_drag = Some(drag);
@@ -98,7 +101,7 @@ pub(crate) fn scrollbar_down(
         } else {
             (delta, 0.0)
         };
-        scroll_container_by(host, doc, &info, dx, dy, true)?;
+        scroll_container_user(host, doc, &info, dx, dy, true)?;
         // Remember a track press as well, so its release does not become a DOM mouseup/click.
         let drag = ScrollbarDrag {
             node: hit.node,
@@ -146,6 +149,7 @@ pub(crate) fn scrollbar_move(
             (value, info.offset.1)
         };
         let target = if drag.viewport { None } else { Some(drag.node) };
+        host.scroll_cancel(doc, target)?;
         let applied = host.scroll_set(doc, target, x, y)?;
         changed = applied.changed;
         if changed {
@@ -167,6 +171,14 @@ pub(crate) fn scrollbar_move(
                 s.scrollbar_drag = None;
             }
         })?;
+        // Releasing the thumb settles on a snap position (instantly or smoothly).
+        if drag.moved || changed {
+            let target = if drag.viewport { None } else { Some(drag.node) };
+            if host.scroll_user_settle(doc, target)? {
+                rt(host, |ix| ix.note_scrolled(doc, target, true));
+                changed = true;
+            }
+        }
         if drag.moved && !changed {
             let target = if drag.viewport {
                 eng(host, doc, |_, d| d.document_node())?
@@ -202,9 +214,18 @@ pub struct ScrollTargetInfo {
     /// `hidden`); programmatic scrolling is allowed on `hidden` containers.
     pub user_x: bool,
     pub user_y: bool,
+    /// `overscroll-behavior` is `contain` or `none` on the axis: user scrolling does not chain
+    /// to the ancestors (0.8 F0804).
+    pub contain_x: bool,
+    pub contain_y: bool,
 }
 
 impl ScrollTargetInfo {
+    /// Does this container stop a user scroll by `(dx, dy)` from chaining to its ancestors?
+    pub fn blocks_chain(&self, dx: f64, dy: f64) -> bool {
+        (dx != 0.0 && self.user_x && self.contain_x) || (dy != 0.0 && self.user_y && self.contain_y)
+    }
+
     /// Can a user scroll by `(dx, dy)` move this container at all?
     pub fn can_scroll(&self, dx: f64, dy: f64) -> bool {
         let room = |o: f64, lo: f64, hi: f64, d: f64| (d > 0.0 && o < hi) || (d < 0.0 && o > lo);
@@ -342,9 +363,55 @@ pub fn scroll_offset(
         .map_or((0.0, 0.0), |i| i.offset))
 }
 
-/// The first container of `chain` a user scroll by `(dx, dy)` can move.
+/// The first container of `chain` a user scroll by `(dx, dy)` can move; a container with
+/// `overscroll-behavior: contain | none` on the scrolled axis ends the chain (0.8 F0804).
 pub(crate) fn pick(chain: &[ScrollTargetInfo], dx: f64, dy: f64) -> Option<ScrollTargetInfo> {
-    chain.iter().copied().find(|i| i.can_scroll(dx, dy))
+    for i in chain {
+        if i.can_scroll(dx, dy) {
+            return Some(*i);
+        }
+        if i.blocks_chain(dx, dy) {
+            return None;
+        }
+    }
+    None
+}
+
+/// A user scroll (wheel, keys, track paging) of `info` by `(dx, dy)`: cancels a running smooth
+/// scroll of the container and snaps per `scroll-snap-type` (the host decides; 0.8 F0803/F0804).
+pub(crate) fn scroll_container_user(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    info: &ScrollTargetInfo,
+    dx: f64,
+    dy: f64,
+    end: bool,
+) -> Result<bool, Status> {
+    let applied = host.scroll_user_by(doc, info.target, dx, dy)?;
+    if applied.changed {
+        rt(host, |ix| ix.note_scrolled(doc, info.target, end));
+    }
+    Ok(applied.changed)
+}
+
+/// One step of a smooth scroll: write the offset, queue `scroll` (and `scrollend` on the last
+/// step) and dispatch them. Called by the owner clock, outside any other operation.
+pub(crate) fn scroll_step(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    target: Option<NodeId>,
+    x: f64,
+    y: f64,
+    end: bool,
+) -> Result<ScrollApplied, Status> {
+    operation(host, |h| {
+        let applied = h.scroll_set(doc, target, x, y)?;
+        if applied.changed {
+            rt(h, |ix| ix.note_scrolled(doc, target, end));
+            flush_scroll_events(h, doc, DispatchOrigin::ElementTask, None);
+        }
+        Ok(applied)
+    })
 }
 
 /// Move `info` by `(dx, dy)`; notes the `scroll` event when the offset changed.
@@ -398,7 +465,7 @@ pub(crate) fn on_wheel(
     }
     let chain = host.scroll_chain(doc, target)?;
     if let Some(info) = pick(&chain, dx, dy)
-        && scroll_container_by(host, doc, &info, dx, dy, false)?
+        && scroll_container_user(host, doc, &info, dx, dy, false)?
     {
         let mut p = PointerData::mouse(x, y, -1);
         p.buttons = 0;
