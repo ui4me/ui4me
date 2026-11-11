@@ -286,6 +286,14 @@ pub enum Command {
         #[serde(default = "yes")]
         prevent: bool,
     },
+    GetValidity {
+        window: u64,
+        element: String,
+    },
+    CheckValidity {
+        window: u64,
+        element: String,
+    },
     GetScroll {
         window: u64,
         #[serde(default)]

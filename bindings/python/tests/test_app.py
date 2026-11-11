@@ -239,6 +239,22 @@ class BindingTests(unittest.TestCase):
             with self.assertRaises(Ui4meError):
                 window.set_default_action("f", "input")
 
+    def test_validity_and_check_validity(self):
+        with self.app() as app:
+            window = app.open('<form id="f"><input id="n" required><input id="m" type="email" value="a@b.co"><button id="go">Go</button></form>')
+            v = window.get_validity("n")
+            self.assertFalse(v["valid"])
+            self.assertTrue(v["flags"]["valueMissing"])
+            self.assertEqual(v["message"], "Please fill out this field.")
+            self.assertTrue(window.get_validity("go")["valid"])
+            result = window.check_validity("f")
+            self.assertEqual(result, {"valid": False, "invalid": ["n"], "count": 1})
+            window.set_value("n", "ok")
+            window.set_value("m", "a@b.co")
+            self.assertTrue(window.check_validity("f")["valid"])
+            with self.assertRaises(Ui4meError):
+                window.get_validity("missing")
+
     def test_scroll_geometry_and_follow(self):
         with self.app() as app:
             window = app.open('<style>body{margin:0}.r{height:30px}</style><div id="log" style="height:100px;overflow:auto">'

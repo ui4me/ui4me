@@ -212,6 +212,7 @@ enum Behaviour {
     /// Submit button: submit the form owner (fire `submit` at the form).
     Submit {
         form: NodeId,
+        submitter: NodeId,
     },
     /// Reset button: fire `reset` at the form and, unless canceled, reset its controls.
     Reset {
@@ -327,7 +328,10 @@ fn decide(
         && !is_disabled_form_control(d, act)
         && let Some(form) = form_owner(d, act).filter(|&f| connected(d, f))
     {
-        return Behaviour::Submit { form };
+        return Behaviour::Submit {
+            form,
+            submitter: act,
+        };
     }
     if element(d, act)
         .is_some_and(|e| matches!(e.local_name(), "a" | "area") && e.attr("href").is_some())
@@ -421,16 +425,128 @@ pub(crate) fn activation_behaviour(
                 let _ = eng(host, doc, |_, d| d.form_reset_controls(form));
             }
         }
-        Behaviour::Submit { form } => {
-            if !rt(host, |ix| ix.submitting.insert((doc, form))) {
-                return;
-            }
-            let init = EventInit::new("submit")
-                .interface(EventInterface::SubmitEvent)
-                .bubbles(true)
-                .cancelable(true);
-            let _ = fire(host, doc, form, init);
-            rt(host, |ix| ix.submitting.remove(&(doc, form)));
+        Behaviour::Submit { form, submitter } => {
+            submit_form(host, doc, form, Some(submitter));
         }
     }
+}
+
+/// The controls of `scope` (a form: its listed elements in tree order; any other node: itself)
+/// that fail constraint validation right now.
+fn invalid_controls(d: &Document, scope: NodeId) -> Vec<NodeId> {
+    let nodes = if element(d, scope).is_some_and(|e| e.local_name() == "form") {
+        d.form_elements(scope).unwrap_or_default()
+    } else {
+        vec![scope]
+    };
+    nodes
+        .into_iter()
+        .filter(|&n| d.constraint_validity(n).is_some_and(|v| !v.valid()))
+        .collect()
+}
+
+/// Fire a non-bubbling, cancelable `invalid` at each invalid control of `scope` (HTML "statically
+/// validate the constraints"). A control removed (or moved out of the form) by an earlier handler
+/// is skipped. Returns `(fired, unhandled)`: the controls that received `invalid`, and those whose
+/// event was not canceled.
+pub(crate) fn fire_invalid_events(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    scope: NodeId,
+) -> (Vec<NodeId>, Vec<NodeId>) {
+    let Ok(list) = eng(host, doc, |_, d| invalid_controls(d, scope)) else {
+        return (Vec::new(), Vec::new());
+    };
+    let is_form = eng(host, doc, |_, d| {
+        element(d, scope).is_some_and(|e| e.local_name() == "form")
+    })
+    .unwrap_or(false);
+    let (mut fired, mut unhandled) = (Vec::new(), Vec::new());
+    for c in list {
+        let live = eng(host, doc, |_, d| {
+            connected(d, c) && (!is_form || form_owner(d, c) == Some(scope))
+        })
+        .unwrap_or(false);
+        if !live {
+            continue;
+        }
+        let init = EventInit::new("invalid").bubbles(false).cancelable(true);
+        match fire(host, doc, c, init) {
+            Ok(canceled) => {
+                fired.push(c);
+                if !canceled {
+                    unhandled.push(c);
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    (fired, unhandled)
+}
+
+/// HTML form submission (interactive): unless `novalidate` / `formnovalidate`, statically
+/// validate the form; invalid fires `invalid` at each failing control, focuses the first
+/// unhandled one and submits nothing. Otherwise fires the cancelable `submit` (with `submitter`)
+/// at the form. No navigation (the host reacts to `submit`). Re-entrant submission of a form
+/// whose submission is in progress is ignored.
+pub(crate) fn submit_form(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    form: NodeId,
+    submitter: Option<NodeId>,
+) {
+    if !rt(host, |ix| ix.submitting.insert((doc, form))) {
+        return;
+    }
+    submit_form_guarded(host, doc, form, submitter);
+    rt(host, |ix| ix.submitting.remove(&(doc, form)));
+}
+
+fn submit_form_guarded(
+    host: &mut dyn DispatchHost,
+    doc: DocumentId,
+    form: NodeId,
+    submitter: Option<NodeId>,
+) {
+    let Ok((no_validate, submitter_id)) = eng(host, doc, |_, d| {
+        let skip = element(d, form).is_some_and(|e| e.attr("novalidate").is_some())
+            || submitter
+                .and_then(|s| element(d, s))
+                .is_some_and(|e| e.attr("formnovalidate").is_some());
+        let id = submitter
+            .and_then(|s| element(d, s))
+            .and_then(|e| e.attr("id"))
+            .filter(|i| !i.is_empty())
+            .map(str::to_owned);
+        (skip, id)
+    }) else {
+        return;
+    };
+    if !no_validate {
+        let (fired, unhandled) = fire_invalid_events(host, doc, form);
+        if !fired.is_empty() {
+            let first = unhandled
+                .into_iter()
+                .find(|&c| eng(host, doc, |_, d| connected(d, c)).unwrap_or(false));
+            if let Some(c) = first {
+                let _ = crate::interaction::focus::focus_update(
+                    host,
+                    doc,
+                    Some(c),
+                    DispatchOrigin::Activation,
+                    crate::interaction::focus::FocusSource::Script,
+                );
+            }
+            return;
+        }
+    }
+    if !eng(host, doc, |_, d| connected(d, form)).unwrap_or(false) {
+        return;
+    }
+    let mut init = EventInit::new("submit")
+        .interface(EventInterface::SubmitEvent)
+        .bubbles(true)
+        .cancelable(true);
+    init.data.submitter = submitter_id;
+    let _ = fire(host, doc, form, init);
 }

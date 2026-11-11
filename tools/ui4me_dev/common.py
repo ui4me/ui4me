@@ -54,6 +54,8 @@ def source_files(root: Path = ROOT):
             return False
         if parts[0] in {"build", "dist", "target"}:
             return False
+        if parts[:2] == (".claude", "worktrees"):
+            return False  # temporary agent worktrees are other checkouts, not this source
         if parts[:2] == ("bindings", "python") and len(parts) == 3 and parts[-1] in {"build", "dist"}:
             return False
         if parts[:3] == ("bindings", "powershell", "Ui4me.Managed") and len(parts) == 4 and parts[-1] in {"bin", "obj"}:

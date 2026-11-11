@@ -291,6 +291,7 @@ impl Document {
             "compositionend",
             "submit",
             "reset",
+            "invalid",
             "toggle",
             "cancel",
             "close",
@@ -1220,6 +1221,41 @@ impl Document {
         }
         self.repaint = true;
     }
+    /// Constraint validity of the control `element` (F0605): `{valid, flags, message}`, or
+    /// `{will_validate:false, valid:true}` for a control barred from validation. No events.
+    pub fn get_validity(&mut self, element: &str) -> Result<Value> {
+        let n = self.node(element)?;
+        let d = self.pipeline.document();
+        Ok(match d.constraint_validity(n) {
+            Some(cv) => {
+                let mut v = validity_json(&cv);
+                v["will_validate"] = json!(true);
+                v
+            }
+            None => json!({"valid": true, "will_validate": false, "flags": {}, "message": ""}),
+        })
+    }
+    /// `checkValidity()` on a form or a control (F0605): fires a non-bubbling `invalid` at every
+    /// invalid control, returns `{valid, invalid:[ids], count}` (controls without an `id` are
+    /// counted but not listed). Never submits and never moves focus.
+    pub fn check_validity(&mut self, element: &str) -> Result<Value> {
+        let n = self.node(element)?;
+        let id = self.id();
+        let d = self.pipeline.document();
+        let ok_kind = d.local_name(n).is_ok_and(|t| t == "form") || d.control_facts(n).is_some();
+        if !ok_kind {
+            return Err(arg("check_validity needs a form or a form control"));
+        }
+        let (fired, _) = crate::interaction::activation::fire_invalid_events(self, id, n);
+        let d = self.pipeline.document();
+        let ids: Vec<String> = fired
+            .iter()
+            .filter_map(|&c| d.get_attribute(c, "id").ok().flatten())
+            .filter(|i| !i.is_empty())
+            .map(str::to_owned)
+            .collect();
+        Ok(json!({"valid": fired.is_empty(), "invalid": ids, "count": fired.len()}))
+    }
     pub fn focus(&mut self, element: &str) -> Result<()> {
         let n = self.node(element)?;
         let id = self.id();
@@ -1618,6 +1654,12 @@ impl DispatchHost for Document {
         field!("is_composing", is_composing);
         field!("old_state", old_state);
         field!("new_state", new_state);
+        field!("submitter", submitter);
+        if inv.event_type == "invalid"
+            && let Some(cv) = d.constraint_validity(node)
+        {
+            value["validity"] = validity_json(&cv);
+        }
         if inv.event_type == "close" && crate::interaction::dialog::is_dialog(d, node) {
             value["return_value"] = json!(self.interaction.dialog_return_value(self.id(), node));
         }
@@ -2574,4 +2616,12 @@ impl crate::a11y::RenderInfo for A11yInfo<'_> {
                 .collect(),
         )
     }
+}
+
+fn validity_json(cv: &ui4me_document::constraint::ConstraintValidity) -> Value {
+    let mut flags = serde_json::Map::new();
+    for (name, bit) in ui4me_document::constraint::FLAG_NAMES {
+        flags.insert(name.to_owned(), json!(cv.flags & bit != 0));
+    }
+    json!({"valid": cv.valid(), "flags": flags, "message": cv.message})
 }

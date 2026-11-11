@@ -319,6 +319,19 @@ try {
             $null = $app.On('started', { $app.Stop() })
         }
     }
+    Test-Case 'PS21e_validity' {
+        Invoke-Ui4meApp -Backend headless {
+            param($app)
+            $window = $app.Open('<form id="f"><input id="n" required><button id="go">Go</button></form>')
+            $v = $window.GetValidityJson('n') | ConvertFrom-Json
+            if ($v.valid -or -not $v.flags.valueMissing -or $v.message -ne 'Please fill out this field.') { throw 'Validity is wrong' }
+            $c = $window.CheckValidityJson('f') | ConvertFrom-Json
+            if ($c.valid -or $c.count -ne 1 -or $c.invalid[0] -ne 'n') { throw 'CheckValidity is wrong' }
+            $window.SetValue('n', 'ok')
+            if (-not ($window.CheckValidityJson('f') | ConvertFrom-Json).valid) { throw 'Valid form reported invalid' }
+            $null = $app.On('started', { $app.Stop() })
+        }
+    }
     Test-Case 'PS21d_scroll_geometry_follow' {
         Invoke-Ui4meApp -Backend headless {
             param($app)

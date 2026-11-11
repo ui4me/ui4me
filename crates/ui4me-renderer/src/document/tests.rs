@@ -843,3 +843,292 @@ fn drag_past_line_end_stays_in_its_column() {
     button(&mut d, false, r.x + 280.0, r.y + r.height / 2.0);
     assert_eq!(d.selection_text().unwrap(), "Short text");
 }
+
+// ---- F0605: constraint validation and form submission ----------------------------------------
+
+fn flags(d: &mut Document, id: &str) -> Vec<String> {
+    let v = d.get_validity(id).unwrap();
+    v["flags"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(_, on)| on.as_bool() == Some(true))
+        .map(|(k, _)| k.clone())
+        .collect()
+}
+fn of_type<'a>(events: &'a [Value], ty: &str) -> Vec<&'a Value> {
+    events.iter().filter(|e| e["type"] == ty).collect()
+}
+fn rule(element: &str, event: &str) -> DefaultActionRule {
+    DefaultActionRule {
+        element: element.into(),
+        event: event.into(),
+        key: None,
+        shift: None,
+        ctrl: None,
+        alt: None,
+        meta: None,
+    }
+}
+
+#[test]
+fn constraint_flags_cover_the_supported_attributes() {
+    let mut d = Document::parse(
+        "<!doctype html><form id=f>\
+        <input id=req required>\
+        <input id=mail type=email>\
+        <input id=url type=url>\
+        <input id=pat pattern='[a-z]+' title='lowercase'>\
+        <input id=len minlength=3 maxlength=5>\
+        <input id=num type=number min=2 max=8 step=2>\
+        <input id=chk type=checkbox required>\
+        <input id=ra type=radio name=g required><input id=rb type=radio name=g>\
+        <select id=sel required><option value=''>pick</option><option value=x>X</option></select>\
+        <textarea id=ta required></textarea>\
+        <input id=off required disabled><input id=ro required readonly>\
+        <input id=hid type=hidden required>\
+        </form>",
+    )
+    .unwrap();
+    assert_eq!(flags(&mut d, "req"), ["valueMissing"]);
+    d.set_value("req", "x").unwrap();
+    assert!(flags(&mut d, "req").is_empty());
+    assert_eq!(d.get_validity("req").unwrap()["valid"], true);
+
+    d.set_value("mail", "nope").unwrap();
+    assert_eq!(flags(&mut d, "mail"), ["typeMismatch"]);
+    d.set_value("mail", "a@b.example").unwrap();
+    assert!(flags(&mut d, "mail").is_empty());
+    d.set_value("url", "example.com").unwrap();
+    assert_eq!(flags(&mut d, "url"), ["typeMismatch"]);
+    d.set_value("url", "https://example.com/x").unwrap();
+    assert!(flags(&mut d, "url").is_empty());
+
+    d.set_value("pat", "ABC").unwrap();
+    assert_eq!(flags(&mut d, "pat"), ["patternMismatch"]);
+    assert_eq!(
+        d.get_validity("pat").unwrap()["message"],
+        "Please match the requested format: lowercase"
+    );
+    d.set_value("pat", "abc").unwrap();
+    assert!(flags(&mut d, "pat").is_empty());
+
+    d.set_value("len", "ab").unwrap();
+    assert_eq!(flags(&mut d, "len"), ["tooShort"]);
+    d.set_value("len", "abcdef").unwrap();
+    assert_eq!(flags(&mut d, "len"), ["tooLong"]);
+    d.set_value("len", "abcd").unwrap();
+    assert!(flags(&mut d, "len").is_empty());
+
+    d.set_value("num", "1").unwrap();
+    let f = flags(&mut d, "num");
+    assert!(f.contains(&"rangeUnderflow".to_owned()) && f.contains(&"stepMismatch".to_owned()));
+    d.set_value("num", "10").unwrap();
+    assert_eq!(flags(&mut d, "num"), ["rangeOverflow"]);
+    d.set_value("num", "5").unwrap();
+    assert_eq!(flags(&mut d, "num"), ["stepMismatch"]);
+    d.set_value("num", "4").unwrap();
+    assert!(flags(&mut d, "num").is_empty());
+
+    assert_eq!(flags(&mut d, "chk"), ["valueMissing"]);
+    d.set_checked("chk", true).unwrap();
+    assert!(flags(&mut d, "chk").is_empty());
+    // A required radio is judged on its group.
+    assert_eq!(flags(&mut d, "ra"), ["valueMissing"]);
+    assert_eq!(flags(&mut d, "rb"), ["valueMissing"]);
+    d.set_checked("rb", true).unwrap();
+    assert!(flags(&mut d, "ra").is_empty());
+
+    assert_eq!(flags(&mut d, "sel"), ["valueMissing"]);
+    d.set_value("sel", "x").unwrap();
+    assert!(flags(&mut d, "sel").is_empty());
+    assert_eq!(flags(&mut d, "ta"), ["valueMissing"]);
+
+    for barred in ["off", "ro", "hid"] {
+        let v = d.get_validity(barred).unwrap();
+        assert_eq!(v["will_validate"], false, "{barred}");
+        assert_eq!(v["valid"], true, "{barred}");
+    }
+    assert!(d.get_validity("nope").is_err());
+}
+
+const FORM: &str = "<!doctype html><form id=f>\
+    <input id=a required><input id=b required><input id=c>\
+    <button id=go>Go</button><button id=skip formnovalidate>Skip</button></form>";
+
+#[test]
+fn clicking_submit_validates_first_then_submits_with_the_submitter() {
+    let mut d = Document::parse(FORM).unwrap();
+    let events = click(&mut d, "go");
+    let invalid = of_type(&events, "invalid");
+    assert_eq!(
+        invalid
+            .iter()
+            .map(|e| e["element"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["a", "b"]
+    );
+    assert_eq!(invalid[0]["validity"]["flags"]["valueMissing"], true);
+    assert_eq!(
+        invalid[0]["path"].as_array().unwrap().len(),
+        1,
+        "invalid does not bubble"
+    );
+    assert!(
+        of_type(&events, "submit").is_empty(),
+        "invalid forms do not submit"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "focus" && e["element"] == "a"),
+        "the first invalid control is focused: {events:?}"
+    );
+    d.set_value("a", "1").unwrap();
+    d.set_value("b", "2").unwrap();
+    let events = click(&mut d, "go");
+    assert!(of_type(&events, "invalid").is_empty());
+    let submit = of_type(&events, "submit");
+    assert_eq!(submit.len(), 1);
+    assert_eq!(submit[0]["submitter"], "go");
+    assert_eq!(submit[0]["element"], "f");
+}
+
+#[test]
+fn formnovalidate_and_novalidate_skip_validation() {
+    let mut d = Document::parse(FORM).unwrap();
+    let events = click(&mut d, "skip");
+    assert!(of_type(&events, "invalid").is_empty());
+    assert_eq!(of_type(&events, "submit")[0]["submitter"], "skip");
+
+    let mut d = Document::parse(&FORM.replace("<form id=f>", "<form id=f novalidate>")).unwrap();
+    let events = click(&mut d, "go");
+    assert!(of_type(&events, "invalid").is_empty());
+    assert_eq!(of_type(&events, "submit").len(), 1);
+}
+
+#[test]
+fn enter_in_a_field_is_implicit_submission_with_validation() {
+    let mut d = Document::parse(FORM).unwrap();
+    d.focus("c").unwrap();
+    d.drain_events();
+    let events = press(&mut d, "Enter");
+    assert_eq!(of_type(&events, "invalid").len(), 2);
+    assert!(of_type(&events, "submit").is_empty());
+    d.set_value("a", "1").unwrap();
+    d.set_value("b", "2").unwrap();
+    d.focus("c").unwrap();
+    let events = press(&mut d, "Enter");
+    let submit = of_type(&events, "submit");
+    assert_eq!(submit.len(), 1);
+    assert_eq!(
+        submit[0]["submitter"], "go",
+        "implicit submission clicks the default button"
+    );
+
+    // No button, one text field: the form itself is submitted, without a submitter.
+    let mut d =
+        Document::parse("<!doctype html><form id=f><input id=only required></form>").unwrap();
+    d.focus("only").unwrap();
+    d.drain_events();
+    let events = press(&mut d, "Enter");
+    assert_eq!(of_type(&events, "invalid").len(), 1);
+    assert!(of_type(&events, "submit").is_empty());
+    d.set_value("only", "x").unwrap();
+    let events = press(&mut d, "Enter");
+    let submit = of_type(&events, "submit");
+    assert_eq!(submit.len(), 1);
+    assert!(submit[0].get("submitter").is_none());
+}
+
+#[test]
+fn form_attribute_associates_controls_outside_the_form() {
+    let mut d = Document::parse(
+        "<!doctype html><form id=f></form><input id=out required form=f>\
+        <form id=g><input id=in required></form><button id=go form=f>Go</button>",
+    )
+    .unwrap();
+    let events = click(&mut d, "go");
+    let invalid = of_type(&events, "invalid");
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0]["element"], "out", "g's control is not f's");
+    let r = d.check_validity("f").unwrap();
+    assert_eq!(r["valid"], false);
+    assert_eq!(r["invalid"], json!(["out"]));
+    let r = d.check_validity("g").unwrap();
+    assert_eq!(r["invalid"], json!(["in"]));
+}
+
+#[test]
+fn check_validity_fires_invalid_without_submitting_or_focusing() {
+    let mut d = Document::parse(FORM).unwrap();
+    d.drain_events();
+    let r = d.check_validity("f").unwrap();
+    assert_eq!(
+        r,
+        json!({"valid": false, "invalid": ["a", "b"], "count": 2})
+    );
+    let events = d.drain_events();
+    assert_eq!(of_type(&events, "invalid").len(), 2);
+    assert!(of_type(&events, "submit").is_empty());
+    assert!(of_type(&events, "focus").is_empty());
+    let r = d.check_validity("c").unwrap();
+    assert_eq!(r, json!({"valid": true, "invalid": [], "count": 0}));
+    assert_eq!(d.check_validity("go").unwrap()["valid"], true);
+    assert!(d.drain_events().is_empty());
+}
+
+#[test]
+fn reset_restores_defaults_unless_the_host_cancels_it() {
+    let mut d = Document::parse(
+        "<!doctype html><form id=f><input id=a value=d required><input id=k type=checkbox checked>\
+        <button id=go>Go</button><button id=rs type=reset>Reset</button></form>",
+    )
+    .unwrap();
+    d.set_default_action(rule("f", "reset"), true).unwrap();
+    d.set_value("a", "changed").unwrap();
+    d.set_checked("k", false).unwrap();
+    click(&mut d, "rs");
+    assert_eq!(
+        d.get_value("a").unwrap(),
+        "changed",
+        "canceled reset keeps values"
+    );
+    d.set_default_action(rule("f", "reset"), false).unwrap();
+    click(&mut d, "rs");
+    assert_eq!(d.get_value("a").unwrap(), "d");
+    assert!(d.get_checked("k").unwrap());
+    // Emptied then reset: the default value comes back and validates.
+    d.set_value("a", "").unwrap();
+    assert_eq!(flags(&mut d, "a"), ["valueMissing"]);
+    click(&mut d, "rs");
+    assert!(flags(&mut d, "a").is_empty());
+}
+
+#[test]
+fn a_host_rule_can_cancel_the_submit_default_after_validation() {
+    let mut d = Document::parse(
+        "<!doctype html><form id=f><input id=a value=ok required><button id=go>Go</button></form>",
+    )
+    .unwrap();
+    d.set_default_action(rule("f", "submit"), true).unwrap();
+    let events = click(&mut d, "go");
+    let submit = of_type(&events, "submit");
+    assert_eq!(submit.len(), 1);
+    assert_eq!(submit[0]["default_prevented"], true);
+}
+
+#[test]
+fn controls_removed_after_validation_leave_no_stale_state() {
+    let mut d = Document::parse(FORM).unwrap();
+    click(&mut d, "go");
+    d.remove_element("a").unwrap();
+    d.drain_events();
+    let events = click(&mut d, "go");
+    let invalid = of_type(&events, "invalid");
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0]["element"], "b");
+    d.remove_element("f").unwrap();
+    assert!(d.check_validity("f").is_err());
+    assert!(d.get_validity("b").is_err());
+}

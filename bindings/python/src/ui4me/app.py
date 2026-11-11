@@ -477,6 +477,20 @@ class Window:
                    if value is not None}
         self._command("set_default_action", element=element, event=event, prevent=bool(prevent), **filters)
 
+    def get_validity(self, element: str) -> dict:
+        """Constraint validity of a control: ``{valid, flags, message, will_validate}``.
+
+        ``flags`` has ``valueMissing``, ``typeMismatch``, ``patternMismatch``, ``tooLong``,
+        ``tooShort``, ``rangeUnderflow``, ``rangeOverflow``, ``stepMismatch``, ``badInput``.
+        Fires no events. The message is fixed English text.
+        """
+        return self._command("get_validity", element=element)
+
+    def check_validity(self, element: str) -> dict:
+        """``checkValidity()`` of a form or control: fires a non-bubbling ``invalid`` event at each
+        invalid control and returns ``{valid, invalid: [ids], count}``. Never submits."""
+        return self._command("check_validity", element=element)
+
     def get_scroll(self, element: str | None = None) -> dict:
         """Scroll offset/range/scrollport in CSS px of ``element`` (``None`` = viewport)."""
         args = {} if element is None else {"element": element}

@@ -17,6 +17,7 @@ html5ever = { workspace = true }
 markup5ever = { workspace = true }
 web_atoms = { workspace = true }
 string_cache = { workspace = true }
+regex = { version = "1", default-features = false, features = ["std", "unicode"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

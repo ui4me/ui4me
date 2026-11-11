@@ -363,6 +363,8 @@ pub struct EventData {
     /// `ToggleEvent.oldState` / `newState` (`"open"` or `"closed"`; 015 HTML-1, HTML-2). Not exported when `None`.
     pub old_state: Option<String>,
     pub new_state: Option<String>,
+    /// `SubmitEvent.submitter`: the `id` of the submit button that caused the submission, when it has one.
+    pub submitter: Option<String>,
 }
 
 /// Members the export marks `nondeterministic` (excluded from byte-identity).

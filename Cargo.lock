@@ -4016,6 +4016,7 @@ dependencies = [
  "html5ever",
  "markup5ever",
  "proptest",
+ "regex",
  "string_cache",
  "ui4me-engine-types",
  "web_atoms",

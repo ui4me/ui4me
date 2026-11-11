@@ -1383,6 +1383,12 @@ impl Session {
                     prevent,
                 )
             })?,
+            Command::GetValidity { window, element } => {
+                self.query(window, |d| d.get_validity(&element))?
+            }
+            Command::CheckValidity { window, element } => {
+                self.query(window, |d| d.check_validity(&element))?
+            }
             Command::GetScroll { window, element } => {
                 self.query(window, |d| d.scroll_state(element.as_deref()).map(scroll_json))?
             }

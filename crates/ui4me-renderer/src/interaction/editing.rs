@@ -1107,13 +1107,8 @@ fn implicit_submit(host: &mut dyn DispatchHost, cx: &Cx) -> Result<(), Status> {
         click.detail = 1;
         click.modifiers = cx.m;
         run_dispatch(host, cx.doc, t, click, true, cx.origin, cx.ts)?;
-    } else if rt(host, |ix| ix.submitting.insert((cx.doc, t))) {
-        let init = EventInit::new("submit")
-            .interface(EventInterface::SubmitEvent)
-            .bubbles(true)
-            .cancelable(true);
-        let _ = run_dispatch(host, cx.doc, t, init, true, cx.origin, cx.ts);
-        rt(host, |ix| ix.submitting.remove(&(cx.doc, t)));
+    } else {
+        crate::interaction::activation::submit_form(host, cx.doc, t, None);
     }
     Ok(())
 }

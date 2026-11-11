@@ -97,6 +97,13 @@ extern "C" fn callback(id: u64, text: *const c_char, user: *mut c_void) -> i32 {
                     .command(json!({"op":"remove_element","window":window,"element":"dlg"}))
                     .map_err(|_| ())?;
             }
+            (23, Some("invalid")) | (23, Some("submit")) => {
+                let window = event["window"].as_u64().ok_or(())?;
+                let target = event["element"].as_str().ok_or(())?.to_owned();
+                session
+                    .command(json!({"op":"remove_element","window":window,"element":target}))
+                    .map_err(|_| ())?;
+            }
             (10, Some("input")) => {
                 let window = event["window"].as_u64().ok_or(())?;
                 session.command(json!({"op":"replace_children_html","window":window,"element":"content","html":"<input id='editor' value='replacement'>"})).map_err(|_|())?;
@@ -2098,4 +2105,82 @@ fn declarative_rules_cancel_link_submit_escape_drag_and_select_defaults() {
         .events()
         .iter()
         .any(|e| e["type"] == "cancel" && e["default_prevented"] == true));
+}
+
+#[test]
+fn validity_commands_and_interactive_submission() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":600,"height":400,"html":"<form id='f'><input id='name' required><input id='mail' type='email'>\
+        <button id='go'>Go</button></form>"})).unwrap()["window"].as_u64().unwrap();
+    let v = cmd(json!({"op":"get_validity","window":id,"element":"name"})).unwrap();
+    assert_eq!(v["valid"], false);
+    assert_eq!(v["flags"]["valueMissing"], true);
+    assert_eq!(v["flags"]["typeMismatch"], false);
+    assert_eq!(v["message"], "Please fill out this field.");
+    assert!(cmd(json!({"op":"get_validity","window":id,"element":"zzz"})).is_err());
+    let r = cmd(json!({"op":"check_validity","window":id,"element":"f"})).unwrap();
+    assert_eq!(r["valid"], false);
+    assert_eq!(r["invalid"], json!(["name"]));
+    let invalid = || {
+        h.events()
+            .into_iter()
+            .filter(|e| e["type"] == "invalid")
+            .count()
+    };
+    assert_eq!(invalid(), 1);
+    cmd(json!({"op":"set_value","window":id,"element":"name","value":"n"})).unwrap();
+    cmd(json!({"op":"set_value","window":id,"element":"mail","value":"bad"})).unwrap();
+    let r = cmd(json!({"op":"check_validity","window":id,"element":"mail"})).unwrap();
+    assert_eq!(r["invalid"], json!(["mail"]));
+    cmd(json!({"op":"set_value","window":id,"element":"mail","value":"a@b.co"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"check_validity","window":id,"element":"f"})).unwrap()["valid"],
+        true
+    );
+    // Enter in a valid form submits through the default button.
+    cmd(json!({"op":"focus","window":id,"element":"name"})).unwrap();
+    for pressed in [true, false] {
+        h.session
+            .input(
+                id,
+                crate::document::Input::Key {
+                    key: "Enter".into(),
+                    code: "Enter".into(),
+                    pressed,
+                    repeat: false,
+                    shift: false,
+                    ctrl: false,
+                    alt: false,
+                    meta: false,
+                },
+            )
+            .unwrap();
+    }
+    let submits: Vec<Value> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "submit")
+        .collect();
+    assert_eq!(submits.len(), 1);
+    assert_eq!(submits[0]["submitter"], "go");
+}
+
+#[test]
+fn removing_a_control_inside_invalid_and_submit_handlers_is_safe() {
+    let h = Harness::new(23);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":600,"height":400,"html":"<form id='f'><input id='a' required><input id='b' required>\
+        <button id='go'>Go</button></form>"})).unwrap()["window"].as_u64().unwrap();
+    // Each `invalid` handler removes its own control; nothing panics and no stale event follows.
+    let r = cmd(json!({"op":"check_validity","window":id,"element":"f"})).unwrap();
+    assert_eq!(r["valid"], false);
+    assert!(cmd(json!({"op":"get_validity","window":id,"element":"a"})).is_err());
+    assert!(cmd(json!({"op":"get_validity","window":id,"element":"b"})).is_err());
+    let r = cmd(json!({"op":"check_validity","window":id,"element":"f"})).unwrap();
+    assert_eq!(r["valid"], true, "the invalid controls are gone");
+    assert_eq!(
+        h.events().iter().filter(|e| e["type"] == "invalid").count(),
+        2
+    );
 }

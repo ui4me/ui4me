@@ -511,6 +511,8 @@ public sealed class Window
         e.GetProperty("max_x").GetDouble(), e.GetProperty("max_y").GetDouble(),
         e.GetProperty("width").GetDouble(), e.GetProperty("height").GetDouble(),
         e.GetProperty("scrollable").GetBoolean());
+    public string GetValidityJson(string element) { Check(); return app.Command(Request("get_validity", element)).GetRawText(); }
+    public string CheckValidityJson(string element) { Check(); return app.Command(Request("check_validity", element)).GetRawText(); }
     public ScrollState GetScroll(string? element = null) { Check(); return Scroll(app.Command(Request("get_scroll", element))); }
     public ScrollState ScrollTo(string? element, double? x, double? y)
     {

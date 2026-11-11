@@ -11,6 +11,7 @@ pub mod attrs;
 pub mod batch;
 pub mod chardata;
 pub mod clone;
+pub mod constraint;
 pub mod control_semantics;
 pub mod control_state;
 pub mod control_values;
