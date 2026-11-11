@@ -1820,6 +1820,19 @@ impl Session {
                 let (open, modal, return_value) = w.document.dialog_state(&element)?;
                 Ok(json!({"open":open,"modal":modal,"return_value":return_value}))
             })?,
+            Command::ShowPopover { window, element } => self.query(window, |d| {
+                d.show_popover(&element).map(|()| json!({}))
+            })?,
+            Command::HidePopover { window, element } => self.query(window, |d| {
+                d.hide_popover(&element).map(|()| json!({}))
+            })?,
+            Command::TogglePopover { window, element } => self.query(window, |d| {
+                d.toggle_popover(&element).map(|open| json!({"open":open}))
+            })?,
+            Command::GetPopover { window, element } => self.with_window(window, |w| {
+                let (open, kind) = w.document.popover_state(&element)?;
+                Ok(json!({"open":open,"kind":kind}))
+            })?,
             Command::GetOptions { window, element } => self.with_window(window, |w| {
                 let options: Vec<Value> = w
                     .document

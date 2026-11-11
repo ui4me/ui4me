@@ -333,6 +333,28 @@ class BindingTests(unittest.TestCase):
             app.run()
             self.assertEqual(closes, ["done"])
 
+    def test_popover(self):
+        with self.app() as app:
+            window = app.open('<button id="b" popovertarget="p">Open</button>'
+                              '<div id="p" popover><button id="in">x</button></div>'
+                              '<div id="m" popover="manual">m</div>')
+            states = []
+            window.on("toggle", lambda e: states.append(e.get("new_state")), element="p")
+            self.assertEqual(window.get_popover("p"), {"open": False, "kind": "auto"})
+            self.assertEqual(window.get_popover("m")["kind"], "manual")
+            window.show_popover("p")
+            self.assertTrue(window.get_popover("p")["open"])
+            self.assertEqual(window.query(":popover-open"), ["p"])
+            self.assertFalse(window.toggle_popover("p"))
+            self.assertTrue(window.toggle_popover("p"))
+            window.hide_popover("p")
+            self.assertFalse(window.get_popover("p")["open"])
+            with self.assertRaises(Exception):
+                window.show_popover("b")
+            app.on("started", lambda _: app.stop())
+            app.run()
+            self.assertEqual(states, ["open", "closed", "open", "closed"])
+
     def test_document_html_stylesheets_and_nodes(self):
         with self.app() as app:
             w = app.open("<div id=box><span>no id</span>žluť</div>")

@@ -73,6 +73,39 @@ pub fn sticky_view(
     Some(RectF::new(v.x + ox, v.y + oy, v.width, v.height))
 }
 
+/// Anchor scroll compensation (F0808): a `fixed` box positioned with `anchor()` follows its anchor when the
+/// containers around the anchor scroll. Layout placed it with every offset at zero, so it is drawn and
+/// hit-tested shifted by minus the viewport and scroll-container offsets that move the anchor.
+pub fn anchor_scroll_shift(
+    tree: &FragmentTree,
+    offsets: &ScrollOffsets,
+    fragment: FragmentId,
+) -> (f64, f64) {
+    let FragmentKind::Box(b) = &tree.get(fragment).kind else {
+        return (0.0, 0.0);
+    };
+    let Some(anchor) = b.extras.anchor_node else {
+        return (0.0, 0.0);
+    };
+    let Some(&af) = tree.fragments_of(anchor).first() else {
+        return (0.0, 0.0);
+    };
+    let (mut sx, mut sy) = offsets.offset(ScrollTarget::Viewport);
+    let mut at = tree.get(af).parent;
+    while let Some(a) = at {
+        if let FragmentKind::Box(ab) = &tree.get(a).kind
+            && ab.extras.is_scroll_container
+            && let Some(node) = ab.owner_node()
+        {
+            let (ox, oy) = offsets.offset(ScrollTarget::Node(node));
+            sx += ox;
+            sy += oy;
+        }
+        at = tree.get(a).parent;
+    }
+    (-sx, -sy)
+}
+
 /// The shift (dx, dy) a sticky fragment is drawn and hit-tested at, for the scroll offsets in
 /// `offsets`. `(0, 0)` for a fragment that is not sticky.
 pub fn sticky_shift(

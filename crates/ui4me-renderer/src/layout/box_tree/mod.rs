@@ -578,6 +578,14 @@ impl PositionValue {
     }
 }
 
+/// The anchor-positioning facts of a box (CSS Anchor Positioning subset, F0808).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnchorStyle {
+    pub props: crate::style::view::groups::AnchorProps,
+    /// The implicit anchor of a popover: the element whose `popovertarget` invokes it.
+    pub implicit: Option<NodeId>,
+}
+
 /// `top`/`right`/`bottom`/`left`: `auto` or a length-percentage.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InsetValue {
@@ -896,6 +904,8 @@ pub struct BoxStyle {
     /// above everything else (`2 * index` for the backdrop, `2 * index + 1` for the element, `index`
     /// the element's position in the top layer). Set by box generation, never by the style mapping.
     pub top_layer: Option<u32>,
+    /// `anchor-name`, `position-anchor` and `anchor()` insets (F0808); `None` for the vast majority of boxes.
+    pub anchor: Option<Box<AnchorStyle>>,
     /// A `fieldset` with a rendered legend (015 HTML-3): its block-start border width and padding (px; a
     /// percentage padding counts 0), which layout does not see (the box's `border.top` and `padding.top` are
     /// 0); the fragment reports them (box model queries) and paint draws the border centred on the legend.
@@ -1071,6 +1081,7 @@ impl BoxStyle {
             inset: Sides::all(InsetValue::Auto),
             z_index: None,
             top_layer: None,
+            anchor: None,
             fieldset_border_top: None,
             legend_report_margin_top: None,
             overflow_x: OverflowValue::Visible,
@@ -1149,6 +1160,7 @@ impl BoxStyle {
             inset: Sides::all(InsetValue::Auto),
             z_index: None,
             top_layer: None,
+            anchor: None,
             fieldset_border_top: None,
             legend_report_margin_top: None,
             overflow_x: OverflowValue::Visible,

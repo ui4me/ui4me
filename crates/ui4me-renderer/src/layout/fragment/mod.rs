@@ -717,6 +717,9 @@ pub struct BoxExtras {
     /// The box of a top-layer element or of its `::backdrop` and its paint order there (015 HTML-1;
     /// `BoxStyle::top_layer`): the scene paints it above everything else.
     pub top_layer: Option<u32>,
+    /// A `fixed` box positioned with `anchor()` insets (F0808): the element it follows, so that the scene can
+    /// compensate the scroll of the containers around the anchor.
+    pub anchor_node: Option<NodeId>,
     /// A `fieldset` with a rendered legend (015 HTML-3): its block-start border width (the fragment's
     /// `border_widths.top` is 0); the scene paints it centred on the legend, with the legend's gap.
     pub fieldset_border_top: Option<f32>,

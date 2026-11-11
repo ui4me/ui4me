@@ -660,6 +660,14 @@ public sealed class Window
         var r = app.Command(new { op = "get_dialog", window = Id, element });
         return new DialogState(r.GetProperty("open").GetBoolean(), r.GetProperty("modal").GetBoolean(), r.GetProperty("return_value").GetString()!);
     }
+    /// <summary>Show an element with a popover attribute.</summary>
+    public void ShowPopover(string element) { Check(); app.Command(new { op = "show_popover", window = Id, element }); }
+    /// <summary>Hide a popover (an auto popover also hides the popovers above it).</summary>
+    public void HidePopover(string element) { Check(); app.Command(new { op = "hide_popover", window = Id, element }); }
+    /// <summary>Toggle a popover; returns whether it is showing afterwards.</summary>
+    public bool TogglePopover(string element) { Check(); return app.Command(new { op = "toggle_popover", window = Id, element }).GetProperty("open").GetBoolean(); }
+    /// <summary>{"open": bool, "kind": "auto"|"manual"} as JSON.</summary>
+    public string GetPopoverJson(string element) { Check(); return app.Command(new { op = "get_popover", window = Id, element }).GetRawText(); }
     public SelectOption[] GetOptions(string element)
     {
         Check();

@@ -18,5 +18,6 @@ pub mod input_queue;
 pub mod keyboard;
 pub mod listeners;
 pub mod pointer;
+pub mod popover;
 pub mod scroll;
 pub mod sequences;

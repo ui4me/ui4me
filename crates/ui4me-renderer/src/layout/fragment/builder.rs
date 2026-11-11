@@ -1598,6 +1598,11 @@ impl Build<'_> {
                     position,
                     z_index,
                     top_layer: lbox.style.top_layer,
+                    anchor_node: if position == PositionValue::Fixed {
+                        crate::layout::coordinator::oof::first_anchor(boxes, box_id)
+                    } else {
+                        None
+                    },
                     fieldset_border_top: lbox.style.fieldset_border_top.map(|t| t.0),
                     table_cell: n.table_cell,
                     grid_tracks: grid_tracks_of(&n.grid_info),

@@ -138,7 +138,7 @@ bool_prefs! {
     "layout.css.dominant-baseline.enabled" = false,
     "layout.css.text-decoration-inset.enabled" = false,
     "layout.css.text-decoration-inset-percentage.enabled" = false,
-    "layout.css.anchor-positioning.enabled" = false,
+    "layout.css.anchor-positioning.enabled" = true, // 1.23.0: On (F0808: anchor-name, position-anchor and anchor() insets; position-area, position-try* are dropped and reported)
     "layout.css.style-queries.enabled" = false,
     "layout.css.scroll-state.enabled" = false,
     "layout.css.font-palette.enabled" = false,
@@ -237,7 +237,7 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.-webkit-text-fill-color", Off),
     ("css.property.-webkit-text-stroke", Unavailable),
     ("css.property.accent-color", On),
-    ("css.property.anchor-name", Unavailable),
+    ("css.property.anchor-name", On), // 1.23.0: F0808, Stylo patch P-006-17
     ("css.property.animation", Off),
     ("css.property.animation-timeline", Off),
     ("css.property.appearance", On),
@@ -276,7 +276,9 @@ pub const FEATURES: &[(&str, FeatureState)] = &[
     ("css.property.mask", On),
     ("css.property.overscroll-behavior", On),
     ("css.property.page", Off),
-    ("css.property.position-anchor", Unavailable),
+    ("css.property.position-anchor", On), // 1.23.0: F0808, Stylo patch P-006-17
+    ("css.property.position-area", Off), // 1.23.0: parsed by the engine, dropped and reported (F0808 subset)
+    ("css.property.position-try", Off), // 1.23.0: position-try-fallbacks / -order / the shorthand: dropped and reported
     ("css.property.print-color-adjust", Unavailable),
     ("css.property.resize", Unavailable),
     ("css.property.scroll-behavior", On),
@@ -412,7 +414,6 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
         "-webkit-text-fill-color",
         "css.property.-webkit-text-fill-color",
     ),
-    ("anchor-name", "css.property.anchor-name"),
     ("animation", "css.property.animation"),
     ("animation-range", "css.property.animation-timeline"),
     ("animation-range-end", "css.property.animation-timeline"),
@@ -428,7 +429,10 @@ const PROPERTY_FEATURES: &[(&str, &str)] = &[
     ("font-size-adjust", "css.property.font-size-adjust"),
     ("font-variant-emoji", "css.property.font-variant-emoji"),
     ("image-orientation", "css.property.image-orientation"),
-    ("position-anchor", "css.property.position-anchor"),
+    ("position-area", "css.property.position-area"),
+    ("position-try", "css.property.position-try"),
+    ("position-try-fallbacks", "css.property.position-try"),
+    ("position-try-order", "css.property.position-try"),
     ("page", "css.property.page"),
     ("print-color-adjust", "css.property.print-color-adjust"),
     ("initial-letter", "css.property.initial-letter"),

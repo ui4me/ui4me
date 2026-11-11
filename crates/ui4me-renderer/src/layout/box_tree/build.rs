@@ -2518,6 +2518,12 @@ pub(super) mod map {
             },
             z_index: po.z_index,
             top_layer: None,
+            anchor: (!po.anchor.is_empty()).then(|| {
+                Box::new(bt::AnchorStyle {
+                    props: po.anchor.clone(),
+                    implicit: None,
+                })
+            }),
             fieldset_border_top: None,
             legend_report_margin_top: None,
             overflow_x,
@@ -3115,6 +3121,17 @@ impl<'a> StyleBridgeSource<'a> {
                 t1.as_secs_f64() * 1e3,
                 t0.elapsed().as_secs_f64() * 1e3
             );
+        }
+        // The implicit anchor of an anchor-positioned popover is the button that invokes it (F0808).
+        for (n, s) in styles.iter_mut() {
+            if s.anchor
+                .as_ref()
+                .is_some_and(|a| a.props.insets.iter().any(Option::is_some))
+                && let Some(inv) = crate::interaction::popover::invoker_of(doc, *n)
+                && let Some(a) = Arc::make_mut(s).anchor.as_mut()
+            {
+                a.implicit = Some(inv);
+            }
         }
         StyleBridgeSource {
             doc,

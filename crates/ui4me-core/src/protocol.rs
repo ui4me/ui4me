@@ -421,6 +421,22 @@ pub enum Command {
         window: u64,
         element: String,
     },
+    ShowPopover {
+        window: u64,
+        element: String,
+    },
+    HidePopover {
+        window: u64,
+        element: String,
+    },
+    TogglePopover {
+        window: u64,
+        element: String,
+    },
+    GetPopover {
+        window: u64,
+        element: String,
+    },
     GetOptions {
         window: u64,
         element: String,

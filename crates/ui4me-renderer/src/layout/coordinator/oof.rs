@@ -78,6 +78,55 @@ pub(crate) fn report_unresolved_inline_containing_block(
     );
 }
 
+/// The anchor element of the `anchor-name` `name` for the anchored box `me`: the last box in tree order that
+/// carries the name (F0808).
+pub(crate) fn anchor_by_name(
+    boxes: &BoxTree,
+    name: &str,
+    me: BoxId,
+) -> Option<ui4me_engine_types::ids::NodeId> {
+    boxes
+        .boxes
+        .iter()
+        .enumerate()
+        .filter(|(i, b)| {
+            *i != me.0 as usize
+                && b.style
+                    .anchor
+                    .as_ref()
+                    .is_some_and(|a| a.props.names.iter().any(|n| n == name))
+        })
+        .filter_map(|(_, b)| match b.owner {
+            BoxOwner::Element(n) => Some(n),
+            _ => None,
+        })
+        .next_back()
+}
+
+/// The anchor of one `anchor()` inset of box `id`: the function's own name, else `position-anchor`, else the
+/// implicit anchor of a popover.
+pub(crate) fn anchor_of_inset(
+    boxes: &BoxTree,
+    id: BoxId,
+    ins: &crate::style::view::groups::AnchorInset,
+) -> Option<ui4me_engine_types::ids::NodeId> {
+    let a = boxes.get(id).style.anchor.as_ref()?;
+    match ins.name.as_ref().or(a.props.position_anchor.as_ref()) {
+        Some(name) => anchor_by_name(boxes, name, id),
+        None => a.implicit,
+    }
+}
+
+/// The first resolved anchor of box `id` (what a fixed box follows when its scroll container scrolls).
+pub(crate) fn first_anchor(boxes: &BoxTree, id: BoxId) -> Option<ui4me_engine_types::ids::NodeId> {
+    let a = boxes.get(id).style.anchor.as_ref()?;
+    a.props
+        .insets
+        .iter()
+        .flatten()
+        .find_map(|ins| anchor_of_inset(boxes, id, ins))
+}
+
 fn report(boxes: &BoxTree, owner: BoxOwner, id: &'static str, reports: &mut Vec<LayoutReport>) {
     if let BoxOwner::Element(node) = owner {
         let key = ReportKey {

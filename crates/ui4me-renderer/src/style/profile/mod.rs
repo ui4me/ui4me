@@ -95,7 +95,11 @@ pub const ID: &str = CssFeatureProfile::ID;
 /// Desktop foundation: transitions, animations, and paged media are explicitly
 /// filtered until their host scheduling/lifetime contract is promoted.
 /// 1.22.0: `scroll-behavior`, `overscroll-behavior`, `scroll-snap-*`, `scroll-padding*`, `scroll-margin*` (0.8 F0803/F0804; carried patch P-006-16).
-pub const VERSION: &str = "1.22.0";
+/// 1.23.0 (F0808): CSS anchor positioning subset. `layout.css.anchor-positioning.enabled` On with the carried Stylo patch P-006-17
+/// (`anchor-name` and `position-anchor` compute under Servo): `css.property.anchor-name` and `position-anchor` On; `anchor()` in
+/// `top`/`right`/`bottom`/`left` positions an out-of-flow box against its anchor's border box (layout, every pass). `position-area` and
+/// `position-try*` stay Off (dropped and reported); `anchor-size()` computes but is not applied.
+pub const VERSION: &str = "1.23.0";
 /// The single Stylo revision of the workspace (engine/Cargo.toml; X-DEPS).
 pub const ENGINE_REVISION: &str = "37c1ed3b707c8f333304de2107c13b68fbc1057c";
 

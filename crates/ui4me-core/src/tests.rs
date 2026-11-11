@@ -982,6 +982,47 @@ fn scroll_geometry_into_view_and_follow_end() {
 }
 
 #[test]
+fn popover_commands_toggle_report_and_reject_non_popovers() {
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":400,"height":300,"html":"<button id='b' popovertarget='a'>B</button>\
+        <div id='a' popover>A</div><div id='m' popover='manual'>M</div>"}))
+    .unwrap()["window"]
+        .as_u64()
+        .unwrap();
+    let get = |e: &str| cmd(json!({"op":"get_popover","window":id,"element":e})).unwrap();
+    assert_eq!(get("a"), json!({"open":false,"kind":"auto"}));
+    assert_eq!(get("m"), json!({"open":false,"kind":"manual"}));
+    cmd(json!({"op":"show_popover","window":id,"element":"a"})).unwrap();
+    assert_eq!(get("a")["open"], true);
+    assert_eq!(
+        cmd(json!({"op":"toggle_popover","window":id,"element":"a"})).unwrap(),
+        json!({"open":false})
+    );
+    assert_eq!(
+        cmd(json!({"op":"toggle_popover","window":id,"element":"a"})).unwrap(),
+        json!({"open":true})
+    );
+    cmd(json!({"op":"show_popover","window":id,"element":"m"})).unwrap();
+    // Opening the auto popover again leaves the manual one; hiding works on both.
+    cmd(json!({"op":"hide_popover","window":id,"element":"a"})).unwrap();
+    assert_eq!(get("a")["open"], false);
+    assert_eq!(get("m")["open"], true);
+    cmd(json!({"op":"hide_popover","window":id,"element":"m"})).unwrap();
+    assert!(cmd(json!({"op":"show_popover","window":id,"element":"b"})).is_err());
+    assert!(cmd(json!({"op":"get_popover","window":id,"element":"b"})).is_err());
+    // `toggle` events report the states.
+    let toggles: Vec<_> = h
+        .events()
+        .into_iter()
+        .filter(|e| e["type"] == "toggle" && e["element"] == "a")
+        .map(|e| e["new_state"].clone())
+        .collect();
+    assert_eq!(toggles.last(), Some(&json!("closed")));
+    assert!(toggles.contains(&json!("open")));
+}
+
+#[test]
 fn dialog_details_select_and_labels() {
     let h = Harness::new(0);
     let cmd = |v: Value| h.session.command(v);

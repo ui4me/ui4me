@@ -50,6 +50,13 @@ pub(crate) fn compose(i: &StateInputs<'_>) -> ElementState {
     if ui.contains(UiFlags::MODAL) {
         s |= ElementState::MODAL;
     }
+    if ui.contains(UiFlags::TOP_LAYER)
+        && !ui.contains(UiFlags::MODAL)
+        && attr(i.attrs, "popover").is_some()
+        && i.element.is_html()
+    {
+        s |= ElementState::POPOVER_OPEN;
+    }
     let e = i.element;
     let html = e.is_html();
     let local = e.local_name();
