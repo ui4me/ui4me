@@ -750,6 +750,86 @@ impl Document {
         self.update_follow();
         Ok(())
     }
+    /// The accessibility tree of the committed document state (roles, names, states, values and
+    /// viewport bounds); flushes the pipeline first.
+    pub fn accessibility_tree(&mut self) -> Result<crate::a11y::A11yTree> {
+        self.apply_follow()?;
+        self.pipeline.flush()?;
+        let id = self.id();
+        let focused = self.interaction.focused_element(id);
+        let info = A11yInfo {
+            doc: self,
+            id,
+            committed: self.pipeline.committed.as_deref(),
+        };
+        let model = self.pipeline.document();
+        let cfg = &self.pipeline.config;
+        Ok(crate::a11y::build(&crate::a11y::BuildInput {
+            document: model,
+            info: &info,
+            focused,
+            title: "",
+            viewport: (cfg.viewport_width, cfg.viewport_height),
+            scale: cfg.scale,
+        }))
+    }
+    /// Execute an assistive-technology request as the equivalent trusted user input.
+    pub fn accessibility_request(&mut self, request: &crate::a11y::A11yRequest) -> Result<()> {
+        use crate::a11y::A11yRequestKind as K;
+        use crate::interaction::assistive;
+        let id = self.id();
+        let Some(el) = request.target else {
+            return Ok(());
+        };
+        let centre = |d: &mut Self| {
+            d.viewport_rect(el)
+                .map(|(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
+        };
+        let expanded = |d: &Self| {
+            d.pipeline
+                .document()
+                .arena()
+                .get(el)
+                .and_then(|n| n.as_element())
+                .and_then(|e| e.attr("aria-expanded"))
+                .map(|v| v == "true")
+        };
+        match &request.kind {
+            K::Focus => assistive::focus(self, id, el)?,
+            K::Blur => assistive::blur(self, id, el)?,
+            K::Click => {
+                self.pipeline.flush()?;
+                let p = centre(self);
+                assistive::activate(self, id, el, p)?
+            }
+            K::SetValue(v) => {
+                assistive::set_text_value(self, id, el, v)?;
+            }
+            K::SetNumericValue(v) => {
+                assistive::set_number(self, id, el, *v)?;
+            }
+            K::Increment => {
+                assistive::step(self, id, el, 1)?;
+            }
+            K::Decrement => {
+                assistive::step(self, id, el, -1)?;
+            }
+            K::ScrollIntoView => {}
+            K::Expand | K::Collapse => {
+                let want = matches!(request.kind, K::Expand);
+                if expanded(self) != Some(want) {
+                    self.pipeline.flush()?;
+                    let p = centre(self);
+                    assistive::activate(self, id, el, p)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Compact JSON dump of the accessibility tree (diagnostics and tests).
+    pub fn accessibility_json(&mut self) -> Result<Value> {
+        Ok(self.accessibility_tree()?.to_json())
+    }
     /// Border-box bounds of `element` in viewport CSS px (`getBoundingClientRect`), or `None`
     /// when it generates no box (for example `display: none`).
     pub fn element_rect(&mut self, element: &str) -> Result<Option<Rect>> {
@@ -2260,3 +2340,50 @@ fn scroll_info(e: &crate::pipeline::scroll::ScrollEntry) -> ScrollTargetInfo {
 mod selection;
 #[cfg(test)]
 mod tests;
+
+/// Style and layout answers for the accessibility builder, read from the committed state.
+struct A11yInfo<'a> {
+    doc: &'a Document,
+    id: DocumentId,
+    committed: Option<&'a crate::pipeline::publish::CommittedSet>,
+}
+
+impl A11yInfo<'_> {
+    fn flow(&self, n: NodeId) -> Option<crate::style::view::groups::DisplayFlow> {
+        Some(self.committed?.style.view(n)?.display_flow())
+    }
+}
+
+impl crate::a11y::RenderInfo for A11yInfo<'_> {
+    fn rendering(&self, element: NodeId) -> crate::a11y::Rendering {
+        use crate::a11y::Rendering;
+        use crate::style::view::groups::Visibility;
+        let arena = self.doc.pipeline.document().arena();
+        let mut at = Some(element);
+        while let Some(x) = at {
+            match self.flow(x) {
+                Some(f) if f.display.is_none() => return Rendering::NotRendered,
+                None if x == element => return Rendering::NotRendered,
+                _ => {}
+            }
+            at = arena.get(x).and_then(|n| n.parent());
+        }
+        match self.flow(element) {
+            Some(f) if f.visibility == Visibility::Visible => Rendering::Rendered,
+            _ => Rendering::Invisible,
+        }
+    }
+    fn bounds(&self, node: NodeId) -> Option<crate::a11y::Bounds> {
+        self.doc
+            .viewport_rect(node)
+            .map(|(x, y, w, h)| crate::a11y::Bounds { x, y, w, h })
+    }
+    fn is_block(&self, element: NodeId) -> bool {
+        use crate::style::view::groups::DisplayOutside;
+        self.flow(element)
+            .is_some_and(|f| f.display.outside == DisplayOutside::Block)
+    }
+    fn has_listeners(&self, element: NodeId) -> bool {
+        self.doc.interaction.listener_count(self.id, element) > 0
+    }
+}

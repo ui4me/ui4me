@@ -1,6 +1,7 @@
 //! Native HTML/CSS document engine. Backend stages are private implementation details.
 // Private backend helpers also support internal regression/diagnostic tools. Keeping
 // them private intentionally makes them unreachable to application callers.
+pub mod a11y;
 #[allow(dead_code)]
 pub(crate) mod diagnostics;
 mod document;

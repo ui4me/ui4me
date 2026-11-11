@@ -36,6 +36,7 @@ kurbo = "0.13.1"
 vello_cpu.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+accesskit = "=0.25.2"
 sha2.workspace = true
 
 [features]
