@@ -292,6 +292,14 @@ class App:
         scale, position (None on Wayland), refresh rate and primary flag."""
         return self._command({"op": "list_monitors"})["monitors"]
 
+    def set_link_policy(self, schemes: list[str] | tuple[str, ...] = (), *, hosts: list[str] | None = None,
+                        open: bool = False) -> None:
+        """Allow activated links (``link_activated`` events) by scheme (``https``, ``http``,
+        ``mailto`` only) and, for http(s), by host (``example.com`` or ``*.example.com``); with
+        ``open=True`` Core opens allowed links with the OS handler. Default: nothing allowed.
+        Core never navigates the document."""
+        self._command({"op": "set_link_policy", "schemes": list(schemes), "hosts": hosts, "open": open})
+
     def capabilities(self) -> dict:
         """What this backend and platform offer: ``{"platform", "backend", "features"}`` where each
         feature is ``{"status": "supported" | "unsupported" | "denied" | "unavailable" | "unknown",

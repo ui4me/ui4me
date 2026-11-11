@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 ui4me-renderer = { path = "../ui4me-renderer" }
 arboard = { version = "=3.6.1", optional = true, default-features = false, features = ["wayland-data-control"] }
 png = "=0.18.1"
+url.workspace = true
 # Native file dialogs: xdg-desktop-portal over a dlopen'd libdbus on Linux, IFileDialog on Windows.
 # Screen-reader bridge: AT-SPI (accesskit_unix, async-io) on Linux, UI Automation on Windows.
 accesskit_winit = { version = "=0.34.2", optional = true, default-features = false, features = ["accesskit_unix", "async-io", "rwh_06"] }

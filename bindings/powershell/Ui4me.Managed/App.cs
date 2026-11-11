@@ -241,6 +241,9 @@ public sealed class App : IDisposable
     /// <summary>The platform capability report as JSON: platform, backend and per-feature status
     /// (supported, unsupported, denied, unavailable, unknown) with the reason.</summary>
     public string CapabilitiesJson() => Command(new { op = "capabilities" }).GetRawText();
+    /// <summary>Allow activated links by scheme (https, http, mailto) and optional host list; with
+    /// open, Core opens allowed links with the OS handler. Core never navigates the document.</summary>
+    public void SetLinkPolicy(string[] schemes, string[]? hosts = null, bool open = false) => Command(new { op = "set_link_policy", schemes, hosts = hosts is { Length: > 0 } ? hosts : null, open });
     public string StatsJson()
     {
         OwnerOnly();

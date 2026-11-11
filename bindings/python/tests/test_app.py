@@ -326,6 +326,9 @@ class BindingTests(unittest.TestCase):
             self.assertEqual(cs["color"]["status"], "supported")
             self.assertTrue(cs["color"]["inherited"])
             self.assertEqual(cs["not-a-property"]["status"], "invalid")
+            with self.assertRaises(Ui4meError):
+                app.set_link_policy(["javascript"])
+            app.set_link_policy(["https"], hosts=["*.example.com"])
             geo = w.text_rects("box")
             self.assertEqual((geo["text"], geo["length"]), ("no idžluť", 9))
             self.assertTrue(geo["rects"] and all(r["width"] > 0 for r in geo["rects"]))

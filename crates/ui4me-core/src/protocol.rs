@@ -426,6 +426,15 @@ pub enum Command {
     ListMonitors,
     /// The platform capability report (0.5 F0508).
     Capabilities,
+    /// External link policy (0.6 F0608).
+    SetLinkPolicy {
+        #[serde(default)]
+        schemes: Vec<String>,
+        #[serde(default)]
+        hosts: Option<Vec<String>>,
+        #[serde(default)]
+        open: bool,
+    },
     FileDialog {
         window: u64,
         token: u64,

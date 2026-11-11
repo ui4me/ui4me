@@ -227,6 +227,10 @@ pub trait DispatchHost {
     ) {
         let _ = (doc, request);
     }
+    /// A hyperlink's activation behaviour ran (an uncanceled click). Default: nothing.
+    fn link_activated(&mut self, doc: DocumentId, link: NodeId) {
+        let _ = (doc, link);
+    }
     /// Ask the platform to drop the current IME preedit (the composition was canceled by the
     /// engine). Default: nothing.
     fn ime_reset(&mut self, doc: DocumentId) {

@@ -221,6 +221,9 @@ enum Behaviour {
     Label {
         control: NodeId,
     },
+    /// A hyperlink (`a`/`area` with `href`): reported to the host, which applies its link
+    /// policy (0.6 F0608). Core never navigates the document or fetches the target.
+    Link,
     /// A `details` summary: toggle the `details` (015 HTML-2).
     Summary,
 }
@@ -326,6 +329,11 @@ fn decide(
     {
         return Behaviour::Submit { form };
     }
+    if element(d, act)
+        .is_some_and(|e| matches!(e.local_name(), "a" | "area") && e.attr("href").is_some())
+    {
+        return Behaviour::Link;
+    }
     Behaviour::None
 }
 
@@ -401,6 +409,7 @@ pub(crate) fn activation_behaviour(
             click.detail = 1;
             let _ = fire(host, doc, control, click);
         }
+        Behaviour::Link => host.link_activated(doc, act),
         Behaviour::Summary => {
             let _ = eng(host, doc, |_, d| {
                 crate::interaction::dialog::toggle_details(d, act)

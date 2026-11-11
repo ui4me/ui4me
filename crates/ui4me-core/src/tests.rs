@@ -1901,3 +1901,201 @@ fn computed_style_reports_values_inheritance_and_unsupported_names() {
         1
     );
 }
+
+#[test]
+fn link_activation_follows_the_app_policy_and_never_navigates() {
+    // 0.6 F0608.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","html":"<a id=web href='https://docs.example.com/p?q=1'>web</a><a id=other href='https://evil.test/'>other</a><a id=js href='javascript:alert(1)'>js</a><a id=data href='data:text/html,x'>data</a><a id=file href='file:///etc/passwd'>file</a><a id=mail href='mailto:a@b.cz'>mail</a><a id=rel href='docs/x.html'>rel</a><a id=nohref>plain</a>"})).unwrap()["window"].as_u64().unwrap();
+    let tree = h.session.accessibility_tree(id).unwrap();
+    let click = |element: &str| {
+        let node = tree
+            .nodes
+            .values()
+            .find(|n| n.html_id.as_deref() == Some(element))
+            .map(|n| n.id);
+        let request = ui4me_renderer::a11y::A11yRequest {
+            target: node.and_then(ui4me_renderer::a11y::node_of_key),
+            kind: ui4me_renderer::a11y::A11yRequestKind::Click,
+        };
+        h.session.accessibility_request(id, &request);
+        h.events()
+            .into_iter()
+            .rev()
+            .find(|e| e["type"] == "link_activated" && e["element"] == element)
+    };
+    let before = cmd(json!({"op":"get_html","window":id})).unwrap()["html"].clone();
+    // No policy: reported, refused, nothing opened, the document stays.
+    let e = click("web").unwrap();
+    assert_eq!(
+        (e["allowed"].as_bool(), e["opened"].as_bool()),
+        (Some(false), Some(false))
+    );
+    assert_eq!(e["url"], "https://docs.example.com/p?q=1");
+    assert!(e["reason"].as_str().unwrap().contains("no link policy"));
+    // Only https/http/mailto can be allowed.
+    assert_eq!(
+        cmd(json!({"op":"set_link_policy","schemes":["javascript"]}))
+            .unwrap_err()
+            .code,
+        1
+    );
+    cmd(json!({"op":"set_link_policy","schemes":["https"],"hosts":["*.example.com"]})).unwrap();
+    assert_eq!(click("web").unwrap()["allowed"], true);
+    assert!(click("other").unwrap()["reason"]
+        .as_str()
+        .unwrap()
+        .contains("host"));
+    for blocked in ["js", "data", "file"] {
+        let e = click(blocked).unwrap();
+        assert_eq!(e["allowed"], false, "{blocked}");
+        assert!(
+            e["reason"].as_str().unwrap().contains("never opened"),
+            "{e}"
+        );
+    }
+    assert!(click("mail").unwrap()["reason"]
+        .as_str()
+        .unwrap()
+        .contains("not allowed"));
+    assert_eq!(
+        click("rel").unwrap()["allowed"],
+        false,
+        "a relative link without a base resolves to nothing"
+    );
+    assert!(click("nohref").is_none(), "an a without href is not a link");
+    // Opening: the OS launcher's outcome is reported.
+    cmd(json!({"op":"set_link_policy","schemes":["https","mailto"],"open":true})).unwrap();
+    #[cfg(unix)]
+    {
+        std::env::set_var("UI4ME_LINK_LAUNCHER", "/bin/true");
+        assert_eq!(click("mail").unwrap()["opened"], true);
+        std::env::set_var("UI4ME_LINK_LAUNCHER", "/nonexistent/launcher");
+        let e = click("web").unwrap();
+        assert_eq!(
+            (e["allowed"].as_bool(), e["opened"].as_bool()),
+            (Some(true), Some(false))
+        );
+        assert!(e["error"]
+            .as_str()
+            .unwrap()
+            .contains("could not be started"));
+        std::env::remove_var("UI4ME_LINK_LAUNCHER");
+    }
+    cmd(json!({"op":"set_link_policy"})).unwrap();
+    assert_eq!(
+        cmd(json!({"op":"get_html","window":id})).unwrap()["html"],
+        before,
+        "no navigation"
+    );
+}
+
+#[test]
+fn declarative_rules_cancel_link_submit_escape_drag_and_select_defaults() {
+    // 0.6 F0607: rules decide before the default action; callbacks still run after dispatch.
+    let h = Harness::new(0);
+    let cmd = |v: Value| h.session.command(v);
+    let id = cmd(json!({"op":"open","width":600,"height":400,"html":"<style>body{margin:0;font:16px sans-serif}</style><a id=lnk href='https://example.com/'>link</a><form id=f><button id=go>Go</button></form><p id=para>Selectable paragraph text</p><select id=s><option>a</option><option>b</option></select><dialog id=dlg><button>in</button></dialog>"})).unwrap()["window"].as_u64().unwrap();
+    let rule = |element: &str, event: &str, key: Option<&str>| {
+        let mut v = json!({"op":"set_default_action","window":id,"element":element,"event":event});
+        if let Some(k) = key {
+            v["key"] = json!(k);
+        }
+        cmd(v).unwrap();
+    };
+    let center = |e: &str| {
+        let r = cmd(json!({"op":"get_rect","window":id,"element":e})).unwrap()["rect"].clone();
+        (
+            r["x"].as_f64().unwrap() + r["width"].as_f64().unwrap() / 2.0,
+            r["y"].as_f64().unwrap() + r["height"].as_f64().unwrap() / 2.0,
+        )
+    };
+    let press = |x: f64, y: f64, down: bool| {
+        h.session
+            .input(id, crate::document::Input::PointerMoved { x, y })
+            .unwrap();
+        h.session
+            .input(
+                id,
+                crate::document::Input::PointerButton {
+                    pressed: down,
+                    button: 0,
+                    x,
+                    y,
+                },
+            )
+            .unwrap();
+    };
+    let click = |e: &str| {
+        let (x, y) = center(e);
+        press(x, y, true);
+        press(x, y, false);
+    };
+    let count = |t: &str| h.events().iter().filter(|e| e["type"] == t).count();
+    rule("lnk", "click", None);
+    click("lnk");
+    assert_eq!(
+        count("link_activated"),
+        0,
+        "a prevented click does not activate the link"
+    );
+    assert!(h
+        .events()
+        .iter()
+        .any(|e| e["type"] == "click" && e["element"] == "lnk" && e["default_prevented"] == true));
+    rule("f", "submit", None);
+    click("go");
+    assert!(h
+        .events()
+        .iter()
+        .any(|e| e["type"] == "submit" && e["default_prevented"] == true));
+    // A prevented mousedown starts no text selection drag.
+    rule("para", "mousedown", None);
+    let (x, y) = center("para");
+    press(x - 80.0, y, true);
+    h.session
+        .input(id, crate::document::Input::PointerMoved { x: x + 80.0, y })
+        .unwrap();
+    press(x + 80.0, y, false);
+    assert_eq!(
+        cmd(json!({"op":"get_selection","window":id})).unwrap()["text"],
+        ""
+    );
+    // A prevented mousedown on a select does not open its popup.
+    rule("s", "mousedown", None);
+    click("s");
+    assert_eq!(
+        cmd(json!({"op":"get_options","window":id,"element":"s"})).unwrap()["options"][0]
+            ["selected"],
+        true
+    );
+    // Escape on a modal dialog: a `cancel` rule keeps it open.
+    cmd(json!({"op":"show_dialog","window":id,"element":"dlg","modal":true})).unwrap();
+    rule("dlg", "cancel", None);
+    for pressed in [true, false] {
+        h.session
+            .input(
+                id,
+                crate::document::Input::Key {
+                    key: "Escape".into(),
+                    code: "Escape".into(),
+                    pressed,
+                    repeat: false,
+                    shift: false,
+                    ctrl: false,
+                    alt: false,
+                    meta: false,
+                },
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        cmd(json!({"op":"get_dialog","window":id,"element":"dlg"})).unwrap()["open"],
+        true
+    );
+    assert!(h
+        .events()
+        .iter()
+        .any(|e| e["type"] == "cancel" && e["default_prevented"] == true));
+}

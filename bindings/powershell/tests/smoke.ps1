@@ -414,6 +414,9 @@ try {
             if (($doc.NodeJson($kids.children[1].node) | ConvertFrom-Json).text -ne 'žluť') { throw 'text node' }
             $cs = ($doc.ComputedStyleJson('box', 'color', 'nope') | ConvertFrom-Json).properties
             if ($cs.color.status -ne 'supported' -or $cs.nope.status -ne 'invalid') { throw "computed style: $($cs | ConvertTo-Json -Compress)" }
+            $app.SetLinkPolicy(@('https'), @('*.example.com'), $false)
+            $refused = $false; try { $app.SetLinkPolicy(@('file'), $null, $false) } catch { $refused = $true }
+            if (-not $refused) { throw 'file: scheme accepted' }
             $geo = $doc.TextRectsJson('box', $null, -1, -1) | ConvertFrom-Json
             if ($geo.length -ne 9 -or $geo.rects.Count -lt 1) { throw "text rects: $($geo | ConvertTo-Json -Compress)" }
             $styled = $app.Open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div>')

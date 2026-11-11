@@ -1867,6 +1867,31 @@ impl DispatchHost for Document {
             cursor_area: r.cursor_area,
         });
     }
+    fn link_activated(&mut self, _id: DocumentId, link: NodeId) {
+        // Reported after the dispatch as `link_activated` (0.6 F0608); the host decides.
+        let d = self.pipeline.document();
+        let href = d
+            .get_attribute(link, "href")
+            .ok()
+            .flatten()
+            .unwrap_or("")
+            .to_owned();
+        let element = d
+            .get_attribute(link, "id")
+            .ok()
+            .flatten()
+            .unwrap_or("")
+            .to_owned();
+        let base = url::Url::parse(d.url()).ok();
+        let resolved = url::Url::options()
+            .base_url(base.as_ref().filter(|b| b.scheme() != "about"))
+            .parse(href.trim())
+            .ok()
+            .map(|u| u.to_string());
+        if self.events.len() < MAX_EVENTS {
+            self.events.push(json!({"type":"link_activated","element":element,"href":href,"url":resolved,"node":crate::document::public_dom::node_ref(link)}));
+        }
+    }
     fn ime_reset(&mut self, _id: DocumentId) {
         // Clearing the request alone is not enough: a following `ime_update` for the next focused
         // control would restore an equal request and the platform would never hear of the reset.

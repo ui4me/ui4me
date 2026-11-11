@@ -164,6 +164,82 @@ pub struct Session {
     pub monitors: Mutex<Vec<Value>>,
     /// The OS clipboard as the native backend opened it (`None` until it ran).
     pub clipboard: Mutex<Option<std::result::Result<(), String>>>,
+    /// External link policy (0.6 F0608): nothing is allowed until the app opts in.
+    pub link_policy: Mutex<LinkPolicy>,
+}
+
+/// Which activated links the app allows, and whether Core opens allowed ones with the OS.
+#[derive(Clone, Debug, Default)]
+pub struct LinkPolicy {
+    pub schemes: Vec<String>,
+    /// For http/https: exact host names or `*.suffix` patterns; `None` allows every host.
+    pub hosts: Option<Vec<String>>,
+    pub open: bool,
+}
+
+/// Schemes an app may allow; everything else (javascript, data, file, about, blob, ...) is
+/// always refused.
+const LINK_SCHEMES: &[&str] = &["https", "http", "mailto"];
+
+impl LinkPolicy {
+    /// The decision for a resolved URL: `Ok(())` or the reason it is refused.
+    fn decide(&self, url: Option<&str>) -> std::result::Result<(), String> {
+        let Some(url) = url else {
+            return Err("the href is not a valid URL".into());
+        };
+        let parsed = url::Url::parse(url).map_err(|_| "the href is not a valid URL".to_string())?;
+        let scheme = parsed.scheme();
+        if !LINK_SCHEMES.contains(&scheme) {
+            return Err(format!("the {scheme}: scheme is never opened"));
+        }
+        if !self.schemes.iter().any(|s| s == scheme) {
+            return Err(if self.schemes.is_empty() {
+                "no link policy: the app has not allowed any scheme".into()
+            } else {
+                format!("the {scheme}: scheme is not allowed by the app")
+            });
+        }
+        if matches!(scheme, "http" | "https") {
+            if let Some(hosts) = &self.hosts {
+                let host = parsed.host_str().unwrap_or("").to_ascii_lowercase();
+                let ok = hosts.iter().any(|h| match h.strip_prefix("*.") {
+                    Some(suffix) => host == suffix || host.ends_with(&format!(".{suffix}")),
+                    None => host == *h,
+                });
+                if !ok {
+                    return Err(format!("the host {host:?} is not allowed by the app"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Open a URL with the OS handler without a shell; returns the launch error.
+fn launch_url(url: &str) -> std::result::Result<(), String> {
+    let mut command = if let Some(launcher) = std::env::var_os("UI4ME_LINK_LAUNCHER") {
+        // Test hook: a stand-in launcher (it receives the URL as its only argument).
+        std::process::Command::new(launcher)
+    } else if cfg!(windows) {
+        let mut c = std::process::Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    } else {
+        std::process::Command::new("xdg-open")
+    };
+    command
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("the OS link handler could not be started: {e}"))?;
+    // Reap without blocking the owner thread.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 struct RunLease<'a>(&'a Session);
 impl Drop for RunLease<'_> {
@@ -246,6 +322,7 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         platform: Mutex::new("headless"),
         monitors: Mutex::new(Vec::new()),
         clipboard: Mutex::new(None),
+        link_policy: Mutex::new(LinkPolicy::default()),
     }));
     Ok(id)
 }
@@ -550,6 +627,30 @@ impl Session {
                 object.remove("_target");
                 object.remove("_element");
                 object.insert("window".into(), json!(window));
+            }
+            if event["type"] == "link_activated" {
+                let policy = lock(&self.link_policy).clone();
+                match policy.decide(event["url"].as_str()) {
+                    Ok(()) => {
+                        event["allowed"] = json!(true);
+                        if policy.open {
+                            match launch_url(event["url"].as_str().unwrap_or("")) {
+                                Ok(()) => event["opened"] = json!(true),
+                                Err(e) => {
+                                    event["opened"] = json!(false);
+                                    event["error"] = json!(e);
+                                }
+                            }
+                        } else {
+                            event["opened"] = json!(false);
+                        }
+                    }
+                    Err(reason) => {
+                        event["allowed"] = json!(false);
+                        event["opened"] = json!(false);
+                        event["reason"] = json!(reason);
+                    }
+                }
             }
             self.emit(event);
         }
@@ -1494,6 +1595,25 @@ impl Session {
             })?,
             Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
             Command::Capabilities => self.capabilities(),
+            Command::SetLinkPolicy {
+                schemes,
+                hosts,
+                open,
+            } => {
+                for s in &schemes {
+                    if !LINK_SCHEMES.contains(&s.as_str()) {
+                        return Err(Error::arg(format!(
+                            "scheme {s:?} cannot be allowed; allowed schemes are https, http and mailto"
+                        )));
+                    }
+                }
+                if schemes.len() > 8 || hosts.as_ref().is_some_and(|h| h.len() > 256) {
+                    return Err(Error::arg("too many schemes or hosts"));
+                }
+                let hosts = hosts.map(|h| h.into_iter().map(|x| x.to_ascii_lowercase()).collect());
+                *lock(&self.link_policy) = LinkPolicy { schemes, hosts, open };
+                json!({})
+            }
             Command::FileDialog {
                 window,
                 token,
