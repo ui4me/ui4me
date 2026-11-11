@@ -202,11 +202,28 @@ def installed_cases():
             app.run()
         assert results == [{"paths": None}], results
 
+    def core_05_contract():
+        with App(backend="headless", handle_sigint=False) as app:
+            caps = app.capabilities()
+            focus = caps["features"]["window.focus"]
+            assert caps["backend"] == "headless" and focus["status"] == "unavailable" and focus["reason"], caps
+            assert all(f["status"] == "supported" or f.get("reason") for f in caps["features"].values())
+            window = app.open('<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div><textarea id=t>ab\ncd</textarea>')
+            env = window.set_environment(color_scheme="dark")
+            assert (env["color_scheme"], env["color_scheme_source"]) == ("dark", "app"), env
+            assert window.get_rect("b")["width"] == 20
+            window.focus("t")
+            field = next(n for n in window.accessibility_tree()["nodes"] if n.get("html_id") == "t")
+            assert len(field["children"]) == 2 and field["selection"] == {"value": [5, 5]}, field
+            app.on("started", lambda _: app.stop())
+            app.run()
+
     check("F01", install_load, "Installed package resolves its own native payload; headless session completes")
     check("F09", abi_lifetime, "ABI 1, callback lifetime, failure propagation, stale windows and subscription removal")
     check("F11", resource_diagnostics, "Unicode/space document root; packaged CSS and asynchronous PNG change actual rendered pixels; resource diagnostics stay clear")
     check("F12", candidate_identity, "Local candidate identity and fresh session; public upgrade not assessed by this probe")
     check("F14", core_04_contract, "0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion")
+    check("F15", core_05_contract, "0.5 Core contract: capability report with causes, media environment override, per-line accessible text with the caret")
     check("F13", core_03_contract, "0.3 Core contract: batch/trim, follow scroll, into-view geometry, move/append/read, selection copy, clipboard, default-action rule")
     return cases
 

@@ -142,6 +142,21 @@ try {
             }
             if (($results -join ',') -ne 'cancel') { throw "file dialog: $($results -join ',')" }
         } '0.4 Core contract: modal dialog focus/select/return, window actions and size constraints, headless file dialog completion'
+        Test-Case F15 {
+            Invoke-Ui4meApp -Backend headless {
+                param($app)
+                $caps = $app.CapabilitiesJson() | ConvertFrom-Json
+                if ($caps.backend -ne 'headless' -or $caps.features.'window.focus'.status -ne 'unavailable' -or -not $caps.features.'window.focus'.reason) { throw "capabilities: $($app.CapabilitiesJson())" }
+                foreach ($p in $caps.features.PSObject.Properties) { if ($p.Value.status -ne 'supported' -and -not $p.Value.reason) { throw "no reason for $($p.Name)" } }
+                $window = $app.Open("<style>#b{width:10px;height:5px}@media (prefers-color-scheme: dark){#b{width:20px}}</style><div id=b></div><textarea id=t>ab`ncd</textarea>")
+                $env = $window.SetEnvironment('dark', $null) | ConvertFrom-Json
+                if ($env.color_scheme -ne 'dark' -or $env.color_scheme_source -ne 'app' -or $window.GetRect('b').Width -ne 20) { throw "environment: $($window.EnvironmentJson())" }
+                $window.Focus('t')
+                $field = @(($window.AccessibilityTreeJson() | ConvertFrom-Json).nodes | Where-Object { $_.html_id -eq 't' })[0]
+                if ($field.children.Count -ne 2 -or (($field.selection.value) -join ',') -ne '5,5') { throw "accessible text: $($field | ConvertTo-Json -Compress -Depth 4)" }
+                $null = $app.On('started', { $app.Stop() })
+            }
+        } '0.5 Core contract: capability report with causes, media environment override, per-line accessible text with the caret'
         Test-Case F13 {
             Invoke-Ui4meApp -Backend headless {
                 param($app)

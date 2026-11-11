@@ -804,20 +804,26 @@ impl<'a> Builder<'a> {
             ids.push(rid);
             runs.push((rid, run));
         }
+        // No stored selection means the caret is at the end of the value (the editing engine's rule).
         let selection = self
             .d
             .control_state(n)
             .ok()
             .flatten()
-            .and_then(|c| c.selection)
-            .and_then(|s| {
-                let backward =
-                    s.direction == ui4me_document::control_state::SelectionDirection::Backward;
-                let (anchor, focus) = if backward {
-                    (s.end, s.start)
-                } else {
-                    (s.start, s.end)
-                };
+            .map(|c| {
+                c.selection
+                    .map(|s| {
+                        let backward = s.direction
+                            == ui4me_document::control_state::SelectionDirection::Backward;
+                        if backward {
+                            (s.end, s.start)
+                        } else {
+                            (s.start, s.end)
+                        }
+                    })
+                    .unwrap_or((len16, len16))
+            })
+            .and_then(|(anchor, focus)| {
                 Some(TextSel {
                     anchor: position(&runs, anchor.min(len16))?,
                     focus: position(&runs, focus.min(len16))?,
