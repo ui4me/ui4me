@@ -7,7 +7,7 @@ Python (`bindings/python`) and PowerShell (`bindings/powershell`).
 
 ## Current status
 
-**Core 0.8.0 passed its gate on both hosts and is being released** (advanced interaction and editing;
+**Core 0.8.0 is released** (PyPI, PowerShell Gallery, GitHub; advanced interaction and editing;
 [`core-roadmap/versions/0_8.md`](core-roadmap/versions/0_8.md)): plain-text `contenteditable`
 editing hosts, touch input, pointer events and pointer capture, smooth scrolling with
 `scroll-behavior`, scroll snapping and overscroll containment, refined range/number/progress/
