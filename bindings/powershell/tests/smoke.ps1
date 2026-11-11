@@ -402,6 +402,8 @@ try {
             $state = $window.StateJson() | ConvertFrom-Json
             if ($state.resizable -or $state.min_size[0] -ne 300) { throw 'Constraints were not recorded' }
             if ($app.MonitorsJson() -ne '[]') { throw 'Headless should report no monitors' }
+            $caps = $app.CapabilitiesJson() | ConvertFrom-Json
+            if ($caps.backend -ne 'headless' -or $caps.features.'window.focus'.status -ne 'unavailable' -or -not $caps.features.'window.focus'.reason) { throw "Headless capabilities: $($app.CapabilitiesJson())" }
             $null = $app.On('started', { $app.Stop() })
         }
     }

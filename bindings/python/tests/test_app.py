@@ -312,6 +312,10 @@ class BindingTests(unittest.TestCase):
             window.set_constraints(min_size=(300, 200), resizable=False)
             self.assertEqual(window.state()["min_size"], [300, 200])
             self.assertEqual(app.monitors(), [])
+            caps = app.capabilities()
+            self.assertEqual((caps["backend"], caps["platform"]), ("headless", "headless"))
+            self.assertEqual(caps["features"]["window.focus"]["status"], "unavailable")
+            self.assertTrue(caps["features"]["window.focus"]["reason"])
             with self.assertRaises(Ui4meError):
                 window.window_action("spin")
 

@@ -55,7 +55,16 @@ def main() -> int:
 
         platform = lambda: w1.state()["platform"]
         steps += [
-            act(lambda: state.update(platform=platform())),
+            act(lambda: state.update(platform=platform(), caps=app.capabilities())),
+            # 0.5 F0508: the capability report names the running platform and agrees with the
+            # window rules below (focus/hide unsupported with a cause on Wayland only).
+            wait_for(lambda: True, "S8_capabilities_report", lambda: {
+                "platform": state["caps"]["platform"],
+                "focus": state["caps"]["features"]["window.focus"],
+                "file_drop": state["caps"]["features"]["file_drop"],
+                "consistent": state["caps"]["platform"] == state["platform"]
+                and (state["caps"]["features"]["window.focus"]["status"] == "unsupported") == (state["platform"] == "wayland")
+                and all(f["status"] == "supported" or f.get("reason") for f in state["caps"]["features"].values())}),
             act(lambda: w1.maximize()),
             wait_for(lambda: w1.state()["maximized"] is True, "S8_maximize", lambda: w1.state()),
             act(lambda: w1.restore()),
@@ -91,9 +100,9 @@ def main() -> int:
         app.run()
     # A case reported "passed" for focus/hide only when its result matches the platform rule.
     for c in cases:
-        if c["id"] == "S8_focus_hide_reported" and not c["details"]["consistent"]:
+        if c["id"] in ("S8_focus_hide_reported", "S8_capabilities_report") and not c["details"]["consistent"]:
             c["status"] = "failed"
-    result = {"platform": state["platform"], "status": "passed" if cases and all(c["status"] == "passed" for c in cases) and len(cases) == 9 else "failed", "cases": cases}
+    result = {"platform": state["platform"], "status": "passed" if cases and all(c["status"] == "passed" for c in cases) and len(cases) == 10 else "failed", "cases": cases}
     args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     for c in cases:
         print(c["status"], c["id"], json.dumps(c["details"], ensure_ascii=False)[:160])

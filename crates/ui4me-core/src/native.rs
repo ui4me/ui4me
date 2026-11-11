@@ -67,6 +67,7 @@ pub fn run(session: Arc<Session>) -> Result<()> {
         let event_loop = storage.as_mut().ok_or_else(|| Error::native("missing native event loop"))?;
         *lock(&session.proxy) = Some(event_loop.create_proxy());
         let clipboard = Rc::new(RefCell::new(arboard::Clipboard::new().map_err(|e| e.to_string())));
+        *lock(&session.clipboard) = Some(clipboard.borrow().as_ref().map(|_| ()).map_err(Clone::clone));
         let mut app = Desktop { session, windows: BTreeMap::new(), started: false, resumed: false, clipboard };
         let result = event_loop.run_app_on_demand(&mut app).map_err(|e| Error::native(format!("native event loop: {e}")));
         app.windows.clear();

@@ -338,6 +338,8 @@ pub enum Command {
         window: u64,
     },
     ListMonitors,
+    /// The platform capability report (0.5 F0508).
+    Capabilities,
     FileDialog {
         window: u64,
         token: u64,

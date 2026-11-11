@@ -162,6 +162,8 @@ pub struct Session {
     pub platform: Mutex<&'static str>,
     /// Monitors as last enumerated by the native event loop.
     pub monitors: Mutex<Vec<Value>>,
+    /// The OS clipboard as the native backend opened it (`None` until it ran).
+    pub clipboard: Mutex<Option<std::result::Result<(), String>>>,
 }
 struct RunLease<'a>(&'a Session);
 impl Drop for RunLease<'_> {
@@ -243,8 +245,20 @@ pub fn create(value: Value, callback: Option<Callback>, user: *mut c_void) -> Re
         proxy: Mutex::new(None),
         platform: Mutex::new("headless"),
         monitors: Mutex::new(Vec::new()),
+        clipboard: Mutex::new(None),
     }));
     Ok(id)
+}
+
+/// One capability: `supported`, `unsupported` (the platform or Core does not offer it), `denied`
+/// (the user or a policy refused it), `unavailable` (a required service or device is missing now)
+/// or `unknown` (not known before the native backend runs), with the exact cause.
+fn capability(status: &str, reason: &str) -> Value {
+    if reason.is_empty() {
+        json!({"status": status})
+    } else {
+        json!({"status": status, "reason": reason})
+    }
 }
 
 /// Why `op` cannot be honoured on `platform` (the compositor or OS forbids or ignores it).
@@ -264,6 +278,117 @@ pub fn unsupported(platform: &str, op: &WindowOp) -> Option<&'static str> {
 }
 
 impl Session {
+    /// The language-neutral platform capability report (0.5 F0508): what this backend and platform
+    /// offer, with exact causes for everything that is not simply supported.
+    fn capabilities(&self) -> Value {
+        let platform = *lock(&self.platform);
+        let headless = !self.native;
+        let pending = self.native && platform == "headless";
+        let wayland = platform == "wayland";
+        let ok = || capability("supported", "");
+        let window_op = |op: WindowOp| -> Value {
+            if headless {
+                capability(
+                    "unavailable",
+                    "the headless backend has no on-screen windows",
+                )
+            } else if pending {
+                capability(
+                    "unknown",
+                    "reported once run() has started the native backend",
+                )
+            } else {
+                match unsupported(platform, &op) {
+                    Some(reason) => capability("unsupported", reason),
+                    None => ok(),
+                }
+            }
+        };
+        let native = |reason_if_wayland: Option<&str>| -> Value {
+            if headless {
+                capability("unavailable", "the headless backend has no desktop session")
+            } else if pending {
+                capability(
+                    "unknown",
+                    "reported once run() has started the native backend",
+                )
+            } else if let (true, Some(reason)) = (wayland, reason_if_wayland) {
+                capability("unsupported", reason)
+            } else {
+                ok()
+            }
+        };
+        let clipboard = if headless {
+            capability("supported", "an in-process clipboard (headless backend)")
+        } else {
+            match &*lock(&self.clipboard) {
+                None => capability(
+                    "unknown",
+                    "reported once run() has started the native backend",
+                ),
+                Some(Ok(())) => ok(),
+                Some(Err(e)) => capability(
+                    "unavailable",
+                    &format!("the OS clipboard could not be opened: {e}"),
+                ),
+            }
+        };
+        let file_dialogs = if headless {
+            capability("unavailable", "the headless backend shows no dialogs")
+        } else if cfg!(target_os = "linux")
+            && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none()
+        {
+            capability(
+                "unavailable",
+                "no D-Bus session bus: file dialogs need xdg-desktop-portal",
+            )
+        } else if pending {
+            capability(
+                "unknown",
+                "reported once run() has started the native backend",
+            )
+        } else if cfg!(target_os = "linux") {
+            capability(
+                "supported",
+                "through xdg-desktop-portal; a missing FileChooser backend fails the request",
+            )
+        } else {
+            ok()
+        };
+        let later = |version: &str| {
+            capability(
+                "unsupported",
+                &format!("not offered by Core yet (planned for {version})"),
+            )
+        };
+        json!({
+            "platform": if pending { "pending" } else { platform },
+            "backend": if headless { "headless" } else { "native" },
+            "features": {
+                "window.focus": window_op(WindowOp::Focus),
+                "window.show_hide": window_op(WindowOp::Show),
+                "window.icon": window_op(WindowOp::Icon(None)),
+                "window.minimize": window_op(WindowOp::Minimize),
+                "window.minimized_state": native(Some("Wayland does not report whether a window is minimized")),
+                "window.position": if headless { capability("unavailable", "the headless backend has no on-screen windows") } else { capability("unsupported", if wayland { "Wayland clients cannot read or set their window position" } else { "not offered by Core" }) },
+                "window.monitors": native(None),
+                "clipboard.text": clipboard,
+                "file_dialogs": file_dialogs,
+                "file_drop": native(Some("winit 0.30 has no Wayland drag-and-drop")),
+                "ime": native(None),
+                "ime.surrounding_text": if headless { capability("unavailable", "no input method in the headless backend") } else { capability("unsupported", "winit 0.30 cannot send the text around the caret to the input method") },
+                "accessibility": native(None),
+                "keyboard.layouts": native(None),
+                "environment.scale_changes": native(None),
+                "environment.theme_changes": native(Some("winit 0.30 does not report Wayland theme changes")),
+                "environment.font_changes": capability("unsupported", "system font changes are not observed; restart the app or reopen the window"),
+                "notifications": later("0.7"),
+                "system_tray": later("0.7"),
+                "global_hotkeys": later("0.7"),
+                "native_menus": later("0.7"),
+            },
+        })
+    }
     pub fn assert_owner(&self) -> Result<()> {
         if self.owner == thread::current().id() {
             Ok(())
@@ -1241,6 +1366,7 @@ impl Session {
                 Ok(v)
             })?,
             Command::ListMonitors => json!({"monitors": lock(&self.monitors).clone(), "platform": *lock(&self.platform)}),
+            Command::Capabilities => self.capabilities(),
             Command::FileDialog {
                 window,
                 token,

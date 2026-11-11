@@ -292,6 +292,12 @@ class App:
         scale, position (None on Wayland), refresh rate and primary flag."""
         return self._command({"op": "list_monitors"})["monitors"]
 
+    def capabilities(self) -> dict:
+        """What this backend and platform offer: ``{"platform", "backend", "features"}`` where each
+        feature is ``{"status": "supported" | "unsupported" | "denied" | "unavailable" | "unknown",
+        "reason": ...}``. Native platform details are known once ``run()`` has started."""
+        return self._command({"op": "capabilities"})
+
     def stats(self) -> dict:
         self._owner_only()
         if self._state == "closed":

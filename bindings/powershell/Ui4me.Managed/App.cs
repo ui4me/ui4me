@@ -238,6 +238,9 @@ public sealed class App : IDisposable
         return work;
     }
     public string MonitorsJson() => Command(new { op = "list_monitors" }).GetProperty("monitors").GetRawText();
+    /// <summary>The platform capability report as JSON: platform, backend and per-feature status
+    /// (supported, unsupported, denied, unavailable, unknown) with the reason.</summary>
+    public string CapabilitiesJson() => Command(new { op = "capabilities" }).GetRawText();
     public string StatsJson()
     {
         OwnerOnly();

@@ -1129,6 +1129,32 @@ fn window_actions_constraints_icon_and_state() {
         cmd(json!({"op":"list_monitors"})).unwrap()["monitors"],
         json!([])
     );
+    // The capability report (0.5 F0508): exact statuses with causes, never optimistic booleans.
+    let caps = cmd(json!({"op":"capabilities"})).unwrap();
+    assert_eq!(caps["backend"], "headless");
+    assert_eq!(caps["platform"], "headless");
+    let features = caps["features"].as_object().unwrap();
+    for (name, f) in features {
+        let status = f["status"].as_str().unwrap();
+        assert!(
+            [
+                "supported",
+                "unsupported",
+                "denied",
+                "unavailable",
+                "unknown"
+            ]
+            .contains(&status),
+            "{name}: {status}"
+        );
+        assert!(
+            status == "supported" || f["reason"].as_str().is_some_and(|r| !r.is_empty()),
+            "{name} needs a reason"
+        );
+    }
+    assert_eq!(features["window.focus"]["status"], "unavailable");
+    assert_eq!(features["clipboard.text"]["status"], "supported");
+    assert_eq!(features["system_tray"]["status"], "unsupported");
     // Platform rules: Wayland reports unsupported operations instead of pretending.
     assert!(crate::runtime::unsupported("wayland", &crate::runtime::WindowOp::Focus).is_some());
     assert!(crate::runtime::unsupported("windows", &crate::runtime::WindowOp::Focus).is_none());
