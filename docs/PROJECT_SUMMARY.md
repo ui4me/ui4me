@@ -21,8 +21,9 @@ and is not part of this repository.
 
 ## Current state
 
-**Version 1.0.0, released** (2026-11-12) to PyPI (`ui4me`), the PowerShell Gallery (`Ui4me`) and
-GitHub (`v1.0.0`: native SDKs, LuaJIT binding, `SHA256SUMS`). ABI 1 and the wire schema are
+**Version 1.0.1** (2026-11-12), a maintenance release of the stable 1.0 Core, on PyPI (`ui4me`),
+the PowerShell Gallery (`Ui4me`), LuaRocks (`ui4me`) and GitHub (`v1.0.1`: native SDKs, LuaJIT
+binding, `SHA256SUMS`). ABI 1 and the wire schema are
 frozen by [`COMPATIBILITY.md`](COMPATIBILITY.md). Earlier releases (0.2, 0.4–0.9) are tagged;
 [`CHANGELOG.md`](../CHANGELOG.md) lists what each added.
 
@@ -152,14 +153,19 @@ on Windows; X11 cannot lock the pointer. The measured per-platform status is
 - The release procedure, including the native gates in `tools/gate/`, is in
   [`DEVELOPMENT.md`](DEVELOPMENT.md#release).
 
-**1.0.0 qualification** (candidate `b58399f`, identical source identity on both hosts): installed
-C, Python and PowerShell suites passed on Linux and Windows. Every native journey and probe
-passed on KWin and on Windows: chat, files, input with IMEs, dialogs, window, AT-SPI or UIA,
-environment, file input, desktop services, animation, printing, capabilities, Orca or NVDA, the
-data application, and the LuaJIT probe or unit tests. The upgrade matrix passed on both
-platforms. A one-hour soak of the installed wheel completed 55 sessions with no errors and flat
-memory. Fuzzing (about 48 CPU-minutes over six harnesses) found no crash. All input in these
-tests is automated.
+**1.0.1 qualification** (candidate `5b9f9fd`, built on Linux and Windows from the same commit;
+the release commit adds only this record): unit suites passed on both hosts (1,002 Rust tests on
+Linux, 924 on Windows, plus binding and tooling suites); installed C, Python and PowerShell
+suites passed on both. The native gate verdict (`tools/gate/verdict.py`) was PASSED on KWin
+(19/19 mandatory steps: chat, files, dialogs, window, AT-SPI, input with IMEs, environment, file
+input, services, animation, printing, Orca, capabilities, data application, LuaJIT KWin probe,
+upgrade matrix) and on Windows Server 2022 (18/18: the same journeys with UIA and NVDA, the
+LuaJIT unit tests 19/19, upgrade matrix 11/11). A one-hour headless soak of the installed Linux wheel completed 55 sessions with no errors, 0.1 MB RSS growth between quartiles and no thread or descriptor growth; a 10-minute Windows soak passed with measured working set, handles and threads. All input in these tests is
+automated.
+
+The 1.0.0 record said every native step passed; in fact its Windows LuaJIT step had run the
+Linux-only KWin probe and failed, which the gate summary did not detect. 1.0.1 runs the Lua unit
+tests on Windows and fails the gate on any missing, skipped or failed step.
 
 ## Known limitations and technical debt
 
