@@ -32,6 +32,8 @@ APIs are unchanged.
 - **Publishing workflow:** runs the unit tests and smoke-tests the exact assembled packages on
   Linux and Windows before publishing to PyPI, the PowerShell Gallery, GitHub and LuaRocks, and
   reports every job's result.
+- **CI on Windows:** the Rust unit-test step may take up to an hour (it timed out after 15
+  minutes on hosted Windows runners, failing CI since 1.0.0).
 - **Packaged demo resource:** the foundation page shipped in the packages keeps its UTF-8
   sample value again; a post-1.0.0 README change had replaced it and broke installed case F11
   and the 1.0.0/0.4.0 contract clients (`examples/foundation` keeps the English sample).

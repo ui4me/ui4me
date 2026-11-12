@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       # Hosted images can contain a partial toolchain with conflicting
       # components. Install the pinned toolchain into a clean job-local home.

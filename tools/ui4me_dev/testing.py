@@ -54,7 +54,8 @@ def unit(binding: str, profile: str) -> bool:
             # on Windows. Keep test outputs separate from receipted artifacts.
             env["CARGO_TARGET_DIR"] = str(ROOT / "build/cargo-tests" / host())
             env.pop("CARGO_BUILD_TARGET", None)
-            step = run(command, cwd=ROOT, env=env, log=folder / "unit.log", check=False)
+            # A cold release build of every crate's tests takes over 15 minutes on hosted Windows runners.
+            step = run(command, cwd=ROOT, env=env, log=folder / "unit.log", check=False, timeout=3600)
             receipt["steps"].append(step)
             counts = re.findall(r"test result: ok\. (\d+) passed;", (folder / "unit.log").read_text(encoding="utf-8", errors="replace"))
             count = sum(int(n) for n in counts)
