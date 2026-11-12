@@ -136,8 +136,9 @@ jobs:
           bindings/lua/tools/build_luajit.sh
           mkdir -p build/lua-smoke && cd build/lua-smoke
           unzip -q "../../dist/release/ui4me-lua-$version.zip" && unzip -q "../../dist/release/ui4me-sdk-$version-linux-x64.zip" -d sdk
-          UI4ME_INSTALLED=1 UI4ME_NATIVE_LIB="$PWD/$(cd sdk && find . -name libui4me_core.so | head -1)" LUA_PATH="$PWD/lua/?.lua;;" \
-            ../luajit/src/luajit ../../tests/lua/test_ui4me.lua
+          lib=$(find "$PWD/sdk" -name libui4me_core.so | head -1)
+          test -n "$lib" || { echo "::error::libui4me_core.so not found in the SDK zip"; exit 1; }
+          UI4ME_INSTALLED=1 UI4ME_NATIVE_LIB="$lib" LUA_PATH="$PWD/lua/?.lua;;" ../luajit/src/luajit ../../tests/lua/test_ui4me.lua
       - run: python dev.py report --manifest dist/release/manifest.json
         if: always()
 
