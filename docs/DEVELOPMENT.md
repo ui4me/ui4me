@@ -14,8 +14,9 @@ internally is in [`PROJECT_SUMMARY.md`](PROJECT_SUMMARY.md); the public contract
 - **Windows:** Visual Studio Build Tools with the C++ x64 toolset and a Windows SDK; build from an
   x64 developer prompt. `scripts/bootstrap.ps1` offers optional WinGet installation and the
   Python environment. PowerShell packaging needs PSResourceGet 1.1+.
-- **LuaJIT** (optional, for the Lua binding tests): `bindings/lua/tools/build_luajit.sh` (`.cmd` on Windows)
-  builds a pinned LuaJIT into `build/luajit`.
+- **LuaJIT** (for the Lua binding tests; required by the native gate):
+  `bindings/lua/tools/build_luajit.sh` (`.cmd` on Windows) builds a pinned LuaJIT into
+  `build/luajit`.
 
 ```sh
 python -m venv .venv
@@ -96,7 +97,9 @@ timeout is a finding.
 **Soak:** `python tests/soak/soak.py --minutes 60` runs repeated headless sessions with a mixed
 workload (append/trim/stream, style and class changes, focus, scroll, SVG, adverse CSS and
 assets, background tasks, timers, pagination and PDF export) and fails on unexpected errors,
-leaked threads or file descriptors, unbounded queues or memory growth after warm-up. `--native`
+leaked threads or file descriptors, unbounded queues or memory growth after warm-up (last-quartile
+minus first-quartile median of RSS/working set; needs at least 8 post-warm-up samples, otherwise the
+check fails as "insufficient samples"; an unmeasurable metric fails as "not measured"). `--native`
 runs it in a private KWin session; `UI4ME_INSTALLED=1` soaks the installed package instead of the
 checkout. The long-document harness (`regression/long_document.rs`, ignored; `UI4ME_LD_ROWS`,
 `UI4ME_LD_ITERS`) reports update times per scenario.
@@ -133,8 +136,11 @@ All input in these tests is automated; they do not replace a person's judgement 
    3. Add the Python method (`bindings/python/src/ui4me/app.py`) and the PowerShell method
       (`bindings/powershell/Ui4me.Managed/App.cs`), each with a unit test.
    4. Regenerate the support profile with
-      `UI4ME_UPDATE_PROFILE=1 cargo test -p ui4me-core support_profile`. The test fails if a wire
-      op has no binding method and is not listed in `BINDING_EXCEPTIONS`.
+      `UI4ME_UPDATE_PROFILE=1 cargo test -p ui4me-core support_profile`. It declares every wire
+      op as covered by both bindings unless `BINDING_EXCEPTIONS` says otherwise; add the op's
+      public call to `bindings/python/tests/test_contract_coverage.py` and to the
+      `PS_contract_coverage` table in `bindings/powershell/tests/smoke.ps1`, which fail when the
+      declared ops and the bindings disagree.
    5. Document it in [`API.md`](API.md).
 3. **CSS feature:**
    - If Stylo lacks it in Servo mode, add a carried patch `patches/stylo/P-006-N.patch` and list
@@ -156,7 +162,10 @@ profile version when merging.
 ## Release
 
 1. **Freeze:**
-   - `python dev.py version --set X.Y.Z`, then `python dev.py version --check`.
+   - `python dev.py version --set X.Y.Z`, then `python dev.py version --check`, then
+     `cargo update --workspace --offline` and
+     `UI4ME_UPDATE_PROFILE=1 cargo test -p ui4me-core support_profile` (the lock file and the
+     support profile record the version).
    - Update [`CHANGELOG.md`](../CHANGELOG.md) and write `docs/release-notes/vX.Y.Z.md` (the
      release workflow uses it as the GitHub release text).
    - If the release adds public behaviour, add an installed contract case to both
@@ -175,10 +184,15 @@ profile version when merging.
    `expected_failure: true`). Build receipts record the exact source identity; any edit
    invalidates them, so rebuild after a change, and keep line endings as committed (a CRLF copy
    on Windows changes the source id).
-3. **Native gate:**
-   - **Linux:** `tools/gate/linux_gate.sh OUT_DIR` installs the candidate into fresh
-     environments and runs every journey and probe, the Lua probe and the upgrade matrix. It
-     writes `OUT_DIR/results/summary.txt`.
+3. **Native gate:** both platforms must report `PASSED`. `tools/gate/verdict.py` decides it:
+   each mandatory step must have exited 0 and written a result whose status and every case are
+   `passed`. A missing, skipped, blocked or failed step fails the gate, and so does a missing
+   LuaJIT or NVDA. The gate scripts only replace an output directory they created themselves
+   (it holds a `.ui4me-gate` marker) or an empty one; anything else is refused.
+   - **Linux:** build LuaJIT once (`bindings/lua/tools/build_luajit.sh`), then
+     `tools/gate/linux_gate.sh OUT_DIR` (outside the checkout or under `build/`). It installs the
+     candidate into fresh environments and runs every journey and probe, the Lua probe and the
+     upgrade matrix. Its exit status is the verdict (`OUT_DIR/results/verdict.json`).
    - **Windows:** copy `tools/gate/windows/*` to `C:\Users\Public\ui4me-gui\tools`, then:
 
      ```powershell
@@ -188,24 +202,38 @@ profile version when merging.
      pwsh -File $t -Script C:\Users\Public\ui4me-gui\tools\setlang.ps1 -Marker C:\Users\Public\ui4me-gui\gate\lang-done.txt -Exe $ps5
      pwsh -File $t -Script C:\Users\Public\ui4me-gui\tools\run_gate.ps1 -Marker C:\Users\Public\ui4me-gui\gate\results\all-done.txt -Seconds 3300
      pwsh -File $t -Script C:\Users\Public\ui4me-gui\tools\unlang.ps1 -Marker C:\Users\Public\ui4me-gui\gate\unlang-done.txt -Exe $ps5
-     python C:\Users\Public\ui4me-gui\tools\summarize.py
+     # from the checkout, as the administrator (the matrix reads the v0.4.0 tag):
+     python tests\packaging\upgrade_matrix.py --wheel <whl> --stage <stage.zip> --out C:\Users\Public\ui4me-gui\gate\results\upgrade\upgrade.json
+     python tools\gate\verdict.py C:\Users\Public\ui4me-gui\gate\results --platform windows
      ```
 
      `setlang.ps1` adds the Japanese and Korean IMEs for the input journey and `unlang.ps1`
      restores en-US; always run both. To rerun some steps, write a comma list (for example
-     `fileinput,print`) to `gate\only.txt` and delete it afterwards. Run the upgrade matrix as
-     the administrator from the checkout (it reads the `v0.4.0` tag):
-     `python tests\packaging\upgrade_matrix.py --wheel <whl> --stage <stage.zip> --out upgrade.json`.
+     `fileinput,print`) to `gate\only.txt`, then delete it and run the whole gate again for the
+     verdict (steps left out by `only.txt` count as not run).
    - **Soak:** `UI4ME_INSTALLED=1 python tests/soak/soak.py --minutes 60` with the candidate
-     wheel installed.
-   - Every journey must pass; record failures and reruns honestly in the release notes.
+     wheel installed; exit status 0 only when every check passed.
+   - Record failures and reruns honestly in the release notes.
 4. **Publish** (needs the maintainer's decision): push, wait about 15 s so the dispatch sees the
-   pushed commit, then run `gh workflow run publish.yml --ref main`. The workflow builds both
-   platforms on clean runners, assembles the packages and publishes the wheels to PyPI, the
-   module to the PowerShell Gallery, and a GitHub release with the native SDKs, the LuaJIT zip,
-   `manifest.json` and `SHA256SUMS`. It does not run the native gate. Verify
-   `https://pypi.org/pypi/ui4me/X.Y.Z/json` (the simple index can lag by minutes), the Gallery
-   and the GitHub assets, and install from PyPI in a clean environment.
+   pushed commit, then run `gh workflow run publish.yml --ref main`. The workflow:
+   - builds both platforms on clean runners and runs the unit tests (`dev.py test --suite unit`);
+   - assembles the packages (wheels, combined PowerShell nupkg, native SDKs, the LuaJIT zip,
+     rockspec and source rock, `manifest.json`);
+   - smoke-tests those exact files installed on Linux and Windows (`dev.py test --suite
+     installed` for Python, PowerShell and C, and `tests/lua` against the Lua zip on Linux);
+   - only then publishes the wheels to PyPI and the module to the PowerShell Gallery, creates
+     the GitHub release (all files plus `SHA256SUMS`), and uploads the rock to LuaRocks (its
+     source is the GitHub asset, so it comes last; `.github/scripts/publish-luarocks.py`);
+   - ends with a `report` job that lists each job's result and fails if anything did not
+     succeed.
+
+   Nothing is overwritten: PyPI, the Gallery, `gh release create` and the LuaRocks script all
+   refuse an existing version. After a failure, fix the cause and retry only the failed jobs
+   (`gh run rerun <id> --failed`); jobs that already published are not repeated. The workflow
+   does not run the native desktop gate. Verify
+   `https://pypi.org/pypi/ui4me/X.Y.Z/json` (the simple index can lag by minutes), the Gallery,
+   the GitHub assets and `https://luarocks.org/ui4me-X.Y.Z-1.rockspec`, and install from PyPI in
+   a clean environment.
 
 `dev.py` also has a stricter local path (`assemble`, `report`, `attest`, `qualify`,
 `upgrade-check`, `publish`) built on the scenario catalogue in `quality/scenarios.json` and the

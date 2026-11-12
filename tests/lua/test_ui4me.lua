@@ -5,9 +5,11 @@
 --
 -- Exit status 0 only when every test passed.
 local here = (debug.getinfo(1, "S").source:sub(2):match("^(.*)[/\\][^/\\]*$")) or "."
-package.path = here .. "/../../bindings/lua/?.lua;" .. package.path
+-- UI4ME_INSTALLED=1 tests the ui4me.lua found on LUA_PATH (an installed rock or release zip).
+if os.getenv("UI4ME_INSTALLED") ~= "1" then package.path = here .. "/../../bindings/lua/?.lua;" .. package.path end
 local ffi = require("ffi")
 local ui4me = require("ui4me")
+print("module: " .. package.searchpath("ui4me", package.path))
 local json = ui4me.json
 
 io.stdout:setvbuf("no")

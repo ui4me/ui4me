@@ -2953,14 +2953,18 @@ fn support_profile() -> Value {
         .collect();
     ops.sort();
     ops.dedup();
-    let py = read("bindings/python/src/ui4me/app.py");
-    let ps = read("bindings/powershell/Ui4me.Managed/App.cs")
-        + &read("bindings/powershell/Ui4me.Managed/BackgroundTask.cs");
     let commands: Vec<Value> = ops
         .iter()
         .map(|op| {
-            let q = format!("\"{op}\"");
-            json!({"op": op, "python": py.contains(&q), "powershell": ps.contains(&q)})
+            // The declared contract: every binding exposes every op unless excepted. The
+            // bindings' own contract-coverage tests verify the declaration against their
+            // public APIs (bindings/python/tests/test_contract_coverage.py, powershell smoke).
+            let declared = |b: &str| {
+                !BINDING_EXCEPTIONS
+                    .iter()
+                    .any(|(o, bb, _)| *o == op.as_str() && *bb == b)
+            };
+            json!({"op": op, "python": declared("python"), "powershell": declared("powershell")})
         })
         .collect();
     // Host event types: the document listener list plus the events Core emits itself.
@@ -3030,7 +3034,7 @@ fn support_profile() -> Value {
 }
 
 #[test]
-fn support_profile_is_current_and_bindings_cover_every_op() {
+fn support_profile_is_current() {
     // 1.0 F1102/F1103. Regenerate with UI4ME_UPDATE_PROFILE=1.
     let profile = support_profile();
     let path =
@@ -3045,24 +3049,5 @@ fn support_profile_is_current_and_bindings_cover_every_op() {
     assert!(
         committed == text,
         "docs/SUPPORT_PROFILE_V1.json is stale: run the test with UI4ME_UPDATE_PROFILE=1"
-    );
-    let missing: Vec<String> = profile["commands"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .flat_map(|c| {
-            ["python", "powershell"].into_iter().filter_map(move |b| {
-                let op = c["op"].as_str().unwrap();
-                (c[b] == false
-                    && !BINDING_EXCEPTIONS
-                        .iter()
-                        .any(|(o, bb, _)| *o == op && *bb == b))
-                .then(|| format!("{op} ({b})"))
-            })
-        })
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "wire ops a binding does not expose: {missing:?}"
     );
 }

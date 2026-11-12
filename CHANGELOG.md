@@ -6,6 +6,41 @@ assets), all built from one commit. The project overview is
 [`docs/PROJECT_SUMMARY.md`](docs/PROJECT_SUMMARY.md), and the contract is in
 [`docs/API.md`](docs/API.md).
 
+## 1.0.1
+
+A maintenance release: no new features; ABI 1, the wire schema and the Python and PowerShell
+APIs are unchanged.
+
+- **Python shutdown:** `App.close()` (and leaving a `with App()` block) waits at most 30 s for
+  running background functions instead of indefinitely, then leaves a function that ignores
+  `task.cancelled` on its worker thread with a `RuntimeWarning`. `close(timeout=None)` keeps the
+  old unlimited wait. Nothing is killed.
+- **LuaJIT:** published on LuaRocks as `ui4me`. The release zip now contains a README, the
+  licence and the example, and states that the native library comes from the SDK zip.
+  `examples/lua/notes.lua` runs from the zip layout.
+- **Release gates:** the Linux and Windows native gates end with one verdict
+  (`tools/gate/verdict.py`): a missing, skipped, blocked or failed mandatory step fails the
+  gate, and so does a nonzero exit status. The gate scripts only delete an output directory
+  they created (marked with `.ui4me-gate`) or an empty one. The Windows gate runs the Lua unit
+  tests.
+- **Binding verification:** support-profile coverage is no longer decided by searching binding
+  sources for op names. Python and PowerShell tests call every declared operation through the
+  public API on the real native library.
+- **Soak and memory checks:** unmeasured metrics and too few samples now fail instead of
+  passing; Windows measures working set, handles and threads; the data-app memory check on
+  Windows measures the application process, not the venv launcher.
+- **Publishing workflow:** runs the unit tests and smoke-tests the exact assembled packages on
+  Linux and Windows before publishing to PyPI, the PowerShell Gallery, GitHub and LuaRocks, and
+  reports every job's result.
+- **Packaged demo resource:** the foundation page shipped in the packages keeps its UTF-8
+  sample value again; a post-1.0.0 README change had replaced it and broke installed case F11
+  and the 1.0.0/0.4.0 contract clients (`examples/foundation` keeps the English sample).
+- **Renderer test:** the header-bomb memory bound is measured in an isolated child process (Linux)
+  instead of the whole test binary's peak RSS, and is reported as not measured elsewhere.
+- **Documentation:** the acceptance catalogue (`quality/scenarios.json`) covers F01–F20 and the
+  current release; the 1.0.0 qualification record is corrected (its Windows LuaJIT step had
+  failed).
+
 ## 1.0.0
 
 This is the stable Core. From this release on, compatibility is governed by

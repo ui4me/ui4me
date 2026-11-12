@@ -108,12 +108,18 @@ or optional fields, never by changing ABI 1.
 - **PowerShell** (`Ui4me` on the PowerShell Gallery, PowerShell 7.4+): `Invoke-Ui4meApp` runs an
   application on a retained native owner thread in a fresh runspace; the module contains both
   native payloads. `Work` and `RunInBackground` run background work in isolated runspaces.
-- **LuaJIT** (`ui4me-lua-1.0.0.zip` on GitHub): a single FFI file covering documents, events,
-  timers, posts and values. It loads the native library named by `UI4ME_NATIVE_LIB` (an absolute path) or the one next to `ui4me.lua` (or in a `native/` directory beside it).
+- **LuaJIT** (`ui4me` on LuaRocks and `ui4me-lua-<version>.zip` on GitHub, LuaJIT 2.1): a
+  single FFI file covering documents, events, timers, posts and values, with every other wire
+  operation through `command{...}`; no background-work API. It does not ship the native
+  library: it loads the one named by `UI4ME_NATIVE_LIB` (an absolute path) or one next to
+  `ui4me.lua` (or in a `native/` directory beside it), taken from the native SDK zip.
 - **C:** `include/ui4me.h`, shipped in the native SDK zips.
 
-Every wire operation has a Python and a PowerShell method (checked by a test that generates
-[`SUPPORT_PROFILE_V1.json`](SUPPORT_PROFILE_V1.json)).
+Every wire operation has a Python and a PowerShell method, except the PowerShell-only
+completion slots listed in [`SUPPORT_PROFILE_V1.json`](SUPPORT_PROFILE_V1.json). Binding tests
+call each declared operation through the public API on the real native library (Python also
+checks that the operation reaches the native layer) and fail when the profile and the bindings
+disagree.
 
 ## Platforms
 
@@ -140,7 +146,9 @@ on Windows; X11 cannot lock the pointer. The measured per-platform status is
   Linux, an interactive test-user session on Windows) including Orca and NVDA, an
   upgrade/rollback matrix from 0.4.0, and a soak driver.
 - CI (`ci.yml`) builds and tests both platforms on every push. `publish.yml`, run manually,
-  builds on clean runners and publishes to PyPI, the PowerShell Gallery and GitHub.
+  builds on clean runners, runs the unit tests, smoke-tests the exact assembled packages
+  installed on Linux and Windows, and only then publishes to PyPI, the PowerShell Gallery,
+  GitHub and LuaRocks. It does not run the native desktop gate.
 - The release procedure, including the native gates in `tools/gate/`, is in
   [`DEVELOPMENT.md`](DEVELOPMENT.md#release).
 

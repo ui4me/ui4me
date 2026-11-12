@@ -56,6 +56,8 @@ jobs:
       - shell: pwsh
         run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
       - run: python dev.py build --binding all --profile release
+      # Mandatory checks: a failure here stops the release before anything is published.
+      - run: python dev.py test --binding all --suite unit --profile release
       - run: python dev.py package --binding all --profile release
         env:
           # The Linux wheel keeps the 0.2/0.3 glibc floor; a newer requirement fails here.
@@ -94,8 +96,53 @@ jobs:
           path: dist/release/
           if-no-files-found: error
 
-  pypi:
+  # The exact assembled packages, installed outside the checkout on both platforms: the Python
+  # wheel, the PowerShell module (from the combined nupkg), the C SDK and (Linux) the Lua zip.
+  smoke:
     needs: assemble
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Linux native runtime dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
+      - name: C compiler environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/setup-msvc.ps1
+      - run: python .github/scripts/setup-powershell.py
+      - shell: pwsh
+        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: dist/release
+      - run: python dev.py test --binding python --suite installed --manifest dist/release/manifest.json
+      - run: python dev.py test --binding powershell --suite installed --manifest dist/release/manifest.json
+      - run: python dev.py test --binding core --suite installed --manifest dist/release/manifest.json
+      - name: LuaJIT binding from the release zip against the packaged native library
+        if: runner.os == 'Linux'
+        run: |
+          version=$(tr -d '\r\n' < VERSION)
+          bindings/lua/tools/build_luajit.sh
+          mkdir -p build/lua-smoke && cd build/lua-smoke
+          unzip -q "../../dist/release/ui4me-lua-$version.zip" && unzip -q "../../dist/release/ui4me-sdk-$version-linux-x64.zip" -d sdk
+          UI4ME_INSTALLED=1 UI4ME_NATIVE_LIB="$PWD/$(cd sdk && find . -name libui4me_core.so | head -1)" LUA_PATH="$PWD/lua/?.lua;;" \
+            ../luajit/src/luajit ../../tests/lua/test_ui4me.lua
+      - run: python dev.py report --manifest dist/release/manifest.json
+        if: always()
+
+  pypi:
+    needs: smoke
     runs-on: ubuntu-22.04
     environment: pypi
     permissions:
@@ -114,7 +161,7 @@ jobs:
           packages-dir: dist/pypi/
 
   powershell:
-    needs: assemble
+    needs: smoke
     runs-on: ubuntu-22.04
     environment: psgallery
     steps:
@@ -156,15 +203,48 @@ jobs:
         shell: bash
         run: |
           version=$(tr -d '\r\n' < VERSION)
-          # The LuaJIT binding (pure Lua over the C ABI) ships as a source archive beside the SDKs.
-          if [ -d bindings/lua ]; then
-            (cd bindings && zip -qr "../dist/release/ui4me-lua-$version.zip" lua -x 'lua/tools/build/*')
-          fi
           (cd dist/release && sha256sum -- * | grep -v ' SHA256SUMS$' > SHA256SUMS)
           notes="docs/release-notes/v$version.md"
-          if [ -f "$notes" ]; then
-            { cat "$notes"; printf '\n\nBuilt from commit %s. The native release gate is described in docs/DEVELOPMENT.md; this workflow builds and publishes, it does not run the native gate.\n' "$GITHUB_SHA"; } > release-notes.md
-          else
-            printf 'Built from commit %s. This release workflow does not run tests.\n' "$GITHUB_SHA" > release-notes.md
-          fi
+          [ -f "$notes" ] || { echo "::error::$notes is missing"; exit 1; }
+          { cat "$notes"; printf '\n\nBuilt from commit %s. This workflow ran the unit tests and installed-package smoke tests of these exact files on Linux and Windows; the native desktop gate is run separately (docs/DEVELOPMENT.md).\n' "$GITHUB_SHA"; } > release-notes.md
           gh release create "v$version" dist/release/* --target "$GITHUB_SHA" --title "ui4me $version" --notes-file release-notes.md
+
+  # The rockspec's source is the GitHub release asset, so LuaRocks comes last. An existing
+  # version is never replaced.
+  luarocks:
+    needs: github
+    runs-on: ubuntu-22.04
+    environment: luarocks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: dist/release
+      - name: Publish to LuaRocks
+        env:
+          LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        run: python .github/scripts/publish-luarocks.py dist/release
+
+  report:
+    if: always()
+    needs: [build, assemble, smoke, pypi, powershell, github, luarocks]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Release outcome
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | python3 -c "
+          import json, os, sys
+          needs = json.load(sys.stdin)
+          lines = ['| Job | Result |', '| --- | --- |'] + [f'| {k} | {v[\"result\"]} |' for k, v in needs.items()]
+          open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          failed = [k for k, v in needs.items() if v['result'] != 'success']
+          if failed:
+              print('::error::Release incomplete; not successful: ' + ', '.join(failed))
+              sys.exit(1)
+          "

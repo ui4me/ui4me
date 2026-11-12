@@ -248,12 +248,18 @@ undo/redo; `exec_edit` applies a command (formatting, link, paragraph) and `get_
 reports the active formats. Element ids inside a rich host are not stable across edits.
 `run_in_background` (Python) / `RunInBackground` (PowerShell) run a function on a bounded worker
 pool and settle exactly once on the owner thread (done, error or cancelled); unfinished tasks
-are cancelled at stop. `get_diagnostics` returns schema 1 (redacted by default, `since` cursor,
+are cancelled at stop. A running Python function should poll `task.cancelled` and return; PowerShell
+requests a pipeline stop for running work. Closing waits at most 30 s for running work (Python
+`close(timeout=30.0)`, `None` for no limit), then leaves anything still running on its worker
+thread instead of hanging (Python warns with `RuntimeWarning`). Nothing is killed, and the
+Python interpreter still waits for such a thread at exit. `get_diagnostics` returns schema 1 (redacted by default, `since` cursor,
 `kinds` filter; [`reference/DIAGNOSTICS_SCHEMA_V1.md`](reference/DIAGNOSTICS_SCHEMA_V1.md))
 and `explain` answers why an element looks or behaves as it does (matched rules, box, hit and
 focus state) without exposing engine handles. The LuaJIT binding (`bindings/lua/ui4me.lua`,
-release asset `ui4me-lua-1.0.0.zip`) is a pure FFI binding over ABI 1 with the same owner-thread
-model; it loads the native library named by `UI4ME_NATIVE_LIB` (an absolute path) or the one next to `ui4me.lua` (or in a `native/` directory beside it).
+release asset `ui4me-lua-<version>.zip`) is a pure FFI binding over ABI 1 with the same owner-thread
+model. It does not contain the native library: it loads the one named by `UI4ME_NATIVE_LIB` (an
+absolute path) or a `libui4me_core.so` / `ui4me_core.dll` placed next to `ui4me.lua` (or in a
+`native/` directory beside it), for example `lib/` from the native SDK zip of the same version.
 
 ### Documents, scrolling, selection, controls and windows (0.3–0.4)
 

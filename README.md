@@ -14,10 +14,10 @@ shadows, an inline SVG chart, meters, a table and form controls.*
 
 | | |
 | --- | --- |
-| **Version** | 1.0.0 (stable; [compatibility promise](docs/COMPATIBILITY.md)) |
+| **Version** | 1.0.1 (stable; [compatibility promise](docs/COMPATIBILITY.md)) |
 | **Platforms** | Linux x86-64 (Wayland, X11) · Windows x64 |
 | **Languages** | Python 3.11–3.14 · PowerShell 7.4+ · LuaJIT 2.1 · C |
-| **Packages** | [PyPI `ui4me`](https://pypi.org/project/ui4me/) · [PowerShell Gallery `Ui4me`](https://www.powershellgallery.com/packages/Ui4me/) · [GitHub releases](https://github.com/ui4me/ui4me/releases/latest) (LuaJIT, C SDK) |
+| **Packages** | [PyPI `ui4me`](https://pypi.org/project/ui4me/) · [PowerShell Gallery `Ui4me`](https://www.powershellgallery.com/packages/Ui4me/) · [LuaRocks `ui4me`](https://luarocks.org/modules/ui4me/ui4me) · [GitHub releases](https://github.com/ui4me/ui4me/releases/latest) (LuaJIT, C SDK) |
 | **License** | [MIT](LICENSE) |
 
 ## Install
@@ -30,9 +30,15 @@ pip install ui4me
 Install-PSResource Ui4me
 ```
 
-The packages include the native library, so you don't need Rust, a compiler or a .NET SDK. For
-LuaJIT or C, download `ui4me-lua-1.0.0.zip` or the native SDK zip from the
-[latest release](https://github.com/ui4me/ui4me/releases/latest).
+```sh
+luarocks install ui4me   # LuaJIT 2.1; the native library comes from the SDK zip
+```
+
+The Python and PowerShell packages include the native library, so you don't need Rust, a
+compiler or a .NET SDK. The LuaJIT binding (LuaRocks, or `ui4me-lua-<version>.zip`) does not:
+take `lib/` from the native SDK zip for your platform in the
+[latest release](https://github.com/ui4me/ui4me/releases/latest) and set `UI4ME_NATIVE_LIB` to
+the library's absolute path, or put it next to `ui4me.lua`. C uses the same SDK zip.
 
 ## Quick start
 
@@ -87,7 +93,7 @@ input, button { padding: 10px; }</style>
 ### LuaJIT
 
 ```lua
-local ui4me = require("ui4me")   -- ui4me.lua from the release zip; the native library sits next to it
+local ui4me = require("ui4me")   -- UI4ME_NATIVE_LIB names libui4me_core.so / ui4me_core.dll from the SDK zip
 local app = ui4me.App{ app_id = "org.example.hello" }
 local win = app:open([[<input id="name" value="Ada Lovelace"><button id="greet">Greet</button>
 <p id="status">Ready.</p>]], { title = "Hello", width = 480, height = 240 })
@@ -269,7 +275,9 @@ All bindings sit on the same C ABI and the same JSON commands, so they behave id
   `batch`, `set_title`, `resize`, `diagnostics`.
 - Every other operation is available through `win:command{ op = "...", ... }` with the fields
   documented in the [API reference](docs/API.md).
-- Loads the native library next to `ui4me.lua`, or the absolute path in `UI4ME_NATIVE_LIB`.
+- Loads the native library named by `UI4ME_NATIVE_LIB` (an absolute path) or one placed next to
+  `ui4me.lua`; the binding does not ship it (it is in the native SDK zip).
+- No background-work API: a Lua state is single-threaded.
 
 </details>
 

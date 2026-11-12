@@ -9,7 +9,9 @@ import os
 from pathlib import Path
 import signal
 import threading
+import time
 from typing import Callable
+import warnings
 
 from ._native import CALLBACK, Ui4meError, library
 
@@ -360,8 +362,13 @@ class App:
             for task in queued:
                 self._tasks.discard(task)
 
-    def _shutdown_tasks(self, wait: bool) -> None:
-        """Cancel everything unfinished. Pending tasks never start; running ones see ``cancelled``."""
+    def _shutdown_tasks(self, wait: bool, timeout: float | None = None) -> None:
+        """Cancel everything unfinished. Pending tasks never start; running ones see ``cancelled``.
+
+        With ``wait``, wait up to ``timeout`` seconds (None: no limit) for running functions to
+        return. Python threads cannot be stopped safely, so a function still running then is left
+        to finish on its worker thread (its outcome stays observable on the Task, no callback
+        runs) and a RuntimeWarning names how many were left."""
         with self._task_lock:
             self._tasks_closed = True
             tasks = list(self._tasks)
@@ -378,9 +385,25 @@ class App:
             thread, self._settle_thread = self._settle_thread, None
             self._settle.notify_all()
         if executor is not None:
-            executor.shutdown(wait=wait, cancel_futures=True)
-        if wait and thread is not None and thread is not threading.current_thread():
-            thread.join()
+            executor.shutdown(wait=False, cancel_futures=True)
+        if not wait:
+            return
+        deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+
+        def remaining():
+            return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+        left = [task for task in tasks if not task._event.wait(remaining())]
+        if left:
+            warnings.warn("%d ui4me background task(s) still running %s s after close(); they were asked to "
+                          "cancel (task.cancelled) and keep running on their worker threads"
+                          % (len(left), timeout), RuntimeWarning, stacklevel=3)
+        else:
+            if executor is not None:
+                executor.shutdown(wait=True)  # the workers are idle: this only joins them
+        if thread is not None and thread is not threading.current_thread():
+            # The settlement thread (a daemon) exits as soon as it sees the closed flag.
+            thread.join(None if deadline is None else max(remaining(), 1.0))
 
     def stop(self) -> None:
         with self._lock:
@@ -576,14 +599,19 @@ class App:
             raise RuntimeError("Application has been disposed")
         return self._native.command(self._session, {"op": "stats"})
 
-    def close(self) -> None:
+    def close(self, *, timeout: float | None = 30.0) -> None:
+        """Dispose the session. Unfinished background tasks are cancelled; close waits up to
+        ``timeout`` seconds (None: no limit) for running ones to return (they should poll
+        ``task.cancelled``). One still running after that is left on its worker thread with a
+        RuntimeWarning instead of blocking close; Python cannot stop it, and the interpreter
+        still waits for it at exit."""
         self._owner_only()
         if self._state == "closed":
             return
         if self._run_active:
             raise RuntimeError("Call stop() during run(); close the App after run() returns")
-        # Join workers first: running tasks must observe task.cancelled to return promptly.
-        self._shutdown_tasks(wait=True)
+        # Wait for workers first: running tasks must observe task.cancelled to return promptly.
+        self._shutdown_tasks(wait=True, timeout=timeout)
         with self._lock:
             if self._state == "closed":
                 return

@@ -8,7 +8,8 @@
 -- `--state FILE` rewrites a small JSON file after each change (for automated journeys).
 -- The probe tests/native/lua_probe.lua loads this file as a module (UI4ME_NOTES_MODULE = true).
 local here = (debug.getinfo(1, "S").source:sub(2):match("^(.*)[/\\][^/\\]*$")) or "."
-package.path = here .. "/../../bindings/lua/?.lua;" .. package.path
+-- In the repository the binding is in bindings/lua; in the release zip / rock it is one level up.
+package.path = here .. "/../../bindings/lua/?.lua;" .. here .. "/../?.lua;" .. package.path
 local ui4me = require("ui4me")
 
 local HTML = [[

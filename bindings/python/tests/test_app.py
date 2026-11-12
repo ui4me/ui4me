@@ -4,6 +4,7 @@ import gc
 from pathlib import Path
 import tempfile
 import threading
+import warnings
 import time
 import unittest
 
@@ -721,6 +722,47 @@ class BackgroundTaskTests(unittest.TestCase):
             app.timer(10000, lambda _: app.stop())
             app.run()
         self.assertEqual(sorted(got), list(range(total)))
+
+    def test_close_does_not_hang_on_a_task_that_ignores_cancel(self):
+        gate, started = threading.Event(), threading.Event()
+        app = self.app(background_workers=1)
+        task = app.run_in_background(lambda: (started.set(), gate.wait(30), "late")[2])
+        self.assertTrue(started.wait(5))
+        begun = time.monotonic()
+        with self.assertWarns(RuntimeWarning):
+            app.close(timeout=0.2)
+        self.assertLess(time.monotonic() - begun, 5)
+        self.assertTrue(task.cancelled)
+        self.assertFalse(task.done)
+        with self.assertRaises(RuntimeError):
+            app.run_in_background(lambda: 1)
+        gate.set()  # the abandoned worker finishes on its own; no callback, outcome observable
+        self.assertTrue(task._event.wait(5))
+        self.assertEqual(task.state, "cancelled")
+        deadline = time.monotonic() + 5
+        while any(t.name.startswith("ui4me-bg") for t in threading.enumerate()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual([t for t in threading.enumerate() if t.name.startswith(("ui4me-bg", "ui4me-settle"))], [])
+
+    def test_close_waits_for_a_cooperative_task(self):
+        finished = []
+        app = self.app(background_workers=1)
+        started = threading.Event()
+
+        def work(task):
+            started.set()
+            while not task.cancelled:
+                time.sleep(0.001)
+            time.sleep(0.05)
+            finished.append(True)
+
+        task = app.run_in_background(work, pass_task=True)
+        self.assertTrue(started.wait(5))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            app.close()
+        self.assertEqual((finished, task.state), ([True], "cancelled"))
+        self.assertEqual([t for t in threading.enumerate() if t.name.startswith(("ui4me-bg", "ui4me-settle"))], [])
 
     def test_task_limit_is_bounded(self):
         gate = threading.Event()

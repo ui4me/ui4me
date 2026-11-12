@@ -649,6 +649,154 @@ try {
             $null = $app.On('stopped', { if ($state.got -ne 20) { throw "Only $($state.got) of 20 settled" } })
         }
     }
+
+    Test-Case 'PS_contract_coverage' {
+        # The managed layer exposes no hook to observe wire commands, so each declared op maps to
+        # the public App/Window call that sends it; every call must complete on the headless
+        # backend (an honest refusal is fine, a protocol error is not). The op set must equal the
+        # profile's declaration, so a new op without a public method fails here.
+        # cancel_completion is only sent when scheduling a Work item fails after reserve_completion
+        # (an internal rollback with no public trigger); it shares Work with reserve_completion.
+        $profilePath = Join-Path $PSScriptRoot '..' '..' '..' 'docs' 'SUPPORT_PROFILE_V1.json'
+        $declared = @((Get-Content -Raw -LiteralPath $profilePath | ConvertFrom-Json).commands | Where-Object powershell | ForEach-Object op | Sort-Object)
+        $calls = [ordered]@{
+        'add_class' = '$w.AddClass("p","x")'
+        'add_stylesheet' = '$w.AddStylesheet("p{color:red}")'
+        'append_text' = '$w.AppendText("p","!")'
+        'batch' = '$w.Batch(@(@{op="set_text";element="p";text="b"}))'
+        'cancel_completion' = '$null = $app.Work({ 1 }, @(), { })'
+        'cancel_timer' = '$app.Timer(10000, { }, $false).Cancel()'
+        'capabilities' = '$app.CapabilitiesJson()'
+        'check_validity' = '$w.CheckValidityJson("f")'
+        'claim_instance' = '$app.ClaimInstance(@())'
+        'clear_selection' = '$w.ClearSelection()'
+        'close' = '$w.Close()'
+        'close_dialog' = '$w.ShowDialog("dlg", $true); $w.CloseDialog("dlg", "r")'
+        'close_notification' = '$app.CloseNotification(1)'
+        'copy_selection' = '$w.CopySelection()'
+        'diagnostics' = '$w.DiagnosticsJson()'
+        'exec_edit' = '$w.ExecEdit("ed", "bold", $null)'
+        'explain' = '$w.ExplainJson("p", "color")'
+        'export_pdf' = '$w.ExportPdf((Join-Path $tmp "o.pdf"))'
+        'file_dialog' = '$w.OpenFileDialog({ }, $null, $null, $null, $false)'
+        'focus' = '$w.Focus("i")'
+        'get_accessibility_tree' = '$w.AccessibilityTreeJson()'
+        'get_attribute' = '$w.GetAttribute("p","id")'
+        'get_attributes' = '$w.GetAttributes("p")'
+        'get_checked' = '$w.GetChecked("chk")'
+        'get_clipboard_html' = '$w.GetClipboardHtml($false)'
+        'get_clipboard_text' = '$w.GetClipboardText()'
+        'get_computed_style' = '$w.ComputedStyleJson("p", "color")'
+        'get_diagnostics' = '$w.GetDiagnosticsJson()'
+        'get_dialog' = '$w.GetDialog("dlg")'
+        'get_edit_state' = '$w.GetEditStateJson("ed")'
+        'get_environment' = '$w.EnvironmentJson()'
+        'get_files' = '$w.GetFiles("file")'
+        'get_html' = '$w.GetHtml("p", $null, $false)'
+        'get_node' = '$w.NodeJson($w.NodeOf("p"))'
+        'get_options' = '$w.GetOptions("sel")'
+        'get_page_rects' = '$null = $w.PaginateJson(); $w.GetPageRectsJson("p")'
+        'get_pointer_capture' = '$w.GetPointerCapture()'
+        'get_popover' = '$w.GetPopoverJson("pop")'
+        'get_rect' = '$w.GetRect("box")'
+        'get_scroll' = '$w.GetScroll("scroller")'
+        'get_selection' = '$w.GetSelection()'
+        'get_text' = '$w.GetText("p")'
+        'get_validity' = '$w.GetValidityJson("i")'
+        'get_value' = '$w.GetValue("i")'
+        'get_window_state' = '$w.StateJson()'
+        'has_element' = '$w.HasElement("p")'
+        'hide_popover' = '$w.HidePopover("pop")'
+        'insert_html' = '$w.AppendHtml("list", "<li>d</li>")'
+        'list_monitors' = '$app.MonitorsJson()'
+        'list_stylesheets' = '$w.StylesheetsJson()'
+        'move_element' = '$w.MoveElement("a", "list", "beforeend")'
+        'node_children' = '$w.NodeChildrenJson($w.NodeOf("list"), 0, 256)'
+        'node_of' = '$w.NodeOf("p")'
+        'notify' = '$app.Notify("t", "b", $null, $null, $null)'
+        'open' = '$app.Open("<p>x</p>", "t", 100, 100)'
+        'open_file' = '$app.OpenFile((Join-Path $tmp "doc.html"), "t", 100, 100)'
+        'paginate' = '$w.PaginateJson()'
+        'print' = '$w.PrintDocument()'
+        'query' = '$w.Query("li", 1024)'
+        'register_hotkey' = '$app.RegisterHotkey("h", "Ctrl+Alt+K")'
+        'remove_attribute' = '$w.RemoveAttribute("p", "title")'
+        'remove_class' = '$w.RemoveClass("p", "x")'
+        'remove_element' = '$w.RemoveElement("s")'
+        'remove_stylesheet' = '$w.RemoveStylesheet(($w.AddStylesheet("p{color:red}") | ConvertFrom-Json).sheet)'
+        'remove_tray' = '$app.RemoveTray()'
+        'render_page' = '$null = $w.PaginateJson(); $w.RenderPage(0, (Join-Path $tmp "p.png"), 96)'
+        'replace_children_html' = '$w.ReplaceChildrenHtml("list", "<li>z</li>")'
+        'replace_stylesheet' = '$w.ReplaceStylesheet(($w.AddStylesheet("p{color:red}") | ConvertFrom-Json).sheet, "p{color:blue}")'
+        'reserve_completion' = '$null = $app.Work({ 1 }, @(), { })'
+        'resize' = '$w.Resize(320, 240)'
+        'scroll_by' = '$w.ScrollBy("scroller", 0, 5, $null)'
+        'scroll_into_view' = '$w.ScrollIntoView("c", "nearest", "nearest", $null)'
+        'scroll_to' = '$w.ScrollTo("scroller", $null, 5, $null)'
+        'select_text' = '$w.SelectText("p")'
+        'set_attribute' = '$w.SetAttribute("p", "title", "t")'
+        'set_checked' = '$w.SetChecked("chk", $true)'
+        'set_clipboard_html' = '$w.SetClipboardHtml("<b>x</b>", "x")'
+        'set_clipboard_text' = '$w.SetClipboardText("x")'
+        'set_default_action' = '$w.SetDefaultAction("p", "click")'
+        'set_environment' = '$w.SetEnvironment("dark", $null)'
+        'set_link_policy' = '$app.SetLinkPolicy(@("https"), $null, $false)'
+        'set_menu' = '$w.SetMenu(@(@{ id = "m"; label = "M" }))'
+        'set_pointer_capture' = '$w.SetPointerCapture("box", 1)'
+        'set_pointer_grab' = '$w.SetPointerGrab("none", $true)'
+        'set_scroll_follow' = '$w.SetScrollFollow("scroller", $true)'
+        'set_selected_values' = '$w.SetSelectedValues("sel", @("2"))'
+        'set_text' = '$w.SetText("p", "t")'
+        'set_title' = '$w.SetTitle("T")'
+        'set_tray' = '$app.SetTray($null, "t", $null)'
+        'set_value' = '$w.SetValue("i", "x")'
+        'set_window_constraints' = '$w.SetConstraints(100, 100, $null, $null, $true)'
+        'set_window_icon' = '$w.SetIcon($null)'
+        'show_context_menu' = '$w.ShowContextMenu(1, 1, @(@{ id = "c"; label = "C" }))'
+        'show_dialog' = '$w.ShowDialog("dlg", $true)'
+        'show_popover' = '$w.ShowPopover("pop")'
+        'snapshot' = '$w.Snapshot((Join-Path $tmp "s.png"))'
+        'stats' = '$app.StatsJson()'
+        'text_at_point' = '$w.TextAtPointJson(5, 5)'
+        'text_rects' = '$w.TextRectsJson("p", $null, -1, -1)'
+        'timer' = '$app.Timer(10000, { }, $false)'
+        'toggle_popover' = '$w.TogglePopover("pop")'
+        'trim_children' = '$w.TrimChildren("list", 1, "start")'
+        'unregister_hotkey' = '$app.UnregisterHotkey("h")'
+        'window_action' = '$w.WindowAction("show")'
+        }
+        $table = @($calls.Keys | Sort-Object)
+        $diff = Compare-Object $declared $table
+        if ($diff) { throw ('Op table differs from the profile: ' + (($diff | ForEach-Object { "$($_.InputObject) ($($_.SideIndicator))" }) -join ', ')) }
+        $html = '<style>#box{width:40px;height:20px}</style><div id="root"><p id="p">hello world</p><span id="s">x</span><div id="box">box</div><div id="scroller" style="height:30px;overflow:auto"><div style="height:300px">tall</div></div><ul id="list"><li id="a">a</li><li id="b">b</li><li id="c">c</li></ul><form id="f"><input id="i" value="v" required><input id="chk" type="checkbox"><select id="sel"><option value="1">one</option><option value="2">two</option></select></form><div id="ed" contenteditable="true">edit</div><dialog id="dlg">dialog</dialog><div id="pop" popover>pop</div><input id="file" type="file"></div>'
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('ui4me-contract-' + [guid]::NewGuid())
+        $null = New-Item -ItemType Directory -Path $tmp
+        $failures = [System.Collections.Generic.List[string]]::new()
+        try {
+            Set-Content -LiteralPath (Join-Path $tmp 'doc.html') -Value '<p>doc</p>' -Encoding utf8
+            foreach ($op in $table) {
+                $result = Invoke-Ui4meApp -Backend headless -ArgumentList @($calls[$op], $html, $tmp) {
+                    param($app, $text, $html, $tmp)
+                    $w = $app.Open($html)
+                    $outcome = 'ok'
+                    try { $null = & ([scriptblock]::Create($text)) }
+                    catch {
+                        # Only a refusal from the native layer is an acceptable result; a missing
+                        # method or a binding exception is a contract failure.
+                        $native = $_.Exception
+                        while ($native -and $native -isnot [Ui4me.Managed.Ui4meException]) { $native = $native.InnerException }
+                        $outcome = if ($native) { 'refused: ' + $native.Message } else { 'error: ' + $_.Exception.Message }
+                    }
+                    Write-Output $outcome
+                    $null = $app.On('started', { param($event) $app.Stop() })
+                }
+                if ("$result" -match '^refused: .*(unknown|unsupported op|unrecognized|invalid command|protocol|missing field|unknown variant)') { $failures.Add("${op}: $result") }
+                elseif ("$result" -notmatch '^(ok|refused: )') { $failures.Add("${op}: no outcome ($result)") }
+            }
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($failures.Count) { throw ($failures -join "`n") }
+    }
 }
 catch { $cases.Add(@{id='PS00_setup'; status='failed'; details=$_.Exception.ToString()}) }
 finally {

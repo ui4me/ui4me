@@ -235,12 +235,56 @@ class WindowsDesktop:
         pass
 
 
+MEASURED: dict = {}  # what the last rss_mib() call actually measured (pid / image / metric)
+
+
+def _win_python_descendant(pid: int):
+    """Deepest python child of ``pid`` (the venv python.exe is a launcher that spawns the real interpreter)."""
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class ENTRY(ctypes.Structure):
+        _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ProcessID", wt.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD), ("th32ParentProcessID", wt.DWORD),
+                    ("pcPriClassBase", ctypes.c_long), ("dwFlags", wt.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.restype = wt.HANDLE
+    kernel.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+    kernel.Process32FirstW.argtypes = kernel.Process32NextW.argtypes = [wt.HANDLE, ctypes.POINTER(ENTRY)]
+    kernel.CloseHandle.argtypes = [wt.HANDLE]
+    snap = kernel.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snap in (None, wt.HANDLE(-1).value):
+        raise OSError(f"CreateToolhelp32Snapshot failed: winerror {ctypes.get_last_error()}")
+    procs = {}
+    try:
+        e = ENTRY()
+        e.dwSize = ctypes.sizeof(e)
+        ok = kernel.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            procs[e.th32ProcessID] = (e.th32ParentProcessID, e.szExeFile)
+            ok = kernel.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        kernel.CloseHandle(snap)
+    best, image = pid, procs.get(pid, (0, "?"))[1]
+    while True:
+        kids = [(p, n) for p, (parent, n) in procs.items() if parent == best and p != best and n.lower().startswith("python")]
+        if not kids:
+            return best, image
+        best, image = min(kids)
+
+
 def rss_mib(pid: int) -> float:
+    """Resident memory (MiB) of the measured process; raises when it cannot be measured (never returns 0).
+
+    Linux: VmRSS of ``pid``. Windows: WorkingSetSize of the deepest python child of ``pid`` (the venv python.exe
+    launcher spawns the real interpreter), else of ``pid`` itself. ``MEASURED`` records pid / image / metric."""
     if not WINDOWS:
         for line in Path(f"/proc/{pid}/status").read_text().splitlines():
             if line.startswith("VmRSS:"):
+                MEASURED.update({"pid": pid, "image": "(linux process)", "metric": "VmRSS"})
                 return int(line.split()[1]) / 1024
-        return 0.0
+        raise RuntimeError(f"no VmRSS in /proc/{pid}/status")
     import ctypes
     import ctypes.wintypes as wt
 
@@ -250,13 +294,23 @@ def rss_mib(pid: int) -> float:
                     ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
                     ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
 
+    target, image = _win_python_descendant(pid)
     kernel, psapi = ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("psapi", use_last_error=True)
     kernel.OpenProcess.restype = wt.HANDLE
-    handle = kernel.OpenProcess(0x1000 | 0x0010, False, pid)  # QUERY_LIMITED_INFORMATION | VM_READ
-    c = COUNTERS()
-    c.cb = ctypes.sizeof(c)
-    psapi.GetProcessMemoryInfo(handle, ctypes.byref(c), c.cb)
-    kernel.CloseHandle(handle)
+    kernel.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+    kernel.CloseHandle.argtypes = [wt.HANDLE]
+    psapi.GetProcessMemoryInfo.argtypes = [wt.HANDLE, ctypes.POINTER(COUNTERS), wt.DWORD]
+    handle = kernel.OpenProcess(0x1000 | 0x0010, False, target)  # QUERY_LIMITED_INFORMATION | VM_READ
+    if not handle:
+        raise OSError(f"OpenProcess({target}) failed: winerror {ctypes.get_last_error()}")
+    try:
+        c = COUNTERS()
+        c.cb = ctypes.sizeof(c)
+        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(c), c.cb):
+            raise OSError(f"GetProcessMemoryInfo({target}) failed: winerror {ctypes.get_last_error()}")
+    finally:
+        kernel.CloseHandle(handle)
+    MEASURED.update({"pid": target, "image": image, "launcher_pid": pid, "metric": "WorkingSetSize"})
     return c.WorkingSetSize / (1024 * 1024)
 
 
@@ -582,7 +636,7 @@ class Journey:
                 peak = max(v for _, v in samples)
                 if growth > args.max_rss_growth_mb:
                     raise AssertionError(f"resident memory grew {growth:.1f} MiB after warm-up (limit {args.max_rss_growth_mb})")
-                return {"warmup_mib": warm[1], "final_mib": samples[-1][1], "growth_mib": round(growth, 1), "peak_mib": peak, "samples": len(samples)}
+                return {"warmup_mib": warm[1], "final_mib": samples[-1][1], "growth_mib": round(growth, 1), "peak_mib": peak, "samples": len(samples), "measured": dict(MEASURED)}
 
             self.case("D11_rss_bounded_after_warmup", memory)
 

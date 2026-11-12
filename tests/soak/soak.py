@@ -11,10 +11,15 @@ feeds malformed and oversized images / SVG / CSS (data: URLs and local files), r
 worker threads, runs ``run_in_background`` tasks (some cancelled, some failing), uses the clipboard,
 opens and closes windows, and every ``--print-every`` seconds paginates and exports a PDF.
 
-It samples RSS, thread count and open file descriptors (Linux /proc) plus the native ``stats`` of the
-session, and fails on: any unexpected error, a leaked thread / descriptor / callback after a restart,
-or monotonic growth beyond a threshold after the warm-up. A JSON summary is written to ``--out``.
-Exit status 0 only when every check passed.
+It samples resident memory, OS thread count and open descriptors plus the native ``stats`` of the
+session. Linux: VmRSS, /proc/self/task entries, /proc/self/fd entries. Windows: WorkingSetSize,
+Toolhelp thread entries of this pid, process handle count (``metrics`` in the summary names each).
+It fails on: any unexpected error, a leaked thread / descriptor after a restart, or growth after the
+warm-up, where growth is the median of the last quartile of samples minus the median of the first
+quartile (not a monotonicity test) and needs at least 8 post-warm-up samples. A metric that cannot be
+measured, or too few samples, fails its check ("not measured" / "insufficient samples"); it never passes
+vacuously. ``observations`` (not part of ``ok``) records what a stopped session still held before close().
+A JSON summary is written to ``--out``. Exit status 0 only when every check passed.
 
 ``--native`` re-runs this script under ``tests/native/kwin/chat_journey.py --plain`` (its own nested
 KWin and D-Bus session; the person's desktop is never touched).
@@ -100,19 +105,90 @@ def adverse_assets(directory: Path) -> list[str]:
             "bad.svg", "deep.svg", "use_bomb.svg", "missing.png", "nodir/none.png"]
 
 
+MIN_SAMPLES = 8
+if sys.platform == "linux":
+    METRICS = {"rss": "VmRSS (KiB)", "threads": "entries in /proc/self/task", "fds": "open fds (/proc/self/fd)"}
+elif sys.platform == "win32":
+    METRICS = {"rss": "WorkingSetSize (KiB)", "threads": "Toolhelp32 thread entries of this pid",
+               "fds": "process handle count (GetProcessHandleCount)"}
+else:
+    METRICS = {"rss": "unsupported platform", "threads": "unsupported platform", "fds": "unsupported platform"}
+
+
+def _process_sample_windows() -> dict:
+    import ctypes
+    import ctypes.wintypes as wt
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    out: dict = {"rss_kb": None, "threads": None, "fds": None}
+
+    class COUNTERS(ctypes.Structure):
+        _fields_ = [("cb", wt.DWORD), ("PageFaultCount", wt.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    class THREADENTRY(ctypes.Structure):
+        _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ThreadID", wt.DWORD),
+                    ("th32OwnerProcessID", wt.DWORD), ("tpBasePri", ctypes.c_long), ("tpDeltaPri", ctypes.c_long),
+                    ("dwFlags", wt.DWORD)]
+
+    kernel.GetCurrentProcess.restype = wt.HANDLE
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcessId.restype = wt.DWORD
+    kernel.GetCurrentProcessId.argtypes = []
+    psapi.GetProcessMemoryInfo.argtypes = [wt.HANDLE, ctypes.POINTER(COUNTERS), wt.DWORD]
+    kernel.GetProcessHandleCount.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
+    kernel.CreateToolhelp32Snapshot.restype = wt.HANDLE
+    kernel.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+    kernel.Thread32First.argtypes = kernel.Thread32Next.argtypes = [wt.HANDLE, ctypes.POINTER(THREADENTRY)]
+    kernel.CloseHandle.argtypes = [wt.HANDLE]
+
+    me = kernel.GetCurrentProcess()
+    c = COUNTERS()
+    c.cb = ctypes.sizeof(c)
+    if psapi.GetProcessMemoryInfo(me, ctypes.byref(c), c.cb):
+        out["rss_kb"] = c.WorkingSetSize // 1024
+    count = wt.DWORD()
+    if kernel.GetProcessHandleCount(me, ctypes.byref(count)):
+        out["fds"] = int(count.value)
+    snap = kernel.CreateToolhelp32Snapshot(0x4, 0)  # TH32CS_SNAPTHREAD
+    if snap not in (None, wt.HANDLE(-1).value):
+        try:
+            pid, n = kernel.GetCurrentProcessId(), 0
+            e = THREADENTRY()
+            e.dwSize = ctypes.sizeof(e)
+            ok = kernel.Thread32First(snap, ctypes.byref(e))
+            while ok:
+                n += e.th32OwnerProcessID == pid
+                e.dwSize = ctypes.sizeof(e)
+                ok = kernel.Thread32Next(snap, ctypes.byref(e))
+            out["threads"] = n
+        finally:
+            kernel.CloseHandle(snap)
+    return out
+
+
 def process_sample() -> dict:
-    """RSS (KiB), thread count and open descriptors of this process (Linux /proc)."""
-    rss = 0
+    """RSS (KiB), OS thread count and open descriptors / handles of this process (see ``METRICS``).
+
+    A value that could not be measured is ``None`` (never 0)."""
+    out: dict = {"rss_kb": None, "threads": None, "fds": None}
     try:
-        for line in Path("/proc/self/status").read_text().splitlines():
-            if line.startswith("VmRSS:"):
-                rss = int(line.split()[1])
-                break
-        threads = len(os.listdir("/proc/self/task"))
-        fds = len(os.listdir("/proc/self/fd"))
-    except OSError:
-        threads = fds = 0
-    return {"rss_kb": rss, "threads": threads, "fds": fds}
+        if sys.platform == "win32":
+            return _process_sample_windows()
+        if sys.platform == "linux":
+            for line in Path("/proc/self/status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    out["rss_kb"] = int(line.split()[1])
+                    break
+            out["threads"] = len(os.listdir("/proc/self/task"))
+            out["fds"] = len(os.listdir("/proc/self/fd"))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
 
 
 class Soak:
@@ -413,44 +489,61 @@ class Soak:
         warm = min(args.warmup_seconds, elapsed * 0.25)
         series = [s for s in self.samples if s["t"] >= warm]
 
-        def quartile_growth(key: str) -> tuple[float, float, float]:
+        def quartile_growth(key: str):
+            """(first, last, growth, None) or (None, None, None, reason): median of last vs first quartile."""
             values = [s[key] for s in series]
-            if len(values) < 8:
-                return 0.0, 0.0, 0.0
+            if any(v is None for v in values) or not self.samples:
+                return None, None, None, f"not measured: {key} unavailable on this platform ({METRICS.get(key.replace('_kb', ''))})"
+            if len(values) < MIN_SAMPLES:
+                return None, None, None, (f"insufficient samples: {len(values)} < {MIN_SAMPLES}; "
+                                          "run longer or lower --sample-seconds")
             q = max(1, len(values) // 4)
             first, last = statistics.median(values[:q]), statistics.median(values[-q:])
-            return first, last, last - first
+            return first, last, last - first, None
 
-        first, last, growth = quartile_growth("rss_kb")
-        checks["rss_growth"] = {"first_quartile_mb": round(first / 1024, 1), "last_quartile_mb": round(last / 1024, 1),
-                                "growth_mb": round(growth / 1024, 1), "limit_mb": args.max_rss_growth_mb,
-                                "samples": len(series), "ok": growth / 1024 <= args.max_rss_growth_mb}
+        first, last, growth, why = quartile_growth("rss_kb")
+        if why:
+            checks["rss_growth"] = {"metric": METRICS["rss"], "samples": len(series), "limit_mb": args.max_rss_growth_mb,
+                                    "reason": why, "ok": False}
+        else:
+            checks["rss_growth"] = {"metric": METRICS["rss"], "first_quartile_mb": round(first / 1024, 1),
+                                    "last_quartile_mb": round(last / 1024, 1), "growth_mb": round(growth / 1024, 1),
+                                    "limit_mb": args.max_rss_growth_mb, "samples": len(series),
+                                    "ok": growth / 1024 <= args.max_rss_growth_mb}
         # Threads and descriptors at the end of each restart must not climb session after session.
         after = [r for r in self.restarts]
         if after:
             base = after[0]
-            worst_threads = max(r["threads_after"] for r in after) - base["threads_after"]
-            worst_fds = max(r["fds_after"] for r in after) - base["fds_after"]
             leftovers = [r for r in after if r["leftover_python_threads"]]
-            held = [r for r in after if any(r["held_at_stop"].values())]
-            checks["restart_threads"] = {"first": base["threads_after"], "worst_delta": worst_threads,
-                                         "limit": args.thread_slack, "ok": worst_threads <= args.thread_slack}
-            checks["restart_fds"] = {"first": base["fds_after"], "worst_delta": worst_fds,
-                                     "limit": args.fd_slack, "ok": worst_fds <= args.fd_slack}
+            for name, key, slack in (("restart_threads", "threads", args.thread_slack), ("restart_fds", "fds", args.fd_slack)):
+                values = [r[f"{key}_after"] for r in after]
+                if any(v is None for v in values):
+                    checks[name] = {"metric": METRICS[key], "reason": f"not measured: {key} unavailable", "ok": False}
+                else:
+                    worst = max(values) - values[0]
+                    checks[name] = {"metric": METRICS[key], "first": base[f"{key}_after"], "worst_delta": worst,
+                                    "limit": slack, "ok": worst <= slack}
             checks["python_threads_after_restart"] = {"sessions_with_leftovers": len(leftovers),
                                                       "example": leftovers[0] if leftovers else None, "ok": not leftovers}
-            checks["callbacks_held_at_stop"] = {"sessions": len(held), "example": held[0] if held else None,
-                                                "note": "posts/tasks/timers a stopped session still held before close; "
-                                                        "close() must clear them (checked by threads/fds)",
-                                                "ok": True}
-        _, _, thread_growth = quartile_growth("threads")
-        _, _, fd_growth = quartile_growth("fds")
-        checks["thread_growth_in_session"] = {"growth": thread_growth, "limit": args.thread_slack, "ok": thread_growth <= args.thread_slack}
-        checks["fd_growth_in_session"] = {"growth": fd_growth, "limit": args.fd_slack, "ok": fd_growth <= args.fd_slack}
+        for name, key, slack in (("thread_growth_in_session", "threads", args.thread_slack),
+                                 ("fd_growth_in_session", "fds", args.fd_slack)):
+            _, _, g, why = quartile_growth(key)
+            if why:
+                checks[name] = {"metric": METRICS[key], "reason": why, "limit": slack, "ok": False}
+            else:
+                checks[name] = {"metric": METRICS[key], "growth": g, "limit": slack, "ok": g <= slack}
         checks["unexpected_errors"] = {"count": len(self.unexpected), "ok": not self.unexpected}
         checks["sessions"] = {"count": len(self.restarts), "ok": len(self.restarts) >= 1}
         checks["queues_bounded"] = {"max": self.native_stats_max, "ok": self.native_stats_max.get("pending_posts", 0) <= 512}
         return checks
+
+    def observations(self) -> dict:
+        """Informational only (not part of ``ok``): what a stopped session still held right before close()."""
+        held = [r for r in self.restarts if any(r["held_at_stop"].values())]
+        return {"callbacks_held_at_stop": {
+            "sessions_holding": len(held), "sessions": len(self.restarts), "example": held[0]["held_at_stop"] if held else None,
+            "note": "posts/tasks/timers the owner still tracked after stop() and before close(); informational, "
+                    "leaks after close() are covered by the restart thread/fd/python-thread checks"}}
 
     def summary(self, checks: dict) -> dict:
         elapsed = time.monotonic() - self.started
@@ -463,7 +556,9 @@ class Soak:
             "checks": checks,
             "start": {k: first.get(k) for k in ("rss_kb", "threads", "fds")},
             "end": {k: last.get(k) for k in ("rss_kb", "threads", "fds")},
-            "peak_rss_kb": max((s["rss_kb"] for s in self.samples), default=0),
+            "peak_rss_kb": max((s["rss_kb"] for s in self.samples if s["rss_kb"] is not None), default=None),
+            "metrics": METRICS,
+            "observations": self.observations(),
             "workload_counts": dict(sorted(self.counts.items())),
             "expected_rejections": dict(sorted(self.expected.items(), key=lambda kv: -kv[1])[:40]),
             "unexpected": self.unexpected,
@@ -486,7 +581,7 @@ class Soak:
                     break
             if index % 5 == 0:
                 s = self.samples[-1] if self.samples else {}
-                print(f"[{(time.monotonic() - self.started) / 60:5.1f} min] session {index} rss={s.get('rss_kb', 0) // 1024} MB "
+                print(f"[{(time.monotonic() - self.started) / 60:5.1f} min] session {index} rss={(s.get('rss_kb') or 0) // 1024} MB "
                       f"threads={s.get('threads')} fds={s.get('fds')} unexpected={len(self.unexpected)}", flush=True)
         checks = self.verdict()
         summary = self.summary(checks)

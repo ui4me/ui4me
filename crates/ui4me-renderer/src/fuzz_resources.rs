@@ -611,8 +611,41 @@ fn untrusted_resources_are_not_fetched_or_escaped() {
 
 /// Images whose headers declare enormous dimensions are rejected by the limits before any pixel
 /// buffer exists: the document settles (broken image) and the process does not balloon.
+///
+/// The peak-RSS bound is measured in a child process that runs only this test, so other tests
+/// running in parallel in the same binary cannot inflate (or hide) it. It needs Linux
+/// `/proc/self/status`; elsewhere the memory bound is reported as not measured, and only the
+/// rejection and settling are checked.
 #[test]
 fn header_bombs_are_rejected_before_allocation() {
+    const CHILD: &str = "UI4ME_HEADER_BOMB_CHILD";
+    if std::env::var_os(CHILD).is_none() && cfg!(target_os = "linux") {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "fuzz_resources::header_bombs_are_rejected_before_allocation",
+                "--exact",
+                "--test-threads=1",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "isolated header-bomb run failed:\n{text}"
+        );
+        assert!(
+            text.contains("1 passed"),
+            "isolated header-bomb run did not run the test:\n{text}"
+        );
+        return;
+    }
+    header_bombs_workload();
+}
+
+fn header_bombs_workload() {
     let bombs: Vec<(&str, Vec<u8>)> = vec![
         ("image/png", png_header_bomb(65535, 65535)),
         ("image/png", png_header_bomb(0x7FFF_FFFF, 0x7FFF_FFFF)),
@@ -647,11 +680,19 @@ fn header_bombs_are_rejected_before_allocation() {
             );
         }
     }
-    let grown = rss_kib("VmHWM:").saturating_sub(before);
-    assert!(
-        grown < 400_000,
-        "header bombs grew the peak RSS by {grown} KiB"
-    );
+    if cfg!(target_os = "linux") {
+        assert!(
+            before > 0,
+            "VmHWM is not readable: the memory bound was not measured"
+        );
+        let grown = rss_kib("VmHWM:").saturating_sub(before);
+        assert!(
+            grown < 400_000,
+            "header bombs grew the peak RSS by {grown} KiB"
+        );
+    } else {
+        eprintln!("header bombs: peak-RSS bound not measured on this platform (Linux only)");
+    }
     std::fs::remove_dir_all(&base).ok();
 }
 

@@ -11,7 +11,7 @@ PowerShell and Lua bindings. The supported feature surface is the canonical prof
 
 | Item | Value | Rule |
 | --- | --- | --- |
-| Package version | semantic versioning, `MAJOR.MINOR.PATCH` (1.0.0) | Python wheel, PowerShell module and native library are released together with one version |
+| Package version | semantic versioning, `MAJOR.MINOR.PATCH` (1.0.1) | Python wheel, PowerShell module and native library are released together with one version |
 | ABI | `ui4me_abi_version() == 1` | Changes only with a major version. A binding checks it once at load and refuses a different ABI |
 | Wire schema | Ops and events listed in the profile | Additive within 1.x |
 | CSS profile | `css.profile_version` (1.27.x at 1.0.0) | Rows may move to `on` within 1.x; an `on` row is never removed or made `off` within 1.x |
@@ -70,11 +70,11 @@ PowerShell and Lua bindings. The supported feature surface is the canonical prof
 
 | Client | Against | Evidence |
 | --- | --- | --- |
-| v0.4.0 installed contract test (`bindings/python/tests/installed.py` and `installed.ps1` at tag `v0.4.0`) | 1.0.0 packages | Run in the 1.0 gate on Linux and Windows (`tests/packaging/upgrade_matrix.py`) |
-| Current installed contract tests F01–F19 | 1.0.0 packages | Release gate |
-| C consumer (installed native SDK) | 1.0.0 | Installed C test on both hosts |
-| LuaJIT consumer over the C ABI | 1.0.0 | `tests/lua`, the native Lua probe |
-| Upgrade from 0.4.0 (pip upgrade, `Update-Module`-style replacement) and rollback | 1.0.0 | `tests/packaging/upgrade_matrix.py` |
+| v0.4.0 installed contract test (`bindings/python/tests/installed.py` and `installed.ps1` at tag `v0.4.0`) | 1.0.x packages | Run in the release gate on Linux and Windows (`tests/packaging/upgrade_matrix.py`) |
+| Current installed contract tests F01, F09, F11–F20 | 1.0.x packages | Release gate and the publishing workflow |
+| C consumer (installed native SDK) | 1.0.x | Installed C test on both hosts |
+| LuaJIT consumer over the C ABI | 1.0.x | `tests/lua` (Linux and Windows, and against the release zip in the publishing workflow), the KWin Lua probe (Linux) |
+| Upgrade from 0.4.0 (pip upgrade, `Update-Module`-style replacement) and rollback | 1.0.x | `tests/packaging/upgrade_matrix.py` |
 
 ## Not covered
 

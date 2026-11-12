@@ -220,6 +220,58 @@ def package(binding: str, profile: str) -> Path:
     return destination / "manifest.json"
 
 
+LUA_ROCKSPEC = """rockspec_format = "3.0"
+package = "ui4me"
+version = "{version}-1"
+source = {{
+   url = "https://github.com/ui4me/ui4me/releases/download/v{version}/{archive}",
+   dir = "lua",
+}}
+description = {{
+   summary = "Native desktop apps from HTML and CSS: the LuaJIT FFI binding of UI4ME Core",
+   detailed = [[
+A pure LuaJIT FFI binding over the UI4ME C ABI 1. Needs LuaJIT 2.1 (plain Lua 5.x is not
+supported) and the UI4ME native library of the same version, which this rock does not contain:
+download the native SDK zip for your platform from the GitHub release v{version} and set
+UI4ME_NATIVE_LIB to the absolute path of lib/libui4me_core.so or lib/ui4me_core.dll, or place
+the library next to the installed ui4me.lua.]],
+   homepage = "https://github.com/ui4me/ui4me",
+   license = "MIT",
+   labels = {{ "gui", "desktop", "html", "css", "ffi", "luajit" }},
+}}
+supported_platforms = {{ "linux", "windows" }}
+dependencies = {{ "lua == 5.1" }}
+build = {{
+   type = "builtin",
+   modules = {{ ui4me = "ui4me.lua" }},
+   copy_directories = {{ "examples" }},
+}}
+"""
+
+
+def lua_package(out: Path, stage: Path) -> list[dict]:
+    """The LuaJIT binding: a source zip (lua/: ui4me.lua, README, LICENSE, example), its LuaRocks
+    rockspec and the matching .src.rock (rockspec + source zip, as `luarocks pack` makes it)."""
+    tree = stage / "lua-tree" / "lua"
+    (tree / "examples").mkdir(parents=True)
+    (tree / "tools").mkdir()
+    shutil.copy2(ROOT / "bindings/lua/ui4me.lua", tree / "ui4me.lua")
+    shutil.copy2(ROOT / "bindings/lua/README.md", tree / "README.md")
+    shutil.copy2(ROOT / "LICENSE", tree / "LICENSE")
+    shutil.copy2(ROOT / "examples/lua/notes.lua", tree / "examples/notes.lua")
+    for name in ("build_luajit.sh", "build_luajit.cmd"):
+        shutil.copy2(ROOT / "bindings/lua/tools" / name, tree / "tools" / name)
+    archive = out / f"ui4me-lua-{version()}.zip"
+    zip_tree(tree, archive, "lua")
+    rockspec = out / f"ui4me-{version()}-1.rockspec"
+    rockspec.write_text(LUA_ROCKSPEC.format(version=version(), archive=archive.name), encoding="utf-8", newline="\n")
+    rock = out / f"ui4me-{version()}-1.src.rock"
+    with zipfile.ZipFile(rock, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.write(rockspec, rockspec.name)
+        bundle.write(archive, archive.name)
+    return [artifact(archive, "lua-binding", out), artifact(rockspec, "lua-rockspec", out), artifact(rock, "lua-rock", out)]
+
+
 def assemble(manifests: list[Path], out: Path) -> Path:
     if len(manifests) != 2:
         raise DevError("Assembly requires one Linux and one Windows manifest")
@@ -269,6 +321,7 @@ def assemble(manifests: list[Path], out: Path) -> Path:
     if len(packages) != 1:
         raise DevError("Expected one combined PowerShell nupkg")
     artifacts.append(artifact(packages[0], "powershell-package", out))
+    artifacts += lua_package(out, stage)
     result = {"schema": 1, "product": "ui4me", "version": version(), "source_id": source_id(), "git_revision": loaded[0][1]["git_revision"], "platform": "combined", "profile": "release", "artifacts": artifacts, "qualification": "not_qualified"}
     write_json(out / "manifest.json", result)
     print(out / "manifest.json")
