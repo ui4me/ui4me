@@ -5,7 +5,7 @@
 | Path | Contents |
 | --- | --- |
 | `src/ui4me/` | Python package (`ui4me.ui`, launcher, Core adapter) |
-| `powershell/UI4ME/` | PowerShell module (`UI4ME.psd1`, `UI4ME.psm1`, theme assets copied from Python at build) |
+| `powershell/Ui4me/` | PowerShell module `UI4ME` (`Ui4me.psd1`, `Ui4me.psm1` — file casing matches the Gallery id `Ui4me`; theme assets copied from Python at build) |
 | `tests/unit`, `tests/bridge` | Python tests against a fake Core (fast, no host) |
 | `tests/host` | Python tests against the real Core host in `--headless` mode |
 | `powershell/tests` | Pester 5 tests (mocked Core cmdlets, static checks) |
@@ -75,8 +75,9 @@ python tools/build_dist.py dist      # wheel, sdist, UI4ME-X.zip, SHA256SUMS; ru
 python tools/preflight_publish.py 2.0.0
 ```
 
-`UI4ME-X.zip` contains the `UI4ME/` module folder: extract it into a `PSModulePath` folder, or
-publish it with `Publish-Module -Path ./UI4ME`.
+`UI4ME-X.zip` contains the `Ui4me/` module folder: extract it into a `PSModulePath` folder, or
+publish it with `Publish-Module -Path ./Ui4me`. Keep the `Ui4me` casing: the Gallery package id is
+`Ui4me`, and on Linux the folder and manifest names must match exactly.
 
 ## Releasing
 

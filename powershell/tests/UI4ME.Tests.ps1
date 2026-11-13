@@ -2,7 +2,7 @@
 # tests do not start a native host (see tests/native for real-host journeys).
 BeforeAll {
     $here = Split-Path -Parent $PSCommandPath
-    $manifest = Join-Path $here '..\UI4ME\UI4ME.psd1'
+    $manifest = Join-Path $here '..\Ui4me\Ui4me.psd1'
     Import-Module $manifest -Force -ErrorAction Stop
 
     InModuleScope UI4ME {
@@ -17,8 +17,10 @@ BeforeAll {
 
 Describe 'Module surface' {
     It 'imports with the UI4ME.Core dependency and exports exactly the manifest functions' {
-        $data = Import-PowerShellDataFile (Join-Path $PSScriptRoot '..\UI4ME\UI4ME.psd1')
-        $data.ModuleVersion | Should -Be '2.0.0'
+        $data = Import-PowerShellDataFile (Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psd1')
+        $pyproject = Get-Content -Raw (Join-Path $PSScriptRoot '..\..\pyproject.toml') -ErrorAction SilentlyContinue
+        if ($pyproject -and $pyproject -match '(?m)^version = "([^"]+)"') { $data.ModuleVersion | Should -Be $Matches[1] }
+        else { $data.ModuleVersion | Should -Match '^2\.\d+\.\d+$' }  # tests copied next to an extracted artifact
         $data.RequiredModules[0].ModuleName | Should -Be 'UI4ME.Core'
         $exported = (Get-Module UI4ME).ExportedFunctions.Keys | Sort-Object
         $exported | Should -Be ($data.FunctionsToExport | Sort-Object)
@@ -30,7 +32,7 @@ Describe 'Module surface' {
     }
     It 'parses without errors' {
         $tokens = $null; $errors = $null
-        [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\UI4ME\UI4ME.psm1'), [ref]$tokens, [ref]$errors)
+        [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psm1'), [ref]$tokens, [ref]$errors)
         $errors | Should -BeNullOrEmpty
     }
     It 'refuses components outside an application' {

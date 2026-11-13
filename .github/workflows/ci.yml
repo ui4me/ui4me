@@ -92,6 +92,25 @@ jobs:
           /tmp/consumer/bin/pip install dist/*.whl pytest
           cd /tmp && /tmp/consumer/bin/python -c "import ui4me, ui4me_core; assert '/tmp/consumer/' in ui4me.__file__; print(ui4me.__version__, ui4me_core.__version__)"
           cp -r "$GITHUB_WORKSPACE/tests/host" /tmp/host-tests && /tmp/consumer/bin/python -m pytest -q /tmp/host-tests
+      - name: PowerShell module loads from the Gallery folder layout (case-sensitive file system)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path ([IO.Path]::GetTempPath()) 'gallery-layout'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Save-Module -Name UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Path $root
+          $zip = (Get-Item ./dist/UI4ME-*.zip).FullName
+          $version = (Get-Item $zip).BaseName -replace '^UI4ME-', ''
+          $staging = Join-Path $root 'zip'
+          Expand-Archive -Path $zip -DestinationPath $staging
+          # Install-Module/Save-Module put the module in <id>/<version>, where the Gallery id is 'Ui4me'.
+          New-Item -ItemType Directory -Force -Path (Join-Path $root 'Ui4me') | Out-Null
+          Move-Item (Join-Path $staging 'Ui4me') (Join-Path $root "Ui4me/$version")
+          foreach ($name in 'UI4ME', 'Ui4me', 'ui4me') {
+            $result = pwsh -NoProfile -Command "`$env:PSModulePath='$root'; Import-Module $name -ErrorAction Stop; (Get-Module $name).ExportedFunctions.Count"
+            if ($LASTEXITCODE -ne 0 -or [int]$result[-1] -lt 50) { throw "Import-Module $name failed from the Gallery layout: $result" }
+            "Import-Module $name -> $($result[-1]) commands"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ui4me-dist

@@ -70,13 +70,21 @@ def verify(folder: Path) -> str:
     with ZipFile(modules[0]) as z:
         names = z.namelist()
         check_names('PowerShell module', names)
-        for required in ('UI4ME/UI4ME.psd1', 'UI4ME/UI4ME.psm1', 'UI4ME/LICENSE',
-                         'UI4ME/assets/theme.css', 'UI4ME/assets/functional.css'):
+        # The PowerShell Gallery package id is 'Ui4me' (casing fixed by its first release), and
+        # Install-Module/Save-Module create a folder with that casing. On case-sensitive file
+        # systems the manifest must have exactly the same base name, or the module cannot load.
+        tops = {n.split('/', 1)[0] for n in names}
+        if tops != {'Ui4me'}:
+            fail(f"module zip must contain only the 'Ui4me/' folder (Gallery id casing), got {sorted(tops)}")
+        for required in ('Ui4me/Ui4me.psd1', 'Ui4me/Ui4me.psm1', 'Ui4me/LICENSE',
+                         'Ui4me/assets/theme.css', 'Ui4me/assets/functional.css'):
             if required not in names:
                 fail(f'module zip lacks {required}')
-        manifest = z.read('UI4ME/UI4ME.psd1').decode('utf-8-sig')
+        manifest = z.read('Ui4me/Ui4me.psd1').decode('utf-8-sig')
         if f"ModuleVersion = '{version}'" not in manifest:
             fail('UI4ME.psd1 ModuleVersion differs from the Python version')
+        if "RootModule = 'Ui4me.psm1'" not in manifest:
+            fail("Ui4me.psd1 RootModule must be 'Ui4me.psm1'")
         if not re.search(r"ModuleName\s*=\s*'UI4ME\.Core'", manifest):
             fail('UI4ME.psd1 must require UI4ME.Core')
     print(f'PASS ui4me {version}: {wheels[0].name}, {sdists[0].name}, {modules[0].name}')

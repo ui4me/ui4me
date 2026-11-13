@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish; must equal pyproject.toml and UI4ME.psd1'
+        description: 'Version to publish; must equal pyproject.toml and Ui4me.psd1'
         required: true
         type: string
       publish_pypi:
@@ -97,6 +97,28 @@ jobs:
           if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY is not configured for the psgallery environment' }
           Expand-Archive -Path (Get-Item ./dist/UI4ME-*.zip).FullName -DestinationPath ./module
           Install-Module UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Scope CurrentUser -Force
-          $manifest = Test-ModuleManifest ./module/UI4ME/UI4ME.psd1
+          $manifest = Test-ModuleManifest ./module/Ui4me/Ui4me.psd1
           if ($manifest.Version.ToString() -ne $env:VERSION) { throw "Module version $($manifest.Version) != $env:VERSION" }
-          Publish-Module -Path ./module/UI4ME -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery
+          Publish-Module -Path ./module/Ui4me -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery
+
+  verify:
+    if: ${{ inputs.publish_psgallery }}
+    needs: psgallery
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the published module like a user (Linux, case-sensitive)
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path ([IO.Path]::GetTempPath()) 'from-gallery'
+          for ($i = 0; $i -lt 20; $i++) {
+            try { Save-Module -Name UI4ME -RequiredVersion $env:VERSION -Repository PSGallery -Path $root -ErrorAction Stop; break }
+            catch { Start-Sleep -Seconds 30 }
+          }
+          $env:PSModulePath = $root
+          Import-Module UI4ME -ErrorAction Stop
+          $m = Get-Module UI4ME
+          if ($m.Version.ToString() -ne $env:VERSION) { throw "Loaded $($m.Version), expected $env:VERSION" }
+          "Gallery install OK: $($m.Name) $($m.Version), $($m.ExportedFunctions.Count) commands"

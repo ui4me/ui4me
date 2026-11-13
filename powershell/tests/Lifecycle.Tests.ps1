@@ -1,6 +1,6 @@
 # Ownership and re-entrancy regressions (mocked Core; no host).
 BeforeAll {
-    Import-Module (Join-Path $PSScriptRoot '..\UI4ME\UI4ME.psd1') -Force -ErrorAction Stop
+    Import-Module (Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psd1') -Force -ErrorAction Stop
 }
 
 Describe 'Runtime content ownership and nested pumps' {

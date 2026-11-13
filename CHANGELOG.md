@@ -1,6 +1,16 @@
 # Changelog
 
-## 2.0.0 — unreleased
+## 2.0.1 — 2026-11-14
+
+* PowerShell: the module files are now `Ui4me.psd1`/`Ui4me.psm1` in a `Ui4me` folder, matching
+  the PowerShell Gallery package id `Ui4me`. With 2.0.0, `Install-Module UI4ME` on Linux created a
+  `Ui4me` folder holding `UI4ME.psd1`, which PowerShell cannot load on a case-sensitive file
+  system (Windows was unaffected). `Import-Module UI4ME` keeps working with any casing.
+  CI now imports the module from the Gallery folder layout, and the publish workflow installs the
+  published module on Linux afterwards.
+* Python: no changes; version aligned with the PowerShell module.
+
+## 2.0.0 — 2026-11-14
 
 UI4ME 2 is a component framework for Python and PowerShell on UI4ME Core 1.x. It replaces the
 thin 0.1 facade in this repository; the native host now lives in `ui4me-core` / `UI4ME.Core`.

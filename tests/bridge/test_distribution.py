@@ -13,7 +13,7 @@ def test_python_name_version_dependency_and_console_script():
     meta = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))
     project = meta['project']
     assert project['name'] == 'ui4me'
-    assert project['version'] == '2.0.0'
+    assert re.fullmatch(r'2\.\d+\.\d+', project['version'])
     assert project['dependencies'] == ['ui4me-core>=1.0.0,<2.0.0']
     assert meta['project']['scripts']['ui4me-run'] == 'ui4me.launcher:main'
 
@@ -27,14 +27,15 @@ def test_public_core_api_names_are_unchanged(monkeypatch):
     import ui4me
     for symbol in _CORE_NAMES:
         assert getattr(ui4me, symbol) is getattr(module, symbol)
-    assert ui4me.__version__ == '2.0.0'
+    assert ui4me.__version__ == tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
     assert 'ui' in ui4me.__all__
 
 
 def test_powershell_ui_has_own_core_dependency_without_legacy_engine():
-    manifest = (ROOT / 'powershell/UI4ME/UI4ME.psd1').read_text(encoding='utf8')
-    module = (ROOT / 'powershell/UI4ME/UI4ME.psm1').read_text(encoding='utf8')
-    assert "ModuleVersion = '2.0.0'" in manifest
+    manifest = (ROOT / 'powershell/Ui4me/Ui4me.psd1').read_text(encoding='utf8')
+    module = (ROOT / 'powershell/Ui4me/Ui4me.psm1').read_text(encoding='utf8')
+    version = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
+    assert f"ModuleVersion = '{version}'" in manifest  # both bindings release together
     assert "ModuleName = 'UI4ME.Core'" in manifest
     assert 'Connect-UI4ME' in module
     assert 'Set-UI4MEReady' in module

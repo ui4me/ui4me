@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui4me"
-version = "2.0.0"
+version = "2.0.1"
 description = "Batteries-included native desktop UI components for Python, on UI4ME Core"
 readme = "README.md"
 requires-python = ">=3.11"

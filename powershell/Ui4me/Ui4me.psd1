@@ -1,6 +1,6 @@
 @{
-    RootModule = 'UI4ME.psm1'
-    ModuleVersion = '2.0.0'
+    RootModule = 'Ui4me.psm1'
+    ModuleVersion = '2.0.1'
     GUID = 'cf797c5d-35fd-48a5-9cfa-661a0c63f723'
     Author = 'UI4ME Contributors'
     CompanyName = 'UI4ME'

@@ -1,9 +1,9 @@
-# Static safety checks for UI4ME.psm1 (no host needed).
+# Static safety checks for Ui4me.psm1 (no host needed).
 Describe 'Static safety' {
     BeforeAll {
         $tokens = $null; $errors = $null
         $script:ast = [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PSScriptRoot '..\UI4ME\UI4ME.psm1'), [ref]$tokens, [ref]$errors)
+            (Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psm1'), [ref]$tokens, [ref]$errors)
     }
 
     It 'never reassigns a parameter variable inside the function body' {

@@ -202,7 +202,7 @@ def main() -> int:
     ap.add_argument("--name", required=True)
     ap.add_argument("--timeout", type=float, default=300)
     ap.add_argument("--setup-python", type=Path, help="wheel to install into the session venv first")
-    ap.add_argument("--stage-module", action="store_true", help="stage powershell/UI4ME for PSModulePath")
+    ap.add_argument("--stage-module", action="store_true", help="stage powershell/Ui4me for PSModulePath")
     ap.add_argument("--stage-module-zip", type=Path, help="stage the built UI4ME-X.zip artifact instead")
     ap.add_argument("--env", action="append", default=[], help="NAME=VALUE for the app")
     ap.add_argument("command", nargs=argparse.REMAINDER)
@@ -220,17 +220,17 @@ def main() -> int:
                                    " 'win': platform.version(), 'session': w.session_id()}")
         harness["staged_tests"] = stage_tree(agent, REPO / "tests" / "native", ROOT + r"\stage\tests\native")
         if a.stage_module:
-            harness["staged_module"] = stage_tree(agent, REPO / "powershell" / "UI4ME", ROOT + r"\stage\psmodules\UI4ME")
+            harness["staged_module"] = stage_tree(agent, REPO / "powershell" / "Ui4me", ROOT + r"\stage\psmodules\Ui4me")
         if a.stage_module_zip:
             remote = ROOT + r"\artifacts" + "\\" + a.stage_module_zip.name
             agent.put(a.stage_module_zip, remote)
             harness["staged_module_zip"] = agent(f"""
 import shutil, zipfile
 target = Path(r'{ROOT}\\stage\\psmodules')
-if (target / 'UI4ME').exists(): shutil.rmtree(target / 'UI4ME')
+if (target / 'Ui4me').exists(): shutil.rmtree(target / 'Ui4me')
 target.mkdir(parents=True, exist_ok=True)
 zipfile.ZipFile(r'{remote}').extractall(target)
-result = {{'sha256': w.sha256(r'{remote}'), 'files': sorted(str(p.relative_to(target)) for p in (target / 'UI4ME').rglob('*') if p.is_file())}}
+result = {{'sha256': w.sha256(r'{remote}'), 'files': sorted(str(p.relative_to(target)) for p in (target / 'Ui4me').rglob('*') if p.is_file())}}
 """)
         if a.setup_python:
             harness["python_setup"] = setup_python(agent, a.setup_python)

@@ -3,7 +3,7 @@
     python tools/build_dist.py [OUT_DIR]
 
 Produces ``ui4me-X-py3-none-any.whl`` and ``ui4me-X.tar.gz`` (python -m build) and
-``UI4ME-X.zip`` (the PowerShell module folder, ready for Publish-Module or for
+``UI4ME-X.zip`` (the ``Ui4me/`` PowerShell module folder, ready for Publish-Module or for
 extraction into a PSModulePath folder), plus ``SHA256SUMS``. The PowerShell theme
 CSS is copied from the Python package so both bindings ship identical styles.
 """
@@ -24,19 +24,19 @@ import check_artifacts  # noqa: E402
 def sync_assets() -> None:
     for name in ('theme.css', 'functional.css'):
         source = ROOT / 'src/ui4me/_ui/assets' / name
-        target = ROOT / 'powershell/UI4ME/assets' / name
+        target = ROOT / 'powershell/Ui4me/assets' / name
         if not target.exists() or target.read_bytes() != source.read_bytes():
             shutil.copyfile(source, target)
             print(f'synced {target.relative_to(ROOT)}')
 
 
 def module_zip(out: Path, version: str) -> Path:
-    folder = ROOT / 'powershell/UI4ME'
+    folder = ROOT / 'powershell/Ui4me'
     target = out / f'UI4ME-{version}.zip'
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(folder.rglob('*')):
             if path.is_file():
-                info = zipfile.ZipInfo(('UI4ME/' + path.relative_to(folder).as_posix()), date_time=(2026, 1, 1, 0, 0, 0))
+                info = zipfile.ZipInfo(('Ui4me/' + path.relative_to(folder).as_posix()), date_time=(2026, 1, 1, 0, 0, 0))
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = 0o644 << 16
                 z.writestr(info, path.read_bytes())
