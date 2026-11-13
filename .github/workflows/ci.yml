@@ -107,9 +107,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $root 'Ui4me') | Out-Null
           Move-Item (Join-Path $staging 'Ui4me') (Join-Path $root "Ui4me/$version")
           foreach ($name in 'UI4ME', 'Ui4me', 'ui4me') {
-            $result = pwsh -NoProfile -Command "`$env:PSModulePath='$root'; Import-Module $name -ErrorAction Stop; (Get-Module $name).ExportedFunctions.Count"
-            if ($LASTEXITCODE -ne 0 -or [int]$result[-1] -lt 50) { throw "Import-Module $name failed from the Gallery layout: $result" }
-            "Import-Module $name -> $($result[-1]) commands"
+            $output = @(pwsh -NoProfile -Command "`$env:PSModulePath='$root'; Import-Module $name -ErrorAction Stop; (Get-Module $name).ExportedFunctions.Count")
+            $count = 0
+            if ($LASTEXITCODE -ne 0 -or -not [int]::TryParse([string]$output[-1], [ref]$count) -or $count -lt 50) {
+              throw "Import-Module $name failed from the Gallery layout: $($output -join ' ')"
+            }
+            "Import-Module $name -> $count commands"
           }
       - uses: actions/upload-artifact@v4
         with:
