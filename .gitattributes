@@ -1,8 +1,0 @@
-* text=auto eol=lf
-*.png binary
-*.jpg binary
-*.zip binary
-*.dll binary
-*.so binary
-*.whl binary
-*.nupkg binary

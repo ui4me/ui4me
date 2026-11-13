@@ -1,0 +1,53 @@
+name: Publish UI4ME Python (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      publish_to_pypi:
+        description: 'Explicitly publish built artifacts to PyPI (requires Core already published)'
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Build and inspect distributions
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+          python tools/check_artifacts.py dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui4me-python-distributions
+          path: dist/*
+          if-no-files-found: error
+  publish:
+    if: ${{ inputs.publish_to_pypi == true }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require published Core 1.0.0 distributions
+        run: python tools/preflight_publish.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui4me-python-distributions
+          path: dist
+      - name: Upload using Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1

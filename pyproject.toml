@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77", "wheel>=0.44"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ui4me"
+version = "0.1.0"
+description = "UI4ME's convenience layer — currently a zero-overhead facade over UI4ME Core"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "UI4ME Contributors" }]
+dependencies = ["ui4me-core>=1.0.0,<2.0.0"]
+keywords = ["ui", "desktop", "html", "css", "wayland", "windows", "python"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: User Interfaces",
+]
+
+[project.urls]
+Homepage = "https://github.com/ui4me/ui4me"
+Source = "https://github.com/ui4me/ui4me"
+Core = "https://github.com/ui4me/ui4me-core"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ui4me*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

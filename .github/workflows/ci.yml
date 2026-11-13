@@ -1,252 +1,29 @@
-name: Foundation CI
-
+name: Verify UI4ME facade
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build:
-    timeout-minutes: 120
-    env:
-      # Hosted images can contain a partial toolchain with conflicting
-      # components. Install the pinned toolchain into a clean job-local home.
-      RUSTUP_HOME: ${{ github.workspace }}/build/ci-rustup
+  test:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04
-            rid: linux-x64
-          - os: windows-2022
-            rid: win-x64
+        python: ['3.10', '3.12', '3.13']
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: '10.0.x'
-      - name: Rust toolchain
-        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
-      - name: Linux native prerequisites
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 libegl1 libgl1
-      - name: Pinned PowerShell host
-        run: python .github/scripts/setup-powershell.py
-      - name: Python build tools
-        run: python -m pip install -r requirements-dev.txt
-      - name: Package manager
-        shell: pwsh
-        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
-      - name: Prerequisite report
-        run: python dev.py doctor
-      - name: Package version consistency
-        run: python dev.py version --check
-      - name: Rust formatting
-        run: cargo fmt --all -- --check
-      - name: Rust lint contracts
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Build from committed dependency locks
-        run: python dev.py build --binding all --profile release
-      - name: Unit and binding contracts
-        run: python dev.py test --binding all --suite unit --profile release
-      - name: Platform packages
-        run: python dev.py package --binding all --profile release
-        env:
-          # The Linux wheel keeps the 0.2/0.3 glibc floor; a newer requirement fails here.
-          UI4ME_MANYLINUX_POLICY: ${{ matrix.rid == 'linux-x64' && 'manylinux_2_35_x86_64' || '' }}
-      - name: Build and install from the source distribution
-        run: python .github/scripts/check-sdist.py
-      - name: Dependency locks remain unchanged
-        run: git diff --exit-code -- Cargo.lock bindings/powershell/Ui4me.Managed/packages.lock.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: source-check-${{ matrix.rid }}
-          path: build/sdist-check/
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Evidence overview
-        if: always()
-        run: python dev.py report
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: success()
-        with:
-          name: candidate-${{ matrix.rid }}
-          path: dist/${{ matrix.rid }}/
-          if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: unit-${{ matrix.rid }}
-          path: build/reports/
-          if-no-files-found: warn
-          retention-days: 30
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: build-diagnostics-${{ matrix.rid }}
-          path: |
-            build/${{ matrix.rid }}/release/*.log
-            build/${{ matrix.rid }}/release/build.json
-          if-no-files-found: warn
-          retention-days: 30
-
-  assemble:
-    timeout-minutes: 15
-    needs: build
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - run: python .github/scripts/setup-powershell.py
-      - shell: pwsh
-        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: candidate-linux-x64
-          path: dist/linux-x64
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: candidate-win-x64
-          path: dist/win-x64
-      - run: python dev.py assemble --manifest dist/linux-x64/manifest.json --manifest dist/win-x64/manifest.json --out dist/release
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-candidate
-          path: dist/release/
-          if-no-files-found: error
-          retention-days: 30
-
-  installed:
-    timeout-minutes: 15
-    needs: assemble
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-2022]
-        binding: [core, python, powershell]
-        python: ['3.12']
-        powershell_host: ['7.6.9']
-        include:
-          - {os: ubuntu-22.04, binding: python, python: '3.11'}
-          - {os: ubuntu-22.04, binding: python, python: '3.13'}
-          - {os: ubuntu-22.04, binding: python, python: '3.14'}
-          - {os: windows-2022, binding: python, python: '3.11'}
-          - {os: windows-2022, binding: python, python: '3.13'}
-          - {os: windows-2022, binding: python, python: '3.14'}
-          - {os: ubuntu-22.04, binding: powershell, python: '3.12', powershell_host: '7.4.0', floor: true}
-          - {os: windows-2022, binding: powershell, python: '3.12', powershell_host: '7.4.0', floor: true}
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Linux native runtime dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-6 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libegl1 libgl1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: External C compiler environment
-        if: runner.os == 'Windows' && matrix.binding == 'core'
-        shell: pwsh
-        run: ./.github/scripts/setup-msvc.ps1
-      - run: python .github/scripts/setup-powershell.py
-        if: matrix.binding == 'powershell' && !matrix.floor
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: matrix.floor && runner.os == 'Windows'
-        with:
-          dotnet-version: '8.0.x'
-      - name: Oldest supported PowerShell host
-        if: matrix.floor && runner.os == 'Windows'
-        shell: bash
+      - name: Test facade without requiring unpublished Core
+        run: python -m unittest discover -s tests -v
+      - name: Build Python wheel and sdist
         run: |
-          dotnet tool install PowerShell --version 7.4.0 --tool-path build/powershell-floor
-          python -c "import os; from pathlib import Path; p=Path('build/powershell-floor').resolve(); Path(os.environ['GITHUB_PATH']).open('a',encoding='utf-8').write(str(p)+'\n')"
-      - name: Oldest supported PowerShell host on Linux
-        if: matrix.floor && runner.os == 'Linux'
-        run: python .github/scripts/setup-powershell.py 7.4.0
-      - shell: pwsh
-        if: matrix.binding == 'powershell'
-        run: Install-PSResource Microsoft.PowerShell.PSResourceGet -Version 1.1.1 -Scope CurrentUser -TrustRepository
-      - name: Avoid loading the older bundled package manager
-        if: matrix.floor && runner.os == 'Linux'
-        run: mv build/tools/powershell-7.4.0/Modules/Microsoft.PowerShell.PSResourceGet build/tools/powershell-7.4.0/bundled-PSResourceGet
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: release-candidate
-          path: dist/release
-      - run: python dev.py test --binding ${{ matrix.binding }} --suite installed --manifest dist/release/manifest.json
-      - name: Upgrade an installed public 0.1 package
-        if: matrix.python == '3.12' && (matrix.binding == 'python' || (matrix.binding == 'powershell' && !matrix.floor))
-        run: python dev.py upgrade-check --binding ${{ matrix.binding }} --manifest dist/release/manifest.json --previous-version 0.1.0
-      - run: python dev.py report --manifest dist/release/manifest.json
-        if: always()
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: installed-${{ matrix.os }}-${{ matrix.binding }}-py${{ matrix.python }}-ps${{ matrix.powershell_host }}
-          path: build/reports/
-          if-no-files-found: error
-          retention-days: 30
-
-  bundle:
-    timeout-minutes: 10
-    needs: [build, assemble, installed]
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: release-candidate
-          path: dist/release
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: unit-*
-          path: build/reports
-          merge-multiple: true
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: installed-*
-          path: build/reports
-          merge-multiple: true
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: source-check-*
-          path: build/source-check
-      - name: Require complete CI evidence
-        run: python .github/scripts/check-ci-evidence.py
-      - run: python dev.py report --manifest dist/release/manifest.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ci-bundle
-          path: |
-            dist/release/
-            build/reports/
-            build/source-check/
-          if-no-files-found: error
-          retention-days: 30
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Verify pure Python wheel and dependency metadata
+        run: python tools/check_artifacts.py dist
