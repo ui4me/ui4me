@@ -1,0 +1,156 @@
+area,feature,priority,python,powershell,verification,notes
+Framework machinery and developer experience,"App, window, composition context",P0,implemented,implemented,native-input,ui.app/app.window; Invoke-UI4MEApp (one window per PS app)
+Framework machinery and developer experience,Component refs/common props,P0,implemented,partial,unit (fake Core),Python refs: classes/style/attr/visible/focus; PS: -Class/-Style/-Visible on common components
+Framework machinery and developer experience,"Reactive signals, computed, effects, batch",P0,implemented,partial,native-input,"Python signals/computed/effect/batch; PS New-UI4MEState/New-UI4MEComputed (explicit -DependsOn), no effect scheduler"
+Framework machinery and developer experience,Keyed dynamic children,P0,implemented,implemented,native-input,ui.each / New-UI4MEEach: DOM node identity and typed text kept across reorder (verified with real input)
+Framework machinery and developer experience,Conditional regions/keep-alive,P1,implemented,partial,native-input,ui.when; New-UI4MEWhen rebuilds the shown branch and disposes the hidden one; no keep-alive
+Framework machinery and developer experience,Owned tasks and async event callbacks,P0,implemented,implemented,native-input,app.tasks/async callbacks; Start-UI4MEUiTask (runspace); owner disposal cancels/suppresses callbacks
+Framework machinery and developer experience,DOM batch failure recovery,P0,implemented,not implemented,unit (fake Core),Python stops updating a window after a failed atomic batch; PS surfaces the Core error per call
+Framework machinery and developer experience,Custom components/decorator,P0,implemented,not implemented,unit (fake Core),@ui.component
+Framework machinery and developer experience,Mount raw Core/HTML islands,P1,implemented,implemented,real-host,ui.html island + component.core_document; PS New-UI4MEHtml + Get-UI4MEUiContext; raw document replacement is detected and management stops
+Framework machinery and developer experience,Window-scoped navigation,P1,implemented,not implemented,real-host render only,ui.navigation
+Framework machinery and developer experience,Command registry and shortcuts,P1,implemented,not implemented,unit (fake Core),app.commands with in-window shortcuts
+Framework machinery and developer experience,Component event modifiers,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Framework machinery and developer experience,Developer inspector and tracing,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Framework machinery and developer experience,Capability report/fallback inspector,P1,implemented,not implemented,real-host,app.capabilities(); unsupported native services raise NotImplementedError
+Framework machinery and developer experience,State persisted preferences,P2,implemented,implemented,unit (fake Core),app.settings / Get-/Set-UI4MEUiSetting (same JSON file layout)
+Framework machinery and developer experience,LLM-friendly API reference/examples,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Framework machinery and developer experience,Error boundaries / diagnostic UI,P1,partial,partial,unit (fake Core),errors reported to app.on_error or an in-window toast; PS -OnError or toast
+Framework machinery and developer experience,Accessibility testing helpers,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,"Row, column, stack, spacer, divider",P1,implemented,implemented,real-host render only,
+Layout and responsive,"Cards, surfaces, sections, paper",P1,implemented,implemented,real-host render only,PS New-UI4MECard
+Layout and responsive,"Grid, auto-fit",P1,implemented,implemented,real-host render only,
+Layout and responsive,Responsive 12-column grid,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,Container queries/responsive props,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,Scroll container,P1,implemented,implemented,real-host render only,
+Layout and responsive,App shell/sidebar/content,P1,implemented,not implemented,real-host render only,
+Layout and responsive,User-resizable split panes,P1,partial,not implemented,real-host render only,ui.split is fixed-ratio; no user-resizable splitter
+Layout and responsive,Header/toolbar/status bar,P1,implemented,partial,real-host render only,PS New-UI4METoolbar
+Layout and responsive,Drawer/offcanvas,P1,implemented,not implemented,real-host render only,
+Layout and responsive,"Sticky region, affix",P2,implemented,not implemented,real-host render only,
+Layout and responsive,Aspect ratio / center / constrain,P2,implemented,not implemented,real-host render only,
+Layout and responsive,Responsive visibility,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,Responsive adaptive view switcher,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,Scroll restoration,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,RTL-aware layout helpers,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Layout and responsive,Window sizing/layout persistence,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets","Text, headings, captions, badges",P1,implemented,implemented,native-input,
+"Typography, display, content and assets",Icons and icon buttons,P1,implemented,not implemented,real-host render only,ui.icon/icon_button (built-in SVG set)
+"Typography, display, content and assets","Link, external link, action link",P1,implemented,implemented,real-host render only,PS link opens through Open-UI4MEExternal
+"Typography, display, content and assets","Lists, description lists, list groups",P1,partial,partial,real-host render only,ui.each / New-UI4MEList
+"Typography, display, content and assets","Avatar, avatar group",P2,implemented,not implemented,real-host render only,
+"Typography, display, content and assets","Image, caption, responsive image",P1,implemented,implemented,real-host render only,
+"Typography, display, content and assets","Markdown, code, inline code",P1,implemented,partial,real-host,Python ui.markdown/code; PS New-UI4MECode only (no Markdown)
+"Typography, display, content and assets",Static syntax highlighting,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Rich text display,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Editable rich text,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Copy-to-clipboard affordance,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Key/value property grid,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets","Metric/KPI, statistic cards",P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Charts: line/bar/pie/sparkline,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",SVG component,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets","Video, audio players",P3,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Typography, display, content and assets",Maps,P3,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Buttons, selection and general inputs","Button, variants, loading, async",P1,implemented,implemented,native-input,
+"Buttons, selection and general inputs","Button group, segmented control",P1,implemented,not implemented,real-host render only,ui.segmented
+"Buttons, selection and general inputs","Icon button, close button",P1,implemented,not implemented,real-host render only,
+"Buttons, selection and general inputs","Input, password, textarea, number",P1,implemented,implemented,native-input,PS New-UI4MEInput/-Number/-TextArea
+"Buttons, selection and general inputs","Checkbox, switch, radio, select",P1,implemented,implemented,native-input,"checkbox, select verified with real input; switch/radio render"
+"Buttons, selection and general inputs","Slider, range slider",P2,implemented,implemented,real-host render only,single-value slider only
+"Buttons, selection and general inputs","Combo box, autocomplete",P1,implemented,not implemented,real-host render only,ui.combobox
+"Buttons, selection and general inputs",Multi-select / tags input,P1,not implemented,not implemented,not verified,not provided
+"Buttons, selection and general inputs",File input / dropzone / path picker,P1,implemented,not implemented,real-host render only,ui.file_input / ui.path (native dialogs)
+"Buttons, selection and general inputs",Date picker / time picker / date range,P1,implemented,implemented,native-input,ui.date/time/datetime/month/week and New-UI4MEDate/-Time: validated text + in-window calendar (Core 1.x refuses <input type=date|time|...>); no date range
+"Buttons, selection and general inputs",Color input / color picker,P2,implemented,implemented,native-input,ui.color / New-UI4MEColor: hex text + swatches (Core 1.x refuses <input type=color>)
+"Buttons, selection and general inputs",Search input with clear/debounce,P1,implemented,not implemented,real-host render only,ui.search
+"Buttons, selection and general inputs",Masked input (phone/PIN),P2,not implemented,not implemented,not verified,
+"Buttons, selection and general inputs",Rating,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Buttons, selection and general inputs",Knob/angle/hue advanced controls,P3,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Buttons, selection and general inputs","Input group, suffix/prefix, floating label",P1,partial,not implemented,real-host render only,
+"Buttons, selection and general inputs",Inline editable field,P2,not implemented,not implemented,not verified,
+Forms and validation,Form from dataclass or PowerShell schema,P1,implemented,not implemented,unit (fake Core),ui.form(dataclass)
+Forms and validation,Field label/help/error/required,P0,implemented,partial,native-input,PS fields have label/help/error chrome; error text for parsed fields
+Forms and validation,Basic field and form validators,P1,implemented,not implemented,unit (fake Core),
+Forms and validation,Dirty/touched/submitting state,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Validation modes,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Async/cross-field validation,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Nested forms/repeating groups,P2,partial,not implemented,unit (fake Core),
+Forms and validation,Field groups / fieldsets / section,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Conditional fields,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Custom widget mapping,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Form wizard/stepper,P2,partial,not implemented,unit (fake Core),
+Forms and validation,Reset/undo/changed-field controls,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Forms and validation,Model adapters (Pydantic optional),P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Navigation, information architecture, selection",Tabs,P1,implemented,implemented,native-input,PS tabs verified with real clicks
+"Navigation, information architecture, selection","Sidebar navigation, shell",P1,implemented,not implemented,real-host render only,
+"Navigation, information architecture, selection",Breadcrumbs,P1,implemented,not implemented,real-host render only,
+"Navigation, information architecture, selection","Menu, dropdown and submenus",P1,implemented,not implemented,real-host render only,in-window ui.menu
+"Navigation, information architecture, selection",Context menu,P1,partial,not implemented,not verified,in-window menu only; native context menu unsupported by Core
+"Navigation, information architecture, selection",Menubar / toolbar,P1,partial,partial,real-host render only,in-window toolbar; native menubar unsupported by Core
+"Navigation, information architecture, selection",Command palette/search actions,P1,implemented,not implemented,real-host render only,ui.command_palette
+"Navigation, information architecture, selection",Pagination,P2,implemented,not implemented,real-host render only,table/query_table paging
+"Navigation, information architecture, selection",Accordion/collapsible section,P1,implemented,implemented,real-host render only,ui.accordion/disclosure; New-UI4MEAccordion
+"Navigation, information architecture, selection",Tree navigation,P1,implemented,not implemented,unit (fake Core),
+"Navigation, information architecture, selection",Stepper,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Navigation, information architecture, selection",Anchor/table of contents,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Navigation, information architecture, selection",Keyboard focus/roving model,P0,partial,partial,native-input,Tab order is native; calendar uses arrow keys; no generic roving-focus helper
+"Navigation, information architecture, selection",Multiwindow history/navigation,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Dialog and confirm,P1,implemented,partial,real-host render only,ui.dialog/confirm; PS New-UI4MEDialog/Show-/Close-UI4MEUiDialog
+"Overlays, feedback and notifications",Modal manager / stacking,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Toast and alerts,P1,implemented,implemented,native-input,in-window toasts with auto-dismiss (PS verified with real host timer)
+"Overlays, feedback and notifications",Drawer/offcanvas overlay,P1,implemented,not implemented,real-host render only,
+"Overlays, feedback and notifications",Tooltip,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Popover/flyout/hovercard,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Inline loading/error/empty,P1,implemented,not implemented,real-host render only,
+"Overlays, feedback and notifications",Skeleton,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Progress bar/spinner,P1,implemented,implemented,real-host render only,
+"Overlays, feedback and notifications",Progress ring/multistep progress,P2,implemented,not implemented,real-host render only,
+"Overlays, feedback and notifications",Loading overlay,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Disclosure/announcement/banner,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Overlays, feedback and notifications",Tour/onboarding coach marks,P3,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Basic table search/sort/page/select,P1,implemented,partial,real-host,"PS New-UI4METable renders rows (state-bound), no search/sort/paging"
+Data components / large collections,Data-source adapter,P1,implemented,not implemented,native-input,ui.query_table background loader with stale-result rejection
+Data components / large collections,Selection model,P1,implemented,not implemented,unit (fake Core),
+Data components / large collections,Table filtering and custom cell renderers,P1,partial,not implemented,unit (fake Core),
+Data components / large collections,Inline cell/row editing,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Row actions/context menu,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Column visibility/reorder/resize,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Data grid/grouping/aggregation,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Table/tree lazy loading,P1,partial,not implemented,unit (fake Core),
+Data components / large collections,Virtual rows,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,List view / selectable list,P1,partial,implemented,native-input,keyed lists
+Data components / large collections,Tree view / tree grid,P1/P2,partial,not implemented,unit (fake Core),
+Data components / large collections,Log stream / chat stream,P1,implemented,not implemented,real-host render only,ui.log / ui.chat
+Data components / large collections,Timeline / activity feed,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Data components / large collections,Transfer list / dual listbox,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Desktop integration and app conveniences,File open/save/folder dialog,P1,implemented,implemented,native-input,native open/save verified on KDE Wayland and Windows (Escape cancel -> None)
+Desktop integration and app conveniences,Clipboard text,P1,implemented,not implemented,unit (fake Core),plain text via app.clipboard; PS uses Core Get-/Set-UI4MEClipboard directly
+Desktop integration and app conveniences,System notifications,P1,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError; use ui.notify toasts
+Desktop integration and app conveniences,Background tasks/timers,P0,implemented,implemented,native-input,"timers (app.after/every, Start-UI4MEUiTimer) and tasks; disposal stops owned timers"
+Desktop integration and app conveniences,Multiple windows,P1,implemented,not implemented,native-input,Python app.window: second window click + native close verified
+Desktop integration and app conveniences,Native menus/context menu,P1,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError
+Desktop integration and app conveniences,Tray icon and actions,P2,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError
+Desktop integration and app conveniences,Global hotkeys,P2,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError
+Desktop integration and app conveniences,File drag-and-drop,P1,implemented,not implemented,unit (fake Core),window file_drop listener wired to Core dropped_files; no real drag test
+Desktop integration and app conveniences,OS clipboard HTML,P2,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError
+Desktop integration and app conveniences,PDF export and print,P1,unsupported by Core 1.x,unsupported by Core 1.x,unit (fake Core),raises NotImplementedError
+Desktop integration and app conveniences,Window sizing/state helpers,P1,implemented,not implemented,unit (fake Core),app.desktop.window_action/window_state via Core window.set
+Desktop integration and app conveniences,OS color mode/reduced motion,P1,implemented,implemented,real-host,theme light/dark/system via Core environment; desktop preferences readable
+Desktop integration and app conveniences,Icon/app asset packaging,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Desktop integration and app conveniences,Recent-file/open-files / single instance,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Desktop integration and app conveniences,Drag reorder,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+Desktop integration and app conveniences,Persist local view settings,P2,implemented,implemented,unit (fake Core),settings
+"Accessibility, internationalization, performance and quality",Semantic roles/names/label links,P0,partial,partial,not verified,labels/roles in markup; no assistive-technology run
+"Accessibility, internationalization, performance and quality",Consistent focus management,P0,partial,partial,native-input,focus after click/Tab verified; no full audit
+"Accessibility, internationalization, performance and quality",Keyboard patterns for composite controls,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Accessibility, internationalization, performance and quality","High contrast, large text, reduced motion",P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Accessibility, internationalization, performance and quality",Accessibility tree verification,P1,not implemented,not implemented,not verified,
+"Accessibility, internationalization, performance and quality",Localization of built-in strings,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Accessibility, internationalization, performance and quality",Unicode and IME,P0,partial,partial,not verified,IME composition guarded in Python TextField; not run with a real IME
+"Accessibility, internationalization, performance and quality",Error reporting/context traces,P1,implemented,implemented,unit (fake Core),
+"Accessibility, internationalization, performance and quality",Feature/capability discovery,P1,implemented,not implemented,real-host,app.capabilities()
+"Accessibility, internationalization, performance and quality",Visual regression gallery,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Accessibility, internationalization, performance and quality",Headless + installed consumer tests,P1,implemented,implemented,real-host,ui4me-run --headless / Start-UI4MEUiScript -Headless; installed-artifact tests
+"Accessibility, internationalization, performance and quality",Performance budgets and profiling,P2,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0
+"Accessibility, internationalization, performance and quality",Cross-language shared conformance,P0,partial,partial,native-input,"same journeys (events, binding, keyed list, CSS, dialogs, close veto) on both bindings"
+"Accessibility, internationalization, performance and quality",Offline documentation / component gallery,P1,not implemented,not implemented,not verified,backlog item; not implemented in 2.0.0

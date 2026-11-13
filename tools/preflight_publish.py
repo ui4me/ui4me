@@ -1,42 +1,75 @@
-"""Block UI4ME facade publication until the corresponding Core wheels exist.
+"""Refuse publication unless dependencies are published and the version is unused.
 
-CI invokes this only for an explicitly approved PyPI publication. This script
-never uploads anything and needs no credentials. Errors fail closed.
+    python tools/preflight_publish.py VERSION [--registry pypi|psgallery|all]
+
+Checks (read-only, no credentials, fails closed on network errors):
+* PyPI has ui4me-core 1.x with Linux and Windows wheels and an sdist;
+* the PowerShell Gallery has UI4ME.Core 1.x;
+* VERSION of ``ui4me`` (PyPI) / ``UI4ME`` (Gallery) is not already published.
 """
 from __future__ import annotations
 
 import json
+import re
+import sys
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
-CORE_INDEX = 'https://pypi.org/pypi/ui4me-core/1.0.0/json'
-WRAPPER_INDEX = 'https://pypi.org/pypi/ui4me/0.1.0/json'
+AGENT = {'User-Agent': 'ui4me-release-preflight'}
 
 
-def get_release(url: str) -> dict | None:
+def fetch(url: str) -> bytes | None:
     try:
-        with urlopen(url, timeout=15) as response:
-            return json.load(response)
+        with urlopen(Request(url, headers=AGENT), timeout=20) as response:
+            return response.read()
     except HTTPError as exc:
         if exc.code == 404:
             return None
-        raise RuntimeError(f'PyPI check failed with HTTP {exc.code}: {url}') from exc
+        raise SystemExit(f'FAIL: registry check failed with HTTP {exc.code}: {url}') from exc
     except (URLError, TimeoutError) as exc:
-        raise RuntimeError(f'PyPI unavailable; refusing to publish: {url}') from exc
+        raise SystemExit(f'FAIL: registry unavailable; refusing to publish: {url}') from exc
 
 
-def preflight() -> None:
-    core = get_release(CORE_INDEX)
-    if core is None:
-        raise SystemExit('Publish ui4me-core==1.0.0 first; it is not yet on PyPI')
-    wheels = [f.get('filename', '') for f in core.get('urls', []) if f.get('packagetype') == 'bdist_wheel']
-    archives = [f.get('filename', '') for f in core.get('urls', []) if f.get('packagetype') == 'sdist']
-    if not any('manylinux' in f for f in wheels) or not any('win_amd64' in f for f in wheels) or not archives:
-        raise SystemExit('Core 1.0.0 needs Linux + Windows wheels and an sdist on PyPI before facade publishing')
-    if get_release(WRAPPER_INDEX) is not None:
-        raise SystemExit('ui4me==0.1.0 is already published; bump the facade version instead of reusing it')
-    print('PASS: Core 1.0.0 published for Linux/Windows, facade 0.1.0 not yet published')
+def gallery_versions(name: str) -> list[str]:
+    data = fetch(f"https://www.powershellgallery.com/api/v2/FindPackagesById()?id='{name}'") or b''
+    return re.findall(r'<d:Version>([^<]+)</d:Version>', data.decode('utf-8', 'replace'))
+
+
+def check_pypi(version: str) -> None:
+    core = json.loads(fetch('https://pypi.org/pypi/ui4me-core/json') or b'{}')
+    good = []
+    for release, files in core.get('releases', {}).items():
+        if not release.startswith('1.'):
+            continue
+        names = [f['filename'] for f in files]
+        if any('manylinux' in n for n in names) and any('win_amd64' in n for n in names) and any(n.endswith('.tar.gz') for n in names):
+            good.append(release)
+    if not good:
+        raise SystemExit('FAIL: no ui4me-core 1.x release with Linux+Windows wheels and an sdist on PyPI')
+    if fetch(f'https://pypi.org/pypi/ui4me/{version}/json') is not None:
+        raise SystemExit(f'FAIL: ui4me {version} is already on PyPI; choose the next unused version')
+    print(f'PASS PyPI: ui4me-core {", ".join(sorted(good))} available; ui4me {version} unused')
+
+
+def check_gallery(version: str) -> None:
+    core = [v for v in gallery_versions('UI4ME.Core') if v.startswith('1.')]
+    if not core:
+        raise SystemExit('FAIL: UI4ME.Core 1.x is not on the PowerShell Gallery')
+    if version in gallery_versions('UI4ME'):
+        raise SystemExit(f'FAIL: UI4ME {version} is already on the PowerShell Gallery; choose the next unused version')
+    print(f'PASS Gallery: UI4ME.Core {", ".join(core)} available; UI4ME {version} unused')
+
+
+def main(argv: list[str]) -> None:
+    if not argv:
+        raise SystemExit(__doc__)
+    version = argv[0]
+    registry = argv[argv.index('--registry') + 1] if '--registry' in argv else 'all'
+    if registry in ('pypi', 'all'):
+        check_pypi(version)
+    if registry in ('psgallery', 'all'):
+        check_gallery(version)
 
 
 if __name__ == '__main__':
-    preflight()
+    main(sys.argv[1:])

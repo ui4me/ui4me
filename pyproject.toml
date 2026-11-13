@@ -4,20 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui4me"
-version = "0.1.0"
-description = "UI4ME's convenience layer — currently a zero-overhead facade over UI4ME Core"
+version = "2.0.0"
+description = "Batteries-included native desktop UI components for Python, on UI4ME Core"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "UI4ME Contributors" }]
+authors = [{name = "UI4ME Contributors"}]
 dependencies = ["ui4me-core>=1.0.0,<2.0.0"]
-keywords = ["ui", "desktop", "html", "css", "wayland", "windows", "python"]
+keywords = ["desktop", "UI", "components", "CSS", "reactive", "Wayland", "Windows"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "Operating System :: OS Independent",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -27,15 +27,22 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/ui4me/ui4me"
-Source = "https://github.com/ui4me/ui4me"
 Core = "https://github.com/ui4me/ui4me-core"
+
+[project.scripts]
+ui4me-run = "ui4me.launcher:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ui4me*"]
 
+[tool.setuptools.package-data]
+"ui4me._ui" = ["assets/*.css", "py.typed"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/bridge", "tests/host"]
+pythonpath = ["src"]

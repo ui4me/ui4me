@@ -1,0 +1,25 @@
+/* Non-negotiable UI mechanics. Styling these selectors is possible in custom CSS.
+   Visual tokens and component skins deliberately live in theme.css. */
+[hidden] { display: none !important; }
+.u4-region, .u4-item { display: contents; }
+.u4-app { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
+.u4-main { flex: 1 1 auto; box-sizing: border-box; min-width: 0; }
+.u4-app *, .u4-app *::before, .u4-app *::after { box-sizing: border-box; }
+.u4-row { display:flex; flex-direction:row; min-width:0; }
+.u4-column { display:flex; flex-direction:column; min-width:0; }
+.u4-wrap { flex-wrap:wrap; }
+.u4-grow { flex:1 1 0; min-width:0; }
+.u4-spacer { flex:1 1 auto; }
+.u4-grid { display:grid; grid-template-columns:repeat(var(--u4-cols,2),minmax(0,1fr)); }
+.u4-grid-auto { display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--u4-min,220px),1fr)); }
+.u4-scroll { overflow:auto; min-height:0; }
+.u4-stack { display:flex; min-width:0; }
+.u4-dir-row { flex-direction:row; } .u4-dir-column { flex-direction:column; }
+.u4-center { display:flex; justify-content:center; align-items:center; }
+.u4-overlay { position:fixed; inset:0; z-index:1000; }
+.u4-sr-only { position:absolute!important; width:1px; height:1px; padding:0; margin:-1px;
+ overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@media(min-width:600px) { .u4-sm-dir-row {flex-direction:row} .u4-sm-dir-column{flex-direction:column} .u4-sm-hide{display:none!important} }
+@media(min-width:900px) { .u4-md-dir-row {flex-direction:row} .u4-md-dir-column{flex-direction:column} .u4-md-hide{display:none!important} }
+@media(min-width:1200px) { .u4-lg-dir-row {flex-direction:row} .u4-lg-dir-column{flex-direction:column} .u4-lg-hide{display:none!important} }
+@media(max-width:599px) { .u4-base-only-hide {display:none!important} }

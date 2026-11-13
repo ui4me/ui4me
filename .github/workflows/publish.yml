@@ -1,0 +1,102 @@
+name: Publish (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish; must equal pyproject.toml and UI4ME.psd1'
+        required: true
+        type: string
+      publish_pypi:
+        description: 'Publish ui4me to PyPI'
+        type: boolean
+        default: false
+      publish_psgallery:
+        description: 'Publish UI4ME to the PowerShell Gallery'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a green CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ok=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --status success --json databaseId --jq length)
+          if [ "$ok" -lt 1 ]; then echo "No successful CI run for $GITHUB_SHA"; exit 1; fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install build twine
+      - name: Build and verify
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python tools/build_dist.py dist
+          python -m twine check dist/*.whl dist/*.tar.gz
+          test -f "dist/ui4me-${VERSION}-py3-none-any.whl"
+          test -f "dist/UI4ME-${VERSION}.zip"
+      - name: Registry preflight (dependencies published, version unused)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python tools/preflight_publish.py "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: powershell-module
+          path: dist/UI4ME-*.zip
+          if-no-files-found: error
+
+  pypi:
+    if: ${{ inputs.publish_pypi }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ui4me/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  psgallery:
+    if: ${{ inputs.publish_psgallery }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: psgallery
+      url: https://www.powershellgallery.com/packages/UI4ME
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: powershell-module
+          path: dist
+      - name: Publish-Module
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY is not configured for the psgallery environment' }
+          Expand-Archive -Path (Get-Item ./dist/UI4ME-*.zip).FullName -DestinationPath ./module
+          Install-Module UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Scope CurrentUser -Force
+          $manifest = Test-ModuleManifest ./module/UI4ME/UI4ME.psd1
+          if ($manifest.Version.ToString() -ne $env:VERSION) { throw "Module version $($manifest.Version) != $env:VERSION" }
+          Publish-Module -Path ./module/UI4ME -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery

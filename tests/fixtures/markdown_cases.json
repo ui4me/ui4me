@@ -1,0 +1,110 @@
+{
+ "description": "Shared Markdown renderer cases: render_markdown(input) must equal expected in every language port.",
+ "cases": [
+  {
+   "name": "headings",
+   "input": "# One\n## Two ##\n###### Six",
+   "expected": "<h1>One</h1><h2>Two</h2><h6>Six</h6>"
+  },
+  {
+   "name": "paragraph_inline",
+   "input": "Some *em*, _em2_, **strong**, __strong2__, ~~gone~~ and `x<y` text.",
+   "expected": "<p>Some <em>em</em>, <em>em2</em>, <strong>strong</strong>, <strong>strong2</strong>, <del>gone</del> and <code>x&lt;y</code> text.</p>"
+  },
+  {
+   "name": "line_breaks",
+   "input": "first line  \nsecond line\\\nthird",
+   "expected": "<p>first line<br>second line<br>third</p>"
+  },
+  {
+   "name": "lists_nested",
+   "input": "- a\n- b\n  - c\n  - d\n- e\n\n1. one\n2) two",
+   "expected": "<ul><li>a</li><li>b<ul><li>c</li><li>d</li></ul><li>e</li></ul><ol><li>one</li><li>two</li></ol>"
+  },
+  {
+   "name": "list_continuation",
+   "input": "- item\n  continued text\n- next",
+   "expected": "<ul><li>item continued text</li><li>next</li></ul>"
+  },
+  {
+   "name": "fenced_code_lang",
+   "input": "```py\nprint('<hi>')\n```",
+   "expected": "<pre><code class=\"language-py\">print('&lt;hi&gt;')</code></pre>"
+  },
+  {
+   "name": "fenced_code_bad_lang",
+   "input": "~~~ba<d\nx & y\n~~~",
+   "expected": "<pre><code>x &amp; y</code></pre>"
+  },
+  {
+   "name": "unterminated_fence",
+   "input": "```\nopen <b>forever",
+   "expected": "<pre><code>open &lt;b&gt;forever</code></pre>"
+  },
+  {
+   "name": "blockquote_nested",
+   "input": "> quote\n> > inner **bold**\n> back",
+   "expected": "<blockquote><p>quote</p><blockquote><p>inner <strong>bold</strong></p></blockquote><p>back</p></blockquote>"
+  },
+  {
+   "name": "rule_and_table",
+   "input": "before\n\n---\n\n| A | B |\n|:--|--:|\n| 1 | 2 |\n| <i>x</i> | `y` |",
+   "expected": "<p>before</p><hr><table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr><tr><td>&lt;i&gt;x&lt;/i&gt;</td><td><code>y</code></td></tr></tbody></table>"
+  },
+  {
+   "name": "links_safe",
+   "input": "[ok](https://example.com/a?b=1&c=2) <https://auto.example/x> <mailto:a@b.c>",
+   "expected": "<p><a href=\"https://example.com/a?b=1&amp;c=2\">ok</a> <a href=\"https://auto.example/x\">https://auto.example/x</a> <a href=\"mailto:a@b.c\">mailto:a@b.c</a></p>"
+  },
+  {
+   "name": "links_unsafe",
+   "input": "[bad](javascript:alert(1)) [data](data:text/html,<script>x</script>) [rel](/etc/passwd)",
+   "expected": "<p>bad) data rel</p>"
+  },
+  {
+   "name": "raw_html_escaped",
+   "input": "<img src=x onerror=alert(1)> <script>bad()</script> & \"quoted\" 'single'",
+   "expected": "<p>&lt;img src=x onerror=alert(1)&gt; &lt;script&gt;bad()&lt;/script&gt; &amp; \"quoted\" 'single'</p>"
+  },
+  {
+   "name": "image_as_alt",
+   "input": "![logo](http://evil.example/p.png) and ![](x.png)",
+   "expected": "<p>logo and image</p>"
+  },
+  {
+   "name": "attr_injection",
+   "input": "[x](https://a.example/\"onmouseover=\"alert(1))",
+   "expected": "<p>x)</p>"
+  },
+  {
+   "name": "emphasis_edge",
+   "input": "2 * 3 * 4 and snake_case_name and **unclosed and *a* b",
+   "expected": "<p>2 * 3 * 4 and snake<em>case</em>name and *<em>unclosed and *a</em> b</p>"
+  },
+  {
+   "name": "nested_inline",
+   "input": "**bold with *em* and `code`** and [**link**](https://x.example)",
+   "expected": "<p><strong>bold with <em>em</em> and <code>code</code></strong> and <a href=\"https://x.example\"><strong>link</strong></a></p>"
+  },
+  {
+   "name": "deep_nesting",
+   "input": "************x************",
+   "expected": "<p><strong>*</strong><strong>*</strong><strong>x</strong><strong>*</strong><strong>*</strong></p>"
+  },
+  {
+   "name": "crlf_and_tabs",
+   "input": "- a\r\n\t- b\r\n- c",
+   "expected": "<ul><li>a<ul><li>b</li></ul><li>c</li></ul>"
+  },
+  {
+   "name": "empty",
+   "input": "",
+   "expected": ""
+  },
+  {
+   "name": "unicode",
+   "input": "# Привет **мир** 日本語 `é`\n\n- ü\n- ñ",
+   "expected": "<h1>Привет <strong>мир</strong> 日本語 <code>é</code></h1><ul><li>ü</li><li>ñ</li></ul>"
+  }
+ ]
+}
