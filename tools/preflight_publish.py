@@ -3,8 +3,8 @@
     python tools/preflight_publish.py VERSION [--registry pypi|psgallery|all]
 
 Checks (read-only, no credentials, fails closed on network errors):
-* PyPI has ui4me-core 1.x with Linux and Windows wheels and an sdist;
-* the PowerShell Gallery has UI4ME.Core 1.x;
+* PyPI has ui4me-core >=1.0.1,<2 with Linux and Windows wheels and an sdist;
+* the PowerShell Gallery has UI4ME.Core >=1.0.1,<2;
 * VERSION of ``ui4me`` (PyPI) / ``UI4ME`` (Gallery) is not already published.
 """
 from __future__ import annotations
@@ -39,22 +39,26 @@ def check_pypi(version: str) -> None:
     core = json.loads(fetch('https://pypi.org/pypi/ui4me-core/json') or b'{}')
     good = []
     for release, files in core.get('releases', {}).items():
-        if not release.startswith('1.'):
+        try:
+            components = tuple(int(v) for v in release.split('.')[:3])
+        except ValueError:
+            continue
+        if not ((1, 0, 1) <= components < (2, 0, 0)):
             continue
         names = [f['filename'] for f in files]
         if any('manylinux' in n for n in names) and any('win_amd64' in n for n in names) and any(n.endswith('.tar.gz') for n in names):
             good.append(release)
     if not good:
-        raise SystemExit('FAIL: no ui4me-core 1.x release with Linux+Windows wheels and an sdist on PyPI')
+        raise SystemExit('FAIL: no ui4me-core >=1.0.1,<2 release with Linux+Windows wheels and an sdist on PyPI')
     if fetch(f'https://pypi.org/pypi/ui4me/{version}/json') is not None:
         raise SystemExit(f'FAIL: ui4me {version} is already on PyPI; choose the next unused version')
     print(f'PASS PyPI: ui4me-core {", ".join(sorted(good))} available; ui4me {version} unused')
 
 
 def check_gallery(version: str) -> None:
-    core = [v for v in gallery_versions('UI4ME.Core') if v.startswith('1.')]
+    core = [v for v in gallery_versions('UI4ME.Core') if v.startswith('1.') and tuple(int(x) for x in v.split('.')[:3]) >= (1, 0, 1)]
     if not core:
-        raise SystemExit('FAIL: UI4ME.Core 1.x is not on the PowerShell Gallery')
+        raise SystemExit('FAIL: UI4ME.Core >=1.0.1,<2 is not on the PowerShell Gallery')
     if version in gallery_versions('UI4ME'):
         raise SystemExit(f'FAIL: UI4ME {version} is already on the PowerShell Gallery; choose the next unused version')
     print(f'PASS Gallery: UI4ME.Core {", ".join(core)} available; UI4ME {version} unused')

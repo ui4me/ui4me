@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import check_artifacts  # noqa: E402
+from sync_skills import sync as sync_skills
 
 
 def sync_assets() -> None:
@@ -43,6 +44,15 @@ def module_zip(out: Path, version: str) -> Path:
     return target
 
 
+def sync_docs() -> None:
+    """Keep published PowerShell Gallery README aligned with the canonical docs."""
+    source = ROOT / 'docs/publish/powershell-gallery.md'
+    target = ROOT / 'powershell/Ui4me/README.md'
+    if target.read_bytes() != source.read_bytes():
+        shutil.copyfile(source, target)
+        print('synced PowerShell Gallery README')
+
+
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / 'dist').resolve()
     if out.exists():
@@ -50,6 +60,8 @@ def main() -> None:
             old.unlink()
     out.mkdir(parents=True, exist_ok=True)
     sync_assets()
+    sync_skills(check=False)
+    sync_docs()
     subprocess.run([sys.executable, '-m', 'build', '--outdir', str(out), str(ROOT)], check=True)
     version = next(out.glob('ui4me-*-py3-none-any.whl')).name.split('-')[1]
     module_zip(out, version)

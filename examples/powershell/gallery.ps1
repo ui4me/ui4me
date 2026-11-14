@@ -1,5 +1,5 @@
-# UI4ME 2 PowerShell component gallery.
-# Run: Import-Module UI4ME; Start-UI4MEUiScript -Path ./examples/powershell/gallery.ps1
+﻿# UI4ME 2 PowerShell component gallery.
+# Run directly: pwsh -File ./examples/powershell/gallery.ps1
 $ErrorActionPreference = 'Stop'
 Import-Module UI4ME
 
@@ -64,6 +64,32 @@ Invoke-UI4MEApp -Title 'UI4ME 2 Component Gallery' -Width 1000 -Height 760 -Cont
             New-UI4METable -Columns @('Feature', 'State') -Rows @(
                 @{ Feature = 'Keyed lists'; State = 'DOM kept on reorder' },
                 @{ Feature = 'Background tasks'; State = 'Cancellable' })
+        }
+        'New in 2.1' = {
+            New-UI4MEHeading -Text 'Reusable desktop components' -Level 2
+            New-UI4MERow -Content {
+                New-UI4MEMetric -Label 'Checks' -Value 42 -Detail 'Ready'
+                New-UI4MEMetric -Label 'Active' -Value $progress -Detail 'Reactive'
+            }
+            New-UI4MEFieldset -Legend 'Choice selection' -Content {
+                $selected = New-UI4MEState -Value @('Testing')
+                New-UI4MEMultiSelect -Label 'Topics' -Options @('Desktop', 'Security', 'Testing') -Bind $selected
+                New-UI4MESegmented -Label 'Scale' -Options @('Small', 'Medium', 'Large')
+            }
+            New-UI4MEResizableSplit -Side {
+                New-UI4METext -Text 'Left panel'
+                New-UI4MEIcon -Name folder -Label 'Folder'
+            } -Main {
+                New-UI4MEHeading -Text 'Adjustable pane' -Level 3
+                New-UI4METooltip -Text 'Available on hover and keyboard focus' -Content {
+                    New-UI4MEButton -Text 'Hover or focus me'
+                }
+            }
+            $galleryLog = New-UI4MELog -MaxLines 80 -Label 'Gallery events'
+            New-UI4MEButton -Text 'Add log entry' -OnClick {
+                Add-UI4MELogLine -Element $galleryLog -Text ('Updated at ' + (Get-Date -Format HH:mm:ss))
+            }
+            New-UI4MECopyButton -Text 'UI4ME PowerShell gallery' -Label 'Copy description'
         }
         'Feedback' = {
             New-UI4MEProgress -Label 'Work' -Value $progress

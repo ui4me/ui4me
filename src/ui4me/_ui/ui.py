@@ -35,7 +35,7 @@ __all__ = [
     "chat", "image", "component", "sleep", "stylesheet", "stylesheet_file", "current_app", "Signal", "Computed", "NativeMenuItem", "surface", "paper", "toolbar", "header", "footer", "statusbar", "section",
     "center", "sticky", "container", "aspect", "kbd", "inline_code", "mark", "avatar", "link", "icon",
     "icon_names", "icon_button", "breadcrumbs", "disclosure", "accordion", "drawer", "segmented", "tree",
-    "TreeNode", "slot", "date", "time", "datetime", "month", "week", "color", "email", "url", "search",
+    "TreeNode", "slot", "fieldset", "multiselect", "resizable_split", "metric", "tooltip", "copy_button", "date", "time", "datetime", "month", "week", "color", "email", "url", "search",
     "telephone", "density", "theme_preset", "combobox", "command_palette", "path", "file_input", "query_table", "PageResult", "menu", "MenuItem", "progress_ring", "sparkline",
 ]
 
@@ -638,12 +638,13 @@ def table(rows: Any, *, columns: Any = None, key: Any = None, search: bool = Fal
 
 def form(model: Any, *, value: Any = None, on_submit: Callable | None = None, exclude: Sequence[str] = (),
          submit_label: str = "Save", on_cancel: Callable | None = None, cancel_label: str = "Cancel",
-         validate: Callable | None = None, columns: int = 1, reset_on_submit: bool = False, **kw: Any):
+         validate: Callable | None = None, columns: int = 1, reset_on_submit: bool = False,
+         validation_mode: str = "submit", **kw: Any):
     """Generate a validated form from a dataclass type."""
     from .components.forms import Form
     return Form(model, value=value, on_submit=on_submit, exclude=exclude, submit_label=submit_label,
                 on_cancel=on_cancel, cancel_label=cancel_label, validate=validate, columns=columns,
-                reset_on_submit=reset_on_submit, **kw)
+                reset_on_submit=reset_on_submit, validation_mode=validation_mode, **kw)
 
 
 def query_table(loader: Callable, *, key: Any, columns: Any, page_size: int = 50,
@@ -698,3 +699,43 @@ def component(fn: Callable[..., Any]) -> Callable[..., Component]:
             pop(frame)
         return scope
     return make
+
+
+# ---- 2.1 composable desktop primitives -------------------------------------------------------
+
+def fieldset(legend: str, *, description: str | None = None, **kw: Any):
+    """Group related controls with a semantic fieldset and legend."""
+    from .components.extended import Fieldset
+    return Fieldset(legend, description=description, **kw)
+
+
+def multiselect(label: str, *, options: Any, value: Sequence[Any] = (),
+                bind: Signal | None = None, on_change: Callable | None = None, **kw: Any):
+    """Select several values using native labelled checkboxes (no browser popup)."""
+    from .components.extended import MultiSelect
+    return MultiSelect(label, options=options, value=value, bind=bind, on_change=on_change, **kw)
+
+
+def resizable_split(*, percent: int = 35, minimum: int = 15, maximum: int = 85,
+                    label: str = "Resize panels", **kw: Any):
+    """Two panes adjusted by a native keyboard-operable range control."""
+    from .components.extended import ResizableSplit
+    return ResizableSplit(percent=percent, minimum=minimum, maximum=maximum, label=label, **kw)
+
+
+def metric(label: str, value: Any, *, detail: Any = None, tone: str = "default", **kw: Any):
+    """A reactive KPI/statistic with an accessible label."""
+    from .components.extended import Metric
+    return Metric(label, value, detail=detail, tone=tone, **kw)
+
+
+def tooltip(text: str, **kw: Any):
+    """CSS hover/focus tooltip; place a trigger inside the context manager."""
+    from .components.extended import Tooltip
+    return Tooltip(text, **kw)
+
+
+def copy_button(text: Any, *, label: str = "Copy", on_copy: Callable | None = None, **kw: Any):
+    """Copy plain text to the native clipboard with a normal button."""
+    from .components.extended import CopyButton
+    return CopyButton(text, label=label, on_copy=on_copy, **kw)

@@ -2,8 +2,15 @@
 Describe 'Static safety' {
     BeforeAll {
         $tokens = $null; $errors = $null
-        $script:ast = [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psm1'), [ref]$tokens, [ref]$errors)
+        $root = Join-Path $PSScriptRoot '..\Ui4me'
+        $files = @((Join-Path $root 'Ui4me.psm1')) + @(
+            Get-ChildItem (Join-Path $root 'private') -Filter '*.ps1' -File | Sort-Object Name | Select-Object -ExpandProperty FullName)
+        $script:asts = @()
+        foreach ($file in $files) {
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors)
+            $script:asts += $ast
+        }
+        $errors | Should -BeNullOrEmpty
     }
 
     It 'never reassigns a parameter variable inside the function body' {
@@ -15,7 +22,7 @@ Describe 'Static safety' {
         $isAssignment = { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
             $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] }
         $problems = New-Object System.Collections.ArrayList
-        foreach ($fn in $script:ast.FindAll($isFunction, $true)) {
+        foreach ($ast in $script:asts) { foreach ($fn in $ast.FindAll($isFunction, $true)) {
             $params = @()
             if ($fn.Body.ParamBlock) {
                 $params = @($fn.Body.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath.ToLowerInvariant() })
@@ -33,12 +40,13 @@ Describe 'Static safety' {
                 }
             }
         }
+        }  # all split module files
         @($problems) | Should -BeNullOrEmpty
     }
 
     It 'contains no .GetNewClosure() in module code (closures lose module-private functions)' {
         $isClosure = { param($n) $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
             $n.Member.Extent.Text -eq 'GetNewClosure' }
-        @($script:ast.FindAll($isClosure, $true)) | Should -BeNullOrEmpty
+        foreach ($ast in $script:asts) { @($ast.FindAll($isClosure, $true)) | Should -BeNullOrEmpty }
     }
 }

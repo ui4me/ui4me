@@ -94,18 +94,36 @@ class FakeCoreWindow:
 
 class FakeCoreApp:
     last = None
+    last_start_options = None
     def __init__(self):
         self.rpc = FakeRPC()
+        self.rpc.on_notification('window.event', self._window_event)
+        self._window_listeners = []
         self._windows = {}
         self.ready_called = False
         self.is_closed = False
         FakeCoreApp.last = self
     @classmethod
+    def start(cls, **options):
+        cls.last_start_options = options
+        return cls()
+    @classmethod
     def from_environment(cls):
         return cls()
+    def on_shutdown(self, callback):
+        self._shutdown_listener = callback
+    def on_window_event(self, callback):
+        self._window_listeners.append(callback)
+        def unsubscribe():
+            self._window_listeners.remove(callback)
+        return unsubscribe
     def _window_event(self, event):
         if event.get('type') == 'closed':
-            self._windows.pop(event.get('window_id'), None)
+            window = self._windows.pop(event.get('window_id'), None)
+            if window is not None:
+                window.closed = True
+        for callback in list(self._window_listeners):
+            callback(event)
     def open_html(self, html, *, title, width, height, asset_root=None):
         window = FakeCoreWindow(self, html)
         self._windows[window.id] = window
@@ -126,7 +144,7 @@ class FakeCoreApp:
 @pytest.fixture
 def fake_core(monkeypatch):
     module = ModuleType('ui4me_core')
-    module.__version__ = '1.0.0'
+    module.__version__ = '1.0.1'
     module.Application = FakeCoreApp
     monkeypatch.setitem(sys.modules, 'ui4me_core', module)
     monkeypatch.setenv('UI4ME_ENDPOINT','test-endpoint')
@@ -189,11 +207,28 @@ def test_unsupported_legacy_native_services_fail_explicitly(fake_core):
     app.close()
 
 
-def test_direct_execution_without_host_has_actionable_error(fake_core, monkeypatch):
+def test_direct_execution_uses_core_start_without_manually_launching_host(fake_core, monkeypatch):
     from ui4me import ui
-    monkeypatch.delenv('UI4ME_ENDPOINT')
-    with pytest.raises(RuntimeError, match='ui4me-run'):
-        ui.app('Outside host')
+    monkeypatch.delenv('UI4ME_ENDPOINT', raising=False)
+    monkeypatch.delenv('UI4ME_TOKEN', raising=False)
+    with ui.app('Outside host', app_id='org.example.Direct') as app:
+        ui.text('Ready')
+    assert FakeCoreApp.last_start_options == {
+        'name': 'Outside host', 'app_id': 'org.example.Direct', 'instance': 'single'
+    }
+    assert app.main.core.document is FakeCoreApp.last._windows['window-1'].document
+    app.close()
+
+
+def test_native_core_window_event_subscription_is_not_overwritten(fake_core):
+    from ui4me import ui
+    with ui.app('Delegation') as app:
+        ui.text('Ready')
+    native = FakeCoreApp.last
+    assert native.rpc.callbacks['window.event'].__self__ is native
+    assert len(native._window_listeners) == 1
+    app.close()
+    assert native._window_listeners == []
 
 
 def test_manifest_safe_escaping(tmp_path):
@@ -439,3 +474,95 @@ def test_one_shot_timers_are_released_and_settings_remove_none(fake_core, tmp_pa
     app.settings.remove('k')
     assert 'k' not in app.settings and json.loads(app.settings.path.read_text()) == {}
     app.close()
+
+
+def test_extended_components_are_owned_accessible_and_reactive(fake_core):
+    from ui4me import ui
+    with ui.app('Components') as app:
+        metric_value = ui.state(4)
+        stats = ui.metric('Pending jobs', lambda: metric_value.value, detail='Running normally')
+        with ui.fieldset('Options', description='Select the enabled features'):
+            selection = ui.multiselect('Features', options={'a': 'Alpha', 'b': 'Beta'}, value=('a',))
+        split = ui.resizable_split(percent=30)
+        with split.side:
+            ui.text('Sidebar')
+        with split.main:
+            ui.text('Content')
+        with ui.tooltip('Details about the action'):
+            ui.button('Help')
+        copy = ui.copy_button('example text')
+    html = app.main.document()
+    assert '<fieldset' in html and 'aria-describedby=' in html
+    assert 'role="tooltip"' in html
+    assert 'Resize panels' in html
+    assert 'Pending jobs' in html
+    assert 'type="range"' in html
+    selection.items['b']._on_toggle({'checked': True})
+    app.scheduler.flush()
+    assert selection.value == ('a', 'b')
+    selection.set_value(('b',))
+    assert selection.value == ('b',)
+    split.resize(44)
+    assert split.position.peek() == 44
+    metric_value.set(13)
+    app.scheduler.flush()
+    assert stats._value_el.text == '13'
+    copy._clicked({'type': 'click'})
+    app.close()
+
+
+def test_form_tracks_dirty_touched_validation_and_reset(fake_core):
+    from dataclasses import dataclass, field
+    from ui4me import ui
+
+    @dataclass
+    class Contact:
+        email: str = field(default='', metadata={'required': True, 'pattern': 'email'})
+
+    saved = []
+    with ui.app('Contact') as app:
+        form = ui.form(Contact, validation_mode='change', on_submit=lambda value: saved.append(value))
+    assert not form.dirty.peek()
+    assert not form.touched.peek()
+    email = form.fields['email']
+    email._on_input({'value': 'not-an-email'})
+    app.scheduler.flush()
+    assert form.dirty.peek()
+    assert form.touched.peek() == frozenset({'email'})
+    assert not form.valid.peek()
+    assert email.error
+    email._on_input({'value': 'hello@example.com'})
+    app.scheduler.flush()
+    assert form.valid.peek()
+    assert form.submit()
+    assert saved[0].email == 'hello@example.com'
+    assert not form.dirty.peek()
+    form.reset()
+    assert not form.dirty.peek()
+    assert not form.touched.peek()
+    app.close()
+
+
+def test_all_python_showcases_construct_with_core_contract(fake_core, monkeypatch, tmp_path):
+    """Every README/gallery reference app must build without unsupported API calls.
+
+    Uses fake Core/DOM only; this is NOT evidence of native GUI usability.
+    """
+    import runpy
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    original_ready = FakeCoreApp.ready
+
+    def stop_after_start(self):
+        original_ready(self)
+        self.rpc.shutdown_requested.set()
+
+    monkeypatch.setattr(FakeCoreApp, 'ready', stop_after_start)
+    for name in ('gallery.py', 'operations_dashboard.py', 'settings_manager.py'):
+        with pytest.MonkeyPatch.context() as isolated:
+            isolated.setenv('UI4ME_TEST_MODE', '1')
+            runpy.run_path(str(root / 'examples/python' / name), run_name='__main__')
+            assert FakeCoreApp.last is not None
+            assert FakeCoreApp.last.ready_called

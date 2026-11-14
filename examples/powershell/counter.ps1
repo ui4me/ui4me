@@ -1,5 +1,5 @@
-# Start with: Start-UI4MEUiScript -Path ./examples/powershell/counter.ps1 -Title 'Counter'
-# Or create an app.toml and run Start-UI4MEHost -Manifest ./app.toml.
+# Run directly: pwsh -File ./examples/powershell/counter.ps1 (or powershell.exe -File on Windows).
+# Compatibility mode: Start-UI4MEUiScript -Path ./examples/powershell/counter.ps1 -Title 'Counter'
 $ErrorActionPreference = 'Stop'
 Import-Module UI4ME
 

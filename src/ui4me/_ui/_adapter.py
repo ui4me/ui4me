@@ -1,4 +1,4 @@
-"""UI4ME Core 1.0 host adapter for the UI4ME 2.0 component engine.
+"""UI4ME Core 1.0.1+ adapter for the UI4ME 2 component framework.
 
 This translates the former in-process UI interface to the *published*
 ``ui4me_core`` document/window API.  No native renderer, protocol or second
@@ -15,12 +15,13 @@ import concurrent.futures
 import os
 import queue
 import threading
+import time
 from typing import Any, Callable
 
 
 def unsupported(name: str) -> None:
     raise NotImplementedError(
-        f"{name} is not exposed by the UI4ME Core 1.0.0 Python host API. "
+        f"{name} is not exposed by the current UI4ME Core Python host API. "
         "Use an in-window UI or add this service through a separately reviewed Core change."
     )
 
@@ -88,16 +89,15 @@ class App:
     """UI-owner-thread bridge around ``ui4me_core.Application``."""
     # Core 1.0 window.event type -> UI4ME window event name
     _WINDOW_EVENT_NAMES = {'dropped_files': 'file_drop', 'dropped_text': 'text_drop'}
-    def __init__(self, *, backend: str = 'native', app_id: str = 'org.ui4me.ui', handle_sigint: bool = True):
+    def __init__(self, *, backend: str = 'native', app_id: str | None = None,
+                 name: str = "UI4ME", handle_sigint: bool = True):
         if backend != 'native':
-            raise RuntimeError('Core 1.0 has no public headless App backend; run actual native host tests')
+            raise RuntimeError('Use the native host headless test mode; the UI4ME component backend is always native')
         from ui4me_core import Application
-        if not os.environ.get('UI4ME_ENDPOINT') or not os.environ.get('UI4ME_TOKEN'):
-            raise RuntimeError(
-                'UI4ME applications must be started by the native host. '
-                'Use `ui4me-run your_app.py` or `ui4me-host run --app app.toml`; '
-                'do not directly invoke `python your_app.py`.')
-        self.native = Application.from_environment()
+        # Core 1.0.1 performs the only host bootstrap. A direct Python invocation
+        # starts the supervised native host, and a host-launched backend connects.
+        # Do not copy its private manifest/IPC/token handling into the UI package.
+        self.native = Application.start(name=name, app_id=app_id, instance="single")
         self.owner = threading.get_ident()
         self.app_id = app_id
         self.closed = False
@@ -116,13 +116,9 @@ class App:
         self._install_native_events()
 
     def _install_native_events(self):
-        original_window = getattr(self.native, '_window_event', None)
-        if original_window is None:
-            raise RuntimeError(
-                'UI4ME Core 1.0 window events changed: the UI bridge needs a public '
-                'window-event subscription API; see docs/CORE_HANDOFF_2.md')
+        # Core 1.0.1 delivers this only AFTER its own bookkeeping (retiring
+        # closed windows and stale documents). Never override its RPC handlers.
         def relay(event):
-            original_window(event)  # keep Core's generational state and stale-reference protection
             win = self._windows.get(event.get('window_id'))
             if win is None:
                 return
@@ -137,10 +133,13 @@ class App:
             data = event.get('data') if isinstance(event.get('data'), dict) else {}
             flat = {**data, **event, 'type': kind}  # e.g. event['paths'] for file_drop
             self._post_safely(lambda w=win, k=kind, e=flat: w._notify(k, e))
-        self.native.rpc.on_notification('window.event', relay)
+        self._unsub_window = self.native.on_window_event(relay)
         def shutdown(event):
             for callback in self._events.get('stopped', ()): 
                 self._post_safely(lambda cb=callback: cb({'type': 'stopped'}))
+        # UI4ME owns a separate owner-thread pump rather than calling Core.run(),
+        # so observe the transport's shutdown notification. The transport still
+        # sets its own shutdown_requested flag, independently of this callback.
         self.native.rpc.on_notification('app.shutdown', shutdown)
 
     def _post_safely(self, fn):
@@ -212,19 +211,48 @@ class App:
         self._timers.add(timer)
         return timer
 
-    def run(self):
+    # Owner-loop coalescing: items already waiting run back to back inside one
+    # ``group()`` (UiApp passes its scheduler batch) so they share one reactive
+    # flush and DOM commit instead of one synchronous Core round trip each.
+    GROUP_ITEMS = 32
+    GROUP_SECONDS = 0.010
+
+    def run(self, *, group: Callable[[], Any] | None = None):
         # Core owns the native host event loop. The Python main thread instead
         # serializes UI mutations posted by its own host-event worker and timers.
         self.native.ready()
-        while not self.closed and not self.native.rpc.shutdown_requested.is_set():
+        shutdown = self.native.rpc.shutdown_requested
+        while not self.closed and not shutdown.is_set():
             try:
                 item = self._next(0.08)
             except queue.Empty:
                 if self.native.rpc.closed:
                     raise RuntimeError('UI4ME Core host disconnected unexpectedly')
                 continue
-            if item is not None:
+            if item is None:
+                continue
+            if group is None:
                 self._execute(item)
+                continue
+            with group():
+                self._execute(item)
+                count, deadline = 1, time.monotonic() + self.GROUP_SECONDS
+                while (count < self.GROUP_ITEMS and time.monotonic() < deadline
+                       and not self.closed and not shutdown.is_set()):
+                    try:
+                        item = self._next(0)
+                    except queue.Empty:
+                        break
+                    if item is not None:
+                        self._execute(item)
+                        count += 1
+        # app.shutdown uses a lifecycle queue; the last window.closed may still
+        # be in Core's ordered event queue. Wait for events received before
+        # shutdown, then consume owner-thread callbacks, preserving on_close.
+        if not self.closed:
+            wait = getattr(self.native.rpc, "wait_for_notifications", None)
+            if wait is not None:
+                wait(2.0)
         self._drain()
 
     def _drain(self, seconds: float = 0.5) -> None:
@@ -234,7 +262,6 @@ class App:
         the final ``closed`` window events and state updates can still be queued
         here. They run once; anything posted after the deadline is cancelled.
         """
-        import time
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             try:
@@ -255,7 +282,10 @@ class App:
         for timer in list(self._timers):
             timer.cancel()
         self._workers.shutdown(wait=False, cancel_futures=True)
-        self.native.close()
+        try:
+            self._unsub_window()
+        finally:
+            self.native.close()
         while self._priority:
             self._priority.popleft()[1].cancel()
         while True:

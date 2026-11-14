@@ -149,15 +149,25 @@ class Form(Container):
     def __init__(self, model: type, *, value: Any = None, on_submit: Callable | None = None,
                  exclude: Sequence[str] = (), submit_label: str = "Save", on_cancel: Callable | None = None,
                  cancel_label: str = "Cancel", validate: Callable | None = None, columns: int = 1,
-                 reset_on_submit: bool = False, **kw: Any):
+                 reset_on_submit: bool = False, validation_mode: Literal["submit", "change", "blur"] = "submit",
+                 **kw: Any):
         self.model = model
         self.specs = describe(model, exclude)
         self._value = value
         self._on_submit = adapt(on_submit, None)
         self._on_cancel = adapt(on_cancel, None)
         self._validate = validate
+        if validation_mode not in ("submit", "change", "blur"):
+            raise InvalidComponentProps("validation_mode must be submit, change or blur")
+        if not 1 <= columns <= 6:
+            raise InvalidComponentProps("form columns must be between 1 and 6")
+        self.validation_mode = validation_mode
         self._columns = columns
         self._reset_on_submit = reset_on_submit
+        self.dirty = Signal(False, name="form dirty")
+        self.touched = Signal(frozenset(), name="form touched fields")
+        self.valid = Signal(True, name="form validated")
+        self._initial_snapshot: dict[str, Any] = {}
         self.submitting = Signal(False, name="form submitting")
         self.form_error: Signal[str | None] = Signal(None, name="form error")
         self.fields: dict[str, Any] = {}
@@ -216,6 +226,9 @@ class Form(Container):
                                         on_change=lambda _v, n=spec.name: self._edited(n),
                                         on_submit=lambda _v: self.submit(), **common)
                 self.fields[spec.name] = control
+                if self.validation_mode == "blur":
+                    control._listen(control._focus_target().id, "blur",
+                                    lambda _event, field=spec.name: self._validate_field(field))
         finally:
             pop(frame)
         actions = push(Frame(self.app, self, self._actions, self.window))
@@ -226,15 +239,37 @@ class Form(Container):
         finally:
             pop(actions)
         self._bind(lambda: self.form_error.value, self._show_form_error, "form error")
+        self._initial_snapshot = self._snapshot()
 
     def _show_form_error(self, message: Any) -> None:
         self._error_el.set_text(message or "")
         self._error_el.set_attr("hidden", not message)
 
+    def _snapshot(self) -> dict[str, Any]:
+        return {name: control.state.peek() for name, control in self.fields.items()}
+
+    def mark_clean(self) -> None:
+        """Commit the current form values as the pristine baseline after saving."""
+        self._initial_snapshot = self._snapshot()
+        self.dirty.set(False)
+        self.touched.set(frozenset())
+
     def _edited(self, name: str) -> None:
+        self.touched.set(self.touched.peek() | {name})
+        self.dirty.set(self._snapshot() != self._initial_snapshot)
         control = self.fields[name]
         if control.error_signal.peek() if hasattr(control, "error_signal") else False:
             control.set_error(None)
+        if self.validation_mode == "change":
+            self._validate_field(name)
+
+    def _validate_field(self, name: str) -> str | None:
+        spec = next(s for s in self.specs if s.name == name)
+        control = self.fields[name]
+        message = check(spec, control.state.peek())
+        control.set_error(message)
+        self.valid.set(all(not self.fields[s.name].error for s in self.specs))
+        return message
 
     # -- values ---------------------------------------------------------------------------------
     @property
@@ -269,6 +304,7 @@ class Form(Container):
             if hasattr(control, "set_error"):
                 control.set_error(by_field.get(name))
         self.form_error.set(by_field.get("__form__"))
+        self.valid.set(not bool(issues))
         if issues and focus:
             first = next((self.fields[i.field] for i in issues if i.field in self.fields), None)
             if first is not None and first.mounted:
@@ -327,10 +363,14 @@ class Form(Container):
                     self.form_error.set(f"Could not save: {future.error}")
                 elif self._reset_on_submit:
                     self.reset()
+                else:
+                    self.mark_clean()
             result.add_done_callback(settled)
             return result
         if self._reset_on_submit:
             self.reset()
+        else:
+            self.mark_clean()
         return True
 
     def reset(self, value: Any = None) -> None:
@@ -343,6 +383,8 @@ class Form(Container):
             if hasattr(control, "set_error"):
                 control.set_error(None)
         self.form_error.set(None)
+        self.valid.set(True)
+        self.mark_clean()
 
     def set_value(self, value: Any) -> None:
         """Load a model instance into the form."""

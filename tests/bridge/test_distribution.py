@@ -14,7 +14,7 @@ def test_python_name_version_dependency_and_console_script():
     project = meta['project']
     assert project['name'] == 'ui4me'
     assert re.fullmatch(r'2\.\d+\.\d+', project['version'])
-    assert project['dependencies'] == ['ui4me-core>=1.0.0,<2.0.0']
+    assert project['dependencies'] == ['ui4me-core>=1.0.1,<2.0.0']
     assert meta['project']['scripts']['ui4me-run'] == 'ui4me.launcher:main'
 
 
@@ -37,12 +37,13 @@ def test_powershell_ui_has_own_core_dependency_without_legacy_engine():
     version = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
     assert f"ModuleVersion = '{version}'" in manifest  # both bindings release together
     assert "ModuleName = 'UI4ME.Core'" in manifest
-    assert 'Connect-UI4ME' in module
-    assert 'Set-UI4MEReady' in module
-    assert 'Wait-UI4ME' in module
-    assert 'Start-UI4MEHost' in module
-    assert 'Add-Type' not in module
-    definitions = set(re.findall(r'^function\s+([A-Za-z0-9-]+)\s*\{', module, flags=re.M))
+    sources = module + ''.join(p.read_text(encoding='utf8') for p in (ROOT/'powershell/Ui4me/private').glob('*.ps1'))
+    assert 'Start-UI4MEScript' in sources
+    assert 'Set-UI4MEReady' in sources
+    assert 'Wait-UI4ME' in sources
+    assert 'Start-UI4MEHost' in sources
+    assert 'Add-Type' not in sources
+    definitions = set(re.findall(r'^function\s+([A-Za-z0-9-]+)\s*\{', sources, flags=re.M))
     declared = set(re.findall(r"'((?:Invoke|New|Get|Set|Show|Add|Start)-UI4ME[A-Za-z0-9-]+)'", manifest))
     assert declared <= definitions, sorted(declared - definitions)
     assert len(declared) >= 30

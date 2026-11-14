@@ -20,13 +20,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install (real ui4me-core 1.x from PyPI)
-        run: python -m pip install -e . pytest
+      - name: Install (pin qualified ui4me-core 1.0.1 from PyPI)
+        run: python -m pip install 'ui4me-core==1.0.1' -e . pytest
       - name: Unit, bridge and real-host (headless) tests
         env:
           UI4ME_ALLOW_UNSUPERVISED: '1'
         run: python -m pytest -q -rs
       - run: python -m compileall -q src
+      - run: python tools/sync_skills.py --check
 
   pester:
     name: Pester / ${{ matrix.shell }} / ${{ matrix.os }}
@@ -48,7 +49,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $dir = Join-Path $PWD '.psmodules'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          Save-Module -Name UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Path $dir
+          Save-Module -Name UI4ME.Core -MinimumVersion 1.0.1 -MaximumVersion 1.999.999 -Repository PSGallery -Path $dir
           Save-Module -Name Pester -MinimumVersion 5.5.0 -Repository PSGallery -Path $dir
       - name: Run Pester
         run: |
@@ -98,7 +99,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $root = Join-Path ([IO.Path]::GetTempPath()) 'gallery-layout'
           New-Item -ItemType Directory -Force -Path $root | Out-Null
-          Save-Module -Name UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Path $root
+          Save-Module -Name UI4ME.Core -MinimumVersion 1.0.1 -MaximumVersion 1.999.999 -Repository PSGallery -Path $root
           $zip = (Get-Item ./dist/UI4ME-*.zip).FullName
           $version = (Get-Item $zip).BaseName -replace '^UI4ME-', ''
           $staging = Join-Path $root 'zip'

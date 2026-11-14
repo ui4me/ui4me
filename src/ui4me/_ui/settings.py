@@ -74,6 +74,8 @@ class Settings:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(text)
+                f.flush()
+                os.fsync(f.fileno())  # never replace good settings with an unwritten file
             os.replace(tmp, self.path)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)

@@ -153,6 +153,8 @@ class Dialog(Container):
             raise UiError("the dialog's window is not open yet; open dialogs from callbacks")
         if self._future is None or self._future.done:
             self._future = UiFuture(self.app, "dialog")
+        if not self.is_open.peek():
+            self._opener = self._focused_element()
         self.window._queue({"op": "show_dialog", "element": self.root.id, "modal": self._modal})
         self.is_open.set(True)
         self._touch()
@@ -170,6 +172,39 @@ class Dialog(Container):
     def _closed(self, event: dict) -> None:
         self._finish(getattr(self, "_result", None))
 
+    def _focused_element(self) -> str | None:
+        """The element that has native focus now (the opener), if Core reports one."""
+        try:
+            info = self.window.core.document.focused_element() or {}
+        except Exception:  # no live document, or a Core without focus reporting
+            return None
+        element = info.get("element") if isinstance(info, dict) else None
+        return element if isinstance(element, str) and element else None
+
+    def _restore_focus(self) -> None:
+        # Core restores focus to the opener natively, but an opener whose handler
+        # returned the dialog's future (``on_click=lambda: dlg.open()``) is disabled as
+        # "busy" until the dialog closes, so that native restore is rejected. Refocus
+        # after the current dispatch has flushed the re-enable. A focus op for an
+        # opener removed meanwhile is ignored by UiWindow._send_single.
+        opener, self._opener = getattr(self, "_opener", None), None
+        window = self.window
+        if not opener or window is None or window.closed or window.core is None:
+            return
+
+        def refocus() -> None:
+            if window.closed or window.core is None or self.is_open.peek():
+                return
+            # Apply pending reactions (the opener's re-enable) first: owner-loop
+            # coalescing may run this in the same group as the close event.
+            self.app.scheduler.flush()
+            window._queue({"op": "focus", "element": opener})
+            self.app._request_commit()
+        try:
+            self.app.post(refocus)
+        except UiError:  # app stopping or owner queue saturated: focus no longer matters
+            pass
+
     def _finish(self, result: Any) -> None:
         was_open = self.is_open.peek()
         self.is_open.set(False)
@@ -177,6 +212,8 @@ class Dialog(Container):
         future, self._future = self._future, None
         if future is not None and not future.done:
             future.set_result(result)
+        if was_open:
+            self._restore_focus()
         if was_open and self._on_close is not None:
             self._emit(self._on_close, result)
 

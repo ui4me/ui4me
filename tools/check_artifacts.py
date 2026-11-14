@@ -47,14 +47,21 @@ def verify(folder: Path) -> str:
         if metadata['Name'] != 'ui4me':
             fail(f"wheel name is {metadata['Name']}")
         requires = metadata.get_all('Requires-Dist', [])
-        if not any(re.fullmatch(r'ui4me-core\s*(\(?)\s*<2(\.0\.0)?\s*,\s*>=1\.0\.0\)?|ui4me-core\s*>=1\.0\.0\s*,\s*<2(\.0\.0)?', r.strip()) for r in requires):
-            fail(f'wheel must require ui4me-core>=1.0.0,<2: {requires}')
+        if not any(re.fullmatch(r'ui4me-core\s*(\(?)\s*<2(\.0\.0)?\s*,\s*>=1\.0\.1\)?|ui4me-core\s*>=1\.0\.1\s*,\s*<2(\.0\.0)?', r.strip()) for r in requires):
+            fail(f'wheel must require ui4me-core>=1.0.1,<2: {requires}')
         for required in ('ui4me/__init__.py', 'ui4me/launcher.py', 'ui4me/_ui/_adapter.py',
                          'ui4me/_ui/assets/theme.css', 'ui4me/_ui/assets/functional.css', 'ui4me/_ui/py.typed'):
             if required not in names:
                 fail(f'wheel lacks {required}')
-        if 'ui4me-run = ui4me.launcher:main' not in z.read([n for n in names if n.endswith('entry_points.txt')][0]).decode():
-            fail('wheel lacks the ui4me-run entry point')
+        entry_points = z.read([n for n in names if n.endswith('entry_points.txt')][0]).decode()
+        for entry in ('ui4me-run = ui4me.launcher:main', 'ui4me-ui-new = ui4me.scaffold:main',
+                      'ui4me-ui-skill = ui4me.skills:main'):
+            if entry not in entry_points:
+                fail(f'wheel lacks entry point: {entry}')
+        for skill in ('ui4me/_skills/ui4me-ui-python/SKILL.md',
+                      'ui4me/_skills/ui4me-ui-python/references/components.md'):
+            if skill not in names:
+                fail(f'wheel lacks bundled agent skill: {skill}')
         init = z.read('ui4me/__init__.py').decode()
         if f"__version__ = '{version}'" not in init:
             fail('ui4me.__version__ differs from the wheel version')
@@ -65,6 +72,12 @@ def verify(folder: Path) -> str:
         check_names('sdist', names)
         if not any(n.endswith('/LICENSE') for n in names) or not any(n.endswith('/pyproject.toml') for n in names):
             fail('sdist lacks LICENSE or pyproject.toml')
+        for required in ('docs/publish/pypi.md', 'docs/publish/powershell-gallery.md',
+                         'powershell/Ui4me/README.md', 'powershell/Ui4me/private/55-advanced.ps1',
+                         'powershell/Ui4me/skills/ui4me-ui-powershell/SKILL.md',
+                         'tools/release/SOURCE_FILES.sha256', 'specs/LOCAL_AGENT_HANDOFF.md'):
+            if not any(n.endswith('/' + required) for n in names):
+                fail(f'sdist lacks {required}')
     if modules[0].name != f'UI4ME-{version}.zip':
         fail(f'PowerShell module zip {modules[0].name} does not match version {version}')
     with ZipFile(modules[0]) as z:
@@ -77,7 +90,10 @@ def verify(folder: Path) -> str:
         if tops != {'Ui4me'}:
             fail(f"module zip must contain only the 'Ui4me/' folder (Gallery id casing), got {sorted(tops)}")
         for required in ('Ui4me/Ui4me.psd1', 'Ui4me/Ui4me.psm1', 'Ui4me/LICENSE',
-                         'Ui4me/assets/theme.css', 'Ui4me/assets/functional.css'):
+                         'Ui4me/assets/theme.css', 'Ui4me/assets/functional.css',
+                         'Ui4me/README.md', 'Ui4me/private/20-application.ps1',
+                         'Ui4me/private/55-advanced.ps1', 'Ui4me/private/95-skills.ps1',
+                         'Ui4me/skills/ui4me-ui-powershell/SKILL.md'):
             if required not in names:
                 fail(f'module zip lacks {required}')
         manifest = z.read('Ui4me/Ui4me.psd1').decode('utf-8-sig')

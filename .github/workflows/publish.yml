@@ -96,7 +96,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY is not configured for the psgallery environment' }
           Expand-Archive -Path (Get-Item ./dist/UI4ME-*.zip).FullName -DestinationPath ./module
-          Install-Module UI4ME.Core -MinimumVersion 1.0.0 -MaximumVersion 1.999.999 -Repository PSGallery -Scope CurrentUser -Force
+          Install-Module UI4ME.Core -MinimumVersion 1.0.1 -MaximumVersion 1.999.999 -Repository PSGallery -Scope CurrentUser -Force
           $manifest = Test-ModuleManifest ./module/Ui4me/Ui4me.psd1
           if ($manifest.Version.ToString() -ne $env:VERSION) { throw "Module version $($manifest.Version) != $env:VERSION" }
           Publish-Module -Path ./module/Ui4me -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery

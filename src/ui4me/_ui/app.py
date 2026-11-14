@@ -39,7 +39,7 @@ class UiApp:
         self.title = title
         self.backend = backend
         self.app_id = app_id or _derived_app_id(title)
-        self.core = ui4me.App(backend=backend, app_id=self.app_id,
+        self.core = ui4me.App(backend=backend, app_id=app_id, name=title,
                               handle_sigint=threading.current_thread() is threading.main_thread())
         self.closed = False
         self.running = False
@@ -84,6 +84,10 @@ class UiApp:
     def __exit__(self, exc_type, exc, tb) -> None:
         pop(self._frame)
         if exc is not None:
+            if not isinstance(exc, (SystemExit, KeyboardInterrupt)):
+                # Closing the Core connection makes the host end this backend at once,
+                # which would lose the traceback Python prints only afterwards.
+                _report_before_disconnect(exc)
             self._shutdown()
             return
         self.main.open()
@@ -141,7 +145,7 @@ class UiApp:
             self.after(float(smoke), self.stop)
         self.running = True
         try:
-            self.core.run()
+            self.core.run(group=self.scheduler.batch)
         finally:
             self.running = False
             self._shutdown()
@@ -383,10 +387,42 @@ class UiApp:
 
 
 def _derived_app_id(title: str) -> str:
-    """Stable default id from the title (used for the settings folder): 'My App' -> org.ui4me.app.my-app."""
+    """Stable default id from the title (used for the settings folder): 'My App' -> org.ui4me.app.my-app.
+
+    A title without ASCII letters or digits (for example '日本語ツール') gets a short
+    hash of the title instead of a shared 'app' id, so unrelated apps never share settings.
+    Python and PowerShell derive the same id.
+    """
+    import hashlib
     import re
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "app"
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60]
+    if not slug:
+        slug = "app-" + hashlib.sha256(title.encode("utf-8")).hexdigest()[:12]
     return f"org.ui4me.app.{slug}"
+
+
+_REPORTED = "_ui4me_traceback_reported"  # same marker as ui4me_core.application
+
+
+def _report_before_disconnect(error: BaseException) -> None:
+    """Print ``error``'s traceback now and keep Python from printing it a second time."""
+    import sys
+    import traceback
+    try:
+        traceback.print_exception(type(error), error, error.__traceback__)
+        sys.stderr.flush()
+        setattr(error, _REPORTED, True)
+    except Exception:  # reporting must never replace the application's error
+        return
+    previous = sys.excepthook
+    if getattr(previous, "_ui4me_hook", False):
+        return
+
+    def hook(kind, value, trace):
+        if not getattr(value, _REPORTED, False):
+            previous(kind, value, trace)
+    hook._ui4me_hook = True
+    sys.excepthook = hook
 
 
 def _frame_owner() -> Component | None:
@@ -436,7 +472,7 @@ class Theme:
         for window in self._app.windows:
             if window.core is not None and not window.closed:
                 sheet = self._app._visual_sheets[id(window)]
-                window.core.replace_stylesheet(sheet, css)
+                self._quietly(window, lambda w=window, s=sheet: w.core.replace_stylesheet(s, css))
 
     def load_file(self, path: str | os.PathLike, *, mode: str = "replace") -> None:
         """Load local UTF-8 CSS; caller owns its content and referenced resources."""
@@ -456,7 +492,7 @@ class Theme:
         self.name = self._check(name)
         self.signal.set(self.name)
         for window in self._app.windows:
-            self._apply(window)
+            self._apply(window, quiet=True)
 
     def toggle(self) -> None:
         """Switch between light and dark (from system, picks the opposite of what is shown)."""
@@ -480,13 +516,39 @@ class Theme:
             lines.append(f"{prop}: {check_css(prop, value)};")
         self._app.css(":root { " + " ".join(lines) + " }")
 
-    def _apply(self, window: UiWindow) -> None:
+    def _apply(self, window: UiWindow, *, quiet: bool = False) -> None:
+        """Apply the colour scheme; ``quiet`` suspends transitions for a switch on a live window."""
         if window.core is None or window.closed:
             return
         try:
-            window.core.set_environment(color_scheme=self.name)
+            if quiet:
+                self._quietly(window, lambda: window.core.set_environment(color_scheme=self.name))
+            else:
+                window.core.set_environment(color_scheme=self.name)
         except Exception as error:
             self._app._report(error, "theme")
+
+    def _quietly(self, window: UiWindow, change: Callable[[], Any]) -> None:
+        """Run a whole-document restyle with CSS transitions suspended.
+
+        Core 1.x forwards every DOM event to the backend; transitions starting on
+        every control at once (three events per property) can exceed the host's
+        per-connection queue, and the host then disconnects the application.
+        """
+        root = window.root.root
+        root.add_class("u4-theme-switching")
+        window.commit()
+        try:
+            change()
+        finally:
+            def restore() -> None:
+                if not window.closed and window.core is not None:
+                    root.remove_class("u4-theme-switching")
+                    self._app._request_commit()
+            try:  # app-owned (not the calling component's): must run even if it is disposed
+                self._app.core.timer(250, lambda _e: self._app._call(restore, context="theme"), repeat=False)
+            except Exception:  # app stopping: the class no longer matters
+                pass
 
 
 class Dialogs:

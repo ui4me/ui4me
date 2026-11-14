@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 from types import SimpleNamespace
 from .errors import CoreCompatibilityError
 
-MIN_CORE = (1, 0, 0)
+MIN_CORE = (1, 0, 1)
 MAX_CORE_MAJOR = 1
 
 def _parse(value: str) -> tuple[int, int, int]:
@@ -17,14 +17,14 @@ def require():
     try:
         import ui4me_core
     except ImportError as exc:
-        raise CoreCompatibilityError('UI4ME 2 requires ui4me-core >=1,<2. Install the platform Core wheel.') from exc
+        raise CoreCompatibilityError('UI4ME 2 requires ui4me-core >=1.0.1,<2. Install the platform Core wheel.') from exc
     try:
         found = version('ui4me-core')
     except PackageNotFoundError:
         found = str(getattr(ui4me_core, '__version__', '0'))
     if not (MIN_CORE <= _parse(found) < (2, 0, 0)):
-        raise CoreCompatibilityError(f'UI4ME 2 requires ui4me-core >=1,<2; found {found}')
-    if not all(hasattr(ui4me_core.Application, attr) for attr in ('from_environment','open_html','run','close')):
+        raise CoreCompatibilityError(f'UI4ME 2 requires ui4me-core >=1.0.1,<2; found {found}')
+    if not all(hasattr(ui4me_core.Application, attr) for attr in ('start', 'on_window_event', 'on_shutdown', 'open_html', 'run', 'close')):
         raise CoreCompatibilityError('Installed Core lacks the documented host-backed Application API')
     from . import _adapter
     return SimpleNamespace(App=_adapter.App)

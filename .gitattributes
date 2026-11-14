@@ -1,0 +1,16 @@
+# Keep source-manifest hashes reproducible between Linux and Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.zip binary
+*.nupkg binary
+*.whl binary
+*.woff2 binary
+*.ttf binary
+*.ttc binary
+*.gif binary
+*.webp binary
+*.exe binary
+*.dll binary

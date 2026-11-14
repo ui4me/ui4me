@@ -1,6 +1,6 @@
 @{
     RootModule = 'Ui4me.psm1'
-    ModuleVersion = '2.0.1'
+    ModuleVersion = '2.1.0'
     GUID = 'cf797c5d-35fd-48a5-9cfa-661a0c63f723'
     Author = 'UI4ME Contributors'
     CompanyName = 'UI4ME'
@@ -9,7 +9,7 @@
     PowerShellVersion = '5.1'
     DotNetFrameworkVersion = '4.7.2'
     CompatiblePSEditions = @('Desktop', 'Core')
-    RequiredModules = @(@{ModuleName = 'UI4ME.Core'; ModuleVersion = '1.0.0'})
+    RequiredModules = @(@{ModuleName = 'UI4ME.Core'; ModuleVersion = '1.0.1'; MaximumVersion = '1.999.999'})
     FunctionsToExport = @(
         'Invoke-UI4MEApp',
         'Stop-UI4MEUiApp',
@@ -69,12 +69,18 @@
         'Show-UI4MEUiFileDialog',
         'Start-UI4MEUiScript',
         'Get-UI4MEUiSetting',
-        'Set-UI4MEUiSetting'
+        'Set-UI4MEUiSetting',
+        'New-UI4MEShell', 'New-UI4MESidebar', 'New-UI4MEContent', 'New-UI4MEHeader', 'New-UI4MEFooter',
+        'New-UI4MEStatusBar', 'New-UI4MEFieldset', 'New-UI4MEMetric', 'New-UI4MEEmpty', 'New-UI4MELoading',
+        'New-UI4MEIcon', 'New-UI4MEIconButton', 'New-UI4METooltip', 'New-UI4MEBreadcrumbs',
+        'New-UI4MESegmented', 'New-UI4MEMultiSelect', 'New-UI4MEResizableSplit',
+        'New-UI4MELog', 'Add-UI4MELogLine', 'New-UI4MECopyButton', 'Install-UI4MEUiSkill'
     )
     CmdletsToExport = @()
     AliasesToExport = @()
     VariablesToExport = @()
     PrivateData = @{PSData = @{Tags = @('UI','GUI','Native','Desktop','PowerShell','Linux','Windows');
+        ReleaseNotes = 'UI4ME 2.1: direct script startup via Core 1.0.1, modular implementation, richer desktop components, updated documentation, gallery and test coverage.';
         ProjectUri = 'https://github.com/ui4me/ui4me';
         LicenseUri = 'https://github.com/ui4me/ui4me/blob/main/LICENSE'}}
 }

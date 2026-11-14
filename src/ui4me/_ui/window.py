@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any, Callable
 
 from .component import Container, Frame, pop, push
 from .dom import Element, escape_text
 from .errors import AppClosedError, UiError
+
+log = logging.getLogger("ui4me.ui")
 
 if TYPE_CHECKING:  # pragma: no cover
     from .app import UiApp
@@ -228,7 +231,10 @@ class UiWindow:
             else:  # pragma: no cover - programming error
                 raise UiError(f"unknown queued operation {kind}")
         except Exception as error:
-            if kind == "focus" and not core.has_element(op["element"]):
+            if kind == "focus":
+                # Focus changes no document state: a rejected move (removed, disabled,
+                # inert or hidden target) must never stop the window's updates.
+                log.debug("focus %s rejected by Core: %s", op.get("element"), error)
                 return
             self._desynced = True
             self._ops.clear()
@@ -322,7 +328,16 @@ class UiWindow:
         # the component tree until Core confirms the actual `closed` event.
         # Disposing here would break open windows whose before-close policy
         # rejects a user/programmatic close request.
-        self.core.close()
+        if self.app.stopping or self.app.closed:
+            return  # the application is ending: every window closes with it
+        try:
+            self.core.close()
+        except Exception as error:
+            # The host may begin shutting down between the check above and this
+            # request (e.g. a timer racing app.stop()); that close is moot.
+            if "-32008" in str(error) or self.app.stopping:
+                return
+            raise
 
     def _closed_by_core(self) -> None:
         if self.closed:

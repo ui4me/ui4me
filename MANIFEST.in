@@ -1,9 +1,14 @@
 include README.md LICENSE CHANGELOG.md
 recursive-include src/ui4me/_ui/assets *.css
 recursive-include docs *.md *.csv
-recursive-include examples *.py *.ps1 *.toml *.png
-recursive-include powershell *.psm1 *.psd1 *.ps1 *.css LICENSE
+recursive-include examples *.py *.ps1 *.toml *.png *.css *.html
+recursive-include powershell *.psm1 *.psd1 *.ps1 *.css *.md *.json LICENSE
 recursive-include tests *.py *.json *.ps1 *.c *.xml *.txt
 recursive-include tools *.py
 prune .pytest_cache
 global-exclude __pycache__ *.pyc
+
+graft specs
+recursive-include src/ui4me/_skills *.md
+recursive-include skills *.md
+include .gitattributes tools/release/SOURCE_FILES.sha256

@@ -259,7 +259,20 @@ def perform(request: dict, fake: Input, kwin: KWin, out: Path) -> dict:
     elif action == "wait-window-gone":
         result["gone"] = wait_for(lambda: kwin.find(caption) is None, float(request.get("timeout", 15))) is not None
     elif action == "screenshot":
-        result["skipped"] = "virtual output screenshots are not captured by this driver"
+        # Captured by spectacle inside the private session (virtual output only).
+        target = out / Path(request.get("name", "screenshot.png")).name
+        if caption:
+            kwin.activate(caption)
+            time.sleep(0.4)
+        mode = "--activewindow" if request.get("window_only", True) else "--fullscreen"
+        proc = subprocess.run(["spectacle", "--background", "--nonotify", mode, "--output", str(target)],
+                              capture_output=True, text=True, timeout=30, env=dict(os.environ))
+        result["path"] = str(target) if target.exists() else None
+        result["rc"] = proc.returncode
+        if not target.exists():
+            result["error"] = (proc.stderr or proc.stdout)[-500:]
+    elif action == "input-language":
+        result["skipped"] = "Linux: the input method (fcitx5, --ime) is already active"
     elif action == "sleep":
         time.sleep(float(request.get("seconds", 0.2)))
     else:
@@ -277,9 +290,25 @@ def inner(args) -> int:
     # Activated services (portals, file chooser) must only ever see the virtual display.
     subprocess.run(["dbus-update-activation-environment", f"WAYLAND_DISPLAY={sock}", "QT_QPA_PLATFORM=wayland",
                     "XDG_CURRENT_DESKTOP=KDE"], check=True, capture_output=True)
-    kwin_proc = subprocess.Popen(["kwin_wayland", "--virtual", "--no-lockscreen", "--socket", sock, "--width",
-                                  str(args.width), "--height", str(args.height)], env=env,
-                                 stdout=klog.open("w"), stderr=subprocess.STDOUT)
+    kwin_cmd = ["kwin_wayland", "--virtual", "--no-lockscreen", "--socket", sock, "--width",
+                str(args.width), "--height", str(args.height)]
+    kwin_env = dict(env)
+    if args.ime:
+        # A real input method (fcitx5 + pinyin) that KWin starts and connects through
+        # input-method-v1; the app receives composition via text-input like on a desktop.
+        # Private profile: pinyin active by default, nothing read from the person's config.
+        config = Path(os.environ["XDG_RUNTIME_DIR"]) / "ime-config"
+        (config / "fcitx5" / "conf").mkdir(parents=True, exist_ok=True)
+        (config / "fcitx5" / "profile").write_text(
+            "[Groups/0]\nName=Default\nDefault Layout=us\nDefaultIM=pinyin\n\n"
+            "[Groups/0/Items/0]\nName=keyboard-us\nLayout=\n\n[Groups/0/Items/1]\nName=pinyin\nLayout=\n\n"
+            "[GroupOrder]\n0=Default\n", encoding="utf-8")
+        (config / "fcitx5" / "config").write_text("[Behavior]\nActiveByDefault=True\nShareInputState=All\n",
+                                                  encoding="utf-8")
+        (config / "fcitx5" / "conf" / "pinyin.conf").write_text("CloudPinyinEnabled=False\n", encoding="utf-8")
+        kwin_env["XDG_CONFIG_HOME"] = str(config)
+        kwin_cmd += ["--inputmethod", shutil.which(args.ime) or args.ime]
+    kwin_proc = subprocess.Popen(kwin_cmd, env=kwin_env, stdout=klog.open("w"), stderr=subprocess.STDOUT)
     harness: dict = {"command": args.command, "machine": platform.node(), "kernel": platform.release(),
                      "kwin": args.kwin_version, "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)",
                      "observations": [], "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
@@ -387,6 +416,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=900)
+    ap.add_argument("--ime", default="", help="input method KWin starts, e.g. fcitx5 (pinyin active)")
     ap.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--kwin-version", default="", help=argparse.SUPPRESS)
     ap.add_argument("command", nargs=argparse.REMAINDER)
@@ -409,7 +439,8 @@ def main() -> int:
         return subprocess.call(stderr=bus_log, args=["dbus-run-session", "--", sys.executable, __file__, "--inner", "--out", str(args.out),
                                 "--kwin-version", kwin_version,
                                 "--timeout", str(args.timeout), "--width", str(args.width), "--height",
-                                str(args.height), "--", *args.command], env=env)
+                                str(args.height), *(["--ime", args.ime] if args.ime else []),
+                                "--", *args.command], env=env)
     finally:
         shutil.rmtree(env["XDG_RUNTIME_DIR"], ignore_errors=True)
 

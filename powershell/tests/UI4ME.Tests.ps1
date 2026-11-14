@@ -32,7 +32,12 @@ Describe 'Module surface' {
     }
     It 'parses without errors' {
         $tokens = $null; $errors = $null
-        [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\Ui4me\Ui4me.psm1'), [ref]$tokens, [ref]$errors)
+        $root = Join-Path $PSScriptRoot '..\Ui4me'
+        $sources = @((Join-Path $root 'Ui4me.psm1')) + @(
+            Get-ChildItem (Join-Path $root 'private') -Filter '*.ps1' | Select-Object -ExpandProperty FullName)
+        foreach ($source in $sources) {
+            [void][System.Management.Automation.Language.Parser]::ParseFile($source, [ref]$tokens, [ref]$errors)
+        }
         $errors | Should -BeNullOrEmpty
     }
     It 'refuses components outside an application' {

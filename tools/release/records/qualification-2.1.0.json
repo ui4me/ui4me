@@ -1,0 +1,870 @@
+{
+ "schema": "ui4me-qualification/1",
+ "version": "2.1.0",
+ "date": "2026-11-14",
+ "verdict": "PASS",
+ "verdict_note": "All mandatory gates passed on the release build. Two UI4ME Core 1.0.1 defects found during qualification are reported upstream (ui4me-core#1, #2) and documented; they are not UI4ME defects and UI4ME mitigates #1.",
+ "baseline": {
+  "git": "5b48826",
+  "replacement_zip_sha256": "83d4f9146e636766b67e9bd19b86a3cf42d5ef06af7da65d0539859805ed36ce",
+  "note": "working tree verified byte-identical to the owner's replacement ZIP; origin/main had no intervening commits"
+ },
+ "dependencies": {
+  "ui4me-core (PyPI)": "1.0.1",
+  "UI4ME.Core (PowerShell Gallery)": "1.0.1",
+  "ui4me-host": "1.0.1",
+  "constraint": ">=1.0.1,<2"
+ },
+ "qualified_artifacts": {
+  "ui4me-2.1.0-py3-none-any.whl": {
+   "sha256": "ba118d0d1b4d5984600154d969f3135fc248dd0a5cbfde50683946e59d921c84",
+   "bytes": 140913
+  },
+  "ui4me-2.1.0.tar.gz": {
+   "sha256": "12cdf5a75237487b44d9a0fdfa091a876c266bac3b2fb81b13777287cd7b6806",
+   "bytes": 320637
+  },
+  "UI4ME-2.1.0.zip": {
+   "sha256": "fec313f7101fc2670f3a9d042cb2572e59252e813ed8df7f3fc12abc6ab3fc48",
+   "bytes": 55834
+  }
+ },
+ "artifact_note": "Artifacts above were built locally from the release tree with tools/build_dist.py and used for every final run. The published wheel and module are built by the GitHub publish workflow from the release commit; their hashes and a content comparison are recorded in docs/release/RELEASE_NOTES_2.1.0.md.",
+ "platforms": {
+  "linux": {
+   "os": "Debian 13",
+   "kernel": "6.12.117+deb13-amd64",
+   "desktop": "KDE Plasma 6.3 Wayland; KWin 6.3.6 --virtual (private D-Bus/runtime dir) driven by org_kde_kwin_fake_input",
+   "python": "3.13.5 (uv venv)",
+   "pwsh": "7.7.0",
+   "pester": "6.2.0",
+   "ime": "fcitx5 5.1.12 + pinyin via kwin --inputmethod"
+  },
+  "windows": {
+   "os": "Windows Server 2022 10.0.20348",
+   "session": "interactive RDP session (xfreerdp3 on Xvfb, xdotool input), user ui4me_test",
+   "python": "3.13.17",
+   "pwsh": "7.6.9",
+   "windows_powershell": "5.1.20348.5756",
+   "pester": "6.2.0",
+   "ime": "Microsoft Pinyin (zh-CN TIP, added for the test and removed afterwards)",
+   "uv": "0.13.8"
+  }
+ },
+ "gates": [
+  {
+   "id": "0",
+   "name": "Source identity and registry preflight",
+   "result": "PASS",
+   "evidence": [
+    "tree == replacement ZIP (164 files)",
+    "tools/preflight_publish.py 2.1.0: PyPI and Gallery 2.1.0 unused, Core 1.0.1 available"
+   ]
+  },
+  {
+   "id": "A",
+   "name": "Linux Python",
+   "result": "PASS",
+   "evidence": [
+    "pytest unit+bridge+host+docs quickstarts on the installed wheel: 2 failed, 119 passed in 23.44s (the 2 failures were the release record and source manifest, generated afterwards; re-run green before commit)",
+    "direct start: python app.py, uv run app.py, python -m pkg.app, ui4me-run --headless, generated app (ui4me-ui-new): exit 0",
+    "all 11 examples/python: headless direct start exit 0 and native showcase PASS",
+    "Ctrl+C exit 130 and SIGTERM with no leftover host/backend; second launch forwards (exit 0, 0.1 s); build-time exception printed, exit 1",
+    "skills installer: 6 agents, refuses modified, --force, project scope",
+    "30-minute native soak: backend +0.8 MiB, 0 errors; Core host growth -> ui4me-core#2"
+   ]
+  },
+  {
+   "id": "B",
+   "name": "Windows Python",
+   "result": "PASS",
+   "evidence": [
+    "fresh venv per run; wheel sha256 verified in the VM",
+    "pytest tests/host 8/8 on Windows",
+    "11/11 examples headless direct start; Unicode path; python -m; uv run; startup error visible",
+    "real RDP input journeys + Microsoft Pinyin IME"
+   ]
+  },
+  {
+   "id": "C",
+   "name": "Linux PowerShell 7",
+   "result": "PASS",
+   "evidence": [
+    "Pester: TOTAL passed=54 failed=0 skipped=1 ps=7.7.0",
+    "Gallery-layout install from UI4ME-2.1.0.zip; Import-Module UI4ME/Ui4me/ui4me",
+    "native ps_basic, ps_v21, all 4 examples"
+   ]
+  },
+  {
+   "id": "D",
+   "name": "Windows PowerShell 7 and 5.1",
+   "result": "PASS",
+   "evidence": [
+    "Pester pwsh 7: TOTAL passed=55 failed=0 skipped=0 ps=7.6.9",
+    "Pester 5.1: TOTAL passed=55 failed=0 skipped=0 ps=5.1.20348.5756",
+    "module from release ZIP in Gallery layout: 22 files incl. private/*.ps1, assets/*.css, README, skill",
+    "imports: UI4ME:UI4ME 2.1.0 F:\\ui4me\\ui2\\psmods\\UI4ME\\2.1.0; Ui4me:Ui4me 2.1.0 F:\\ui4me\\ui2\\psmods\\Ui4me\\2.1.0; ui4me:ui4me 2.1.0 F:\\ui4me\\ui2\\psmods\\ui4me\\2.1.0",
+    "native ps_basic/ps_v21 on pwsh 7 and powershell.exe 5.1, gallery on 5.1"
+   ]
+  },
+  {
+   "id": "E",
+   "name": "Cross-language conformance and release",
+   "result": "PASS",
+   "evidence": [
+    "shared journeys in both languages on both OSes (see journeys)",
+    "build_dist + check_artifacts + twine check PASS",
+    "docs quickstarts executed on the real host (tests/host/test_docs_quickstarts.py)",
+    "authentic screenshots: docs/images/PROVENANCE.md"
+   ]
+  }
+ ],
+ "journeys": [
+  {
+   "id": "linux-ps_basic",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_basic.ps1"
+   ],
+   "checks": 25,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 23.37,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-ps_v21",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_v21.ps1"
+   ],
+   "checks": 13,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 11.59,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-py_basic",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/ui4me-run",
+    "tests/native/apps/py_basic.py"
+   ],
+   "checks": 20,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 14.58,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-py_ime",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_ime.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 4.74,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-py_lifecycle",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/ui4me-run",
+    "tests/native/apps/py_lifecycle.py"
+   ],
+   "checks": 15,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 19.08,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-py_v21",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_v21.py"
+   ],
+   "checks": 18,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 25.84,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-ps-counter",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_showcase.ps1",
+    "/home/toor/projects/ui4me/examples/powershell/counter.ps1"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.77,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-ps-dashboard",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_showcase.ps1",
+    "/home/toor/projects/ui4me/examples/powershell/dashboard.ps1"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.72,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-ps-gallery",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_showcase.ps1",
+    "/home/toor/projects/ui4me/examples/powershell/gallery.ps1"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.81,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-ps-settings",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_showcase.ps1",
+    "/home/toor/projects/ui4me/examples/powershell/settings.ps1"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.73,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-chat",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/chat.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.36,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-counter",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/counter.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.19,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-customers",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/customers.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.37,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-desktop_starter",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/desktop_starter.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.32,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-file_utility",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/file_utility.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.28,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-gallery",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/gallery.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.34,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-hello",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/hello.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.31,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-log_monitor",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/log_monitor.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.22,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-operations_dashboard",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/operations_dashboard.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.34,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-raw_island",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/raw_island.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.26,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "linux-show-py-settings_manager",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/gF/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_showcase.py",
+    "/home/toor/projects/ui4me/examples/python/settings_manager.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 8.31,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "win-ps51-ps_basic",
+   "platform": "windows",
+   "runtime": "powershell-5.1",
+   "command": [
+    "powershell.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_basic.ps1"
+   ],
+   "checks": 25,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-ps51-ps_v21",
+   "platform": "windows",
+   "runtime": "powershell-5.1",
+   "command": [
+    "powershell.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_v21.ps1"
+   ],
+   "checks": 13,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-pwsh7-ps_basic",
+   "platform": "windows",
+   "runtime": "pwsh-7",
+   "command": [
+    "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_basic.ps1"
+   ],
+   "checks": 25,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-pwsh7-ps_v21",
+   "platform": "windows",
+   "runtime": "pwsh-7",
+   "command": [
+    "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_v21.ps1"
+   ],
+   "checks": 13,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-py_basic",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\ui4me-run.exe",
+    "{STAGE}\\tests\\native\\apps\\py_basic.py"
+   ],
+   "checks": 20,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   },
+   "python_setup": {
+    "import": "2.1.0 1.0.1 F:\\ui4me\\ui2\\venv\\Lib\\site-packages\\ui4me\\__init__.py 3.13.17 (tags/v3.13.17:64e080d, Oct 21 2026, 14:08:53) [MSC v.1944 64 bit (AMD64)]",
+    "wheel_sha256": "ba118d0d1b4d5984600154d969f3135fc248dd0a5cbfde50683946e59d921c84"
+   }
+  },
+  {
+   "id": "win-py_ime",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\python.exe",
+    "{STAGE}\\tests\\native\\apps\\py_ime.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-py_lifecycle",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\ui4me-run.exe",
+    "{STAGE}\\tests\\native\\apps\\py_lifecycle.py"
+   ],
+   "checks": 15,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-py_v21",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\python.exe",
+    "{STAGE}\\tests\\native\\apps\\py_v21.py"
+   ],
+   "checks": 18,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-show-ps51-gallery",
+   "platform": "windows",
+   "runtime": "powershell-5.1",
+   "command": [
+    "powershell.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_showcase.ps1",
+    "{STAGE}\\examples\\powershell\\gallery.ps1"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-show-py-gallery",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\python.exe",
+    "{STAGE}\\tests\\native\\apps\\py_showcase.py",
+    "{STAGE}\\examples\\python\\gallery.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  },
+  {
+   "id": "win-show-py-operations",
+   "platform": "windows",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\python.exe",
+    "{STAGE}\\tests\\native\\apps\\py_showcase.py",
+    "{STAGE}\\examples\\python\\operations_dashboard.py"
+   ],
+   "checks": 3,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "node": "omegaui",
+    "user": "ui4me_test",
+    "win": "10.0.20348",
+    "session": 2
+   }
+  }
+ ],
+ "fixes": [
+  "Windows: host disconnected the app on a theme switch (Core forwards every DOM event; ~300 transition events). Default theme without control colour transitions; transitions suspended during UI4ME theme switches (Python + PowerShell).",
+  "Dialog focus return to an opener disabled as busy; rejected focus never desynchronizes the window.",
+  "Build-time exceptions printed before the Core disconnect.",
+  "window.close() racing app shutdown no longer raises.",
+  "Owner-thread coalescing (one flush/commit per group of queued callbacks).",
+  "Unique settings id for titles without ASCII letters; PowerShell digit-leading titles; settings fsync.",
+  "PowerShell: Radio/Segmented -Class parameter; class escaping; skills marker on Linux/macOS; disposed owners leave parents; empty log lines; gallery.ps1 BOM.",
+  "Tooltip aria-describedby (both languages); themed fieldsets/radio groups; adjustable split slider styling; launcher duplicate import.",
+  "Test tooling: real IME (--ime fcitx5, Windows input-language), screenshots on both drivers, example showcase wrappers, soak, frame counter, Windows window placement, PS 5.1 Pester -Include quirk."
+ ],
+ "core_issues": [
+  {
+   "id": "ui4me-core#1",
+   "url": "https://github.com/ui4me/ui4me-core/issues/1",
+   "title": "Host disconnects the backend on bursts of unsubscribed DOM events",
+   "ui4me_mitigation": "yes"
+  },
+  {
+   "id": "ui4me-core#2",
+   "url": "https://github.com/ui4me/ui4me-core/issues/2",
+   "title": "Native host memory grows while non-base font-face content is inserted/removed during frequent text updates",
+   "ui4me_mitigation": "documented guidance"
+  }
+ ],
+ "not_run": [
+  "screen reader / assistive-technology output",
+  "HiDPI scale factors other than 100 %",
+  "multi-monitor",
+  "file drag and drop",
+  "PowerShell IME and Ctrl+C (same Core mechanisms as Python, not separately exercised)",
+  "macOS, X11, ARM",
+  "a person at a physical monitor"
+ ]
+}

@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.1.0 — 2026-11-14
+
+Normal scripts are now the way to run UI4ME apps: `python app.py`, `uv run app.py`,
+`python -m package.app`, `pwsh -File app.ps1` and `powershell.exe -File app.ps1`. UI4ME delegates
+startup and supervision to UI4ME Core 1.0.1 (`Application.start` / `Start-UI4MEScript`); `ui4me-run`
+and `Start-UI4MEUiScript` remain for compatibility and headless tests. Requires `ui4me-core` /
+`UI4ME.Core` `>=1.0.1,<2`.
+
+### New
+
+* Python: `ui.fieldset`, `ui.multiselect`, `ui.resizable_split` (keyboard-operable), `ui.metric`,
+  `ui.tooltip`, `ui.copy_button`; forms track `dirty` / `touched` / `valid` and validate on
+  `submit`, `change` or `blur` (`ui.form(validation_mode=...)`).
+* PowerShell: the module is split into purpose-oriented private files (still pure script, 5.1 and 7);
+  new shell layout (`New-UI4MEShell`, sidebar, header, footer, status bar), `New-UI4MEFieldset`,
+  `New-UI4MEMultiSelect`, `New-UI4MESegmented`, `New-UI4MEResizableSplit`, `New-UI4MEMetric`,
+  `New-UI4MELog`/`Add-UI4MELogLine`, icons, breadcrumbs, empty/loading states, `New-UI4METooltip`,
+  `New-UI4MECopyButton`.
+* Project generator `ui4me-ui-new` and coding-agent skill installers `ui4me-ui-skill` /
+  `Install-UI4MEUiSkill` (Claude, Codex, OpenCode, Copilot, Cursor, Gemini; never overwrite edits).
+* New documentation: install guides, quickstarts, recipes, API references, component catalog,
+  [feature matrix](docs/reference/feature-matrix.md), gallery and reference apps (operations
+  dashboard, settings) in both languages.
+
+### Fixed during native qualification
+
+* Windows: an app could be closed by the host during a theme switch. Core 1.0.1 forwards every DOM
+  event; colour transitions on all controls produced a burst larger than the host's per-connection
+  queue. The default theme no longer animates control colours, and UI4ME suspends transitions while
+  it switches theme or colour scheme (both languages).
+* A dialog opened from a button (`on_click=lambda: dlg.open()`) now returns focus to that button on
+  close; a rejected focus move no longer stops all further window updates.
+* Exceptions raised while building the UI are printed before the native host ends the process.
+* Closing a window while the app is shutting down no longer raises.
+* Owner-thread work is coalesced: callbacks already queued share one reactive flush and one DOM
+  commit, removing a backlog under high-rate `app.post` use.
+* Titles without ASCII letters (for example `日本語ツール`) get a unique settings folder instead of a
+  shared `org.ui4me.app.app`; PowerShell titles starting with a digit no longer throw. Settings are
+  flushed to disk before the atomic replace.
+* PowerShell: `New-UI4MERadio` / `New-UI4MESegmented` failed (missing `-Class`); radio class values
+  are escaped; the skills installer recognised its own managed files on Linux/macOS; removed runtime
+  content no longer accumulates in its parent; logs accept empty lines.
+* Accessibility and styling: tooltips are linked with `aria-describedby`; fieldsets and radio groups
+  are themed; the adjustable split uses slider styling.
+
+### Qualification
+
+Native journeys with real input on KDE Plasma 6 Wayland and on Windows Server 2022 (RDP), Python
+and PowerShell 7 / Windows PowerShell 5.1, including real pinyin IME composition on both systems.
+Details, commands and hashes: [release notes](docs/release/RELEASE_NOTES_2.1.0.md) and
+[`tools/release/records/qualification-2.1.0.json`](tools/release/records/qualification-2.1.0.json).
+
 ## 2.0.1 — 2026-11-14
 
 * PowerShell: the module files are now `Ui4me.psd1`/`Ui4me.psm1` in a `Ui4me` folder, matching

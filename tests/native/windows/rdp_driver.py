@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 DISPLAY = os.environ.get("UI4ME_RDP_DISPLAY", ":88")
+OUT_DIR = Path(".")
 ROOT = r"F:\ui4me\ui2"
 REPO = Path(__file__).resolve().parents[3]
 XKEYS = {"enter": "Return", "tab": "Tab", "escape": "Escape", "backspace": "BackSpace", "space": "space",
@@ -109,10 +110,11 @@ def setup_python(agent: Agent, wheel: Path) -> dict:
 import subprocess, sys, shutil
 venv = Path(r'{ROOT}\\venv')
 base = sys._base_executable.replace('pythonw.exe', 'python.exe')
-if not (venv / 'Scripts' / 'python.exe').exists():
-    subprocess.run([base, '-m', 'venv', str(venv)], check=True, capture_output=True, timeout=300)
+if venv.exists():  # every qualification run starts from a fresh environment
+    shutil.rmtree(venv)
+subprocess.run([base, '-m', 'venv', str(venv)], check=True, capture_output=True, timeout=300)
 py = str(venv / 'Scripts' / 'python.exe')
-r1 = subprocess.run([py, '-m', 'pip', 'install', '-q', '--disable-pip-version-check', 'ui4me-core==1.0.0'], capture_output=True, text=True, timeout=900)
+r1 = subprocess.run([py, '-m', 'pip', 'install', '-q', '--disable-pip-version-check', 'ui4me-core>=1.0.1,<2'], capture_output=True, text=True, timeout=900)
 r2 = subprocess.run([py, '-m', 'pip', 'install', '-q', '--disable-pip-version-check', '--force-reinstall', '--no-deps', r'{remote_wheel}'], capture_output=True, text=True, timeout=900)
 r3 = subprocess.run([py, '-c', 'import ui4me, ui4me_core, sys; print(ui4me.__version__, ui4me_core.__version__, ui4me.__file__, sys.version)'], capture_output=True, text=True, timeout=120)
 result = {{'core': r1.returncode, 'core_err': r1.stderr[-800:], 'ui': r2.returncode, 'ui_err': r2.stderr[-800:], 'import': r3.stdout.strip() or r3.stderr[-800:],
@@ -128,8 +130,23 @@ def perform(agent: Agent, request: dict, title: str | None) -> dict:
     def win():
         return agent(f"result = w.window({caption!r}, timeout=10)")
 
-    if action in ("click", "dblclick", "rclick", "move"):
+    def on_screen():
+        # Windows cascades new windows; after many runs a tall window can extend below the
+        # work area (taskbar), where clicks would miss. Move it fully into the work area first.
         wnd = win()
+        x, y, width, height = wnd["rect"]
+        moved = agent("import ctypes, ctypes.wintypes as wt\n"
+                      "r = wt.RECT(); ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0)\n"
+                      f"x, y, wd, ht = {x}, {y}, {width}, {height}\n"
+                      "nx = min(max(x, r.left), max(r.left, r.right - wd)); ny = min(max(y, r.top), max(r.top, r.bottom - ht))\n"
+                      f"result = None if (nx, ny) == (x, y) else ctypes.windll.user32.SetWindowPos({wnd['hwnd']}, 0, nx, ny, 0, 0, 0x0001 | 0x0004)")
+        if moved:
+            time.sleep(0.4)
+            wnd = win()
+        return wnd
+
+    if action in ("click", "dblclick", "rclick", "move"):
+        wnd = on_screen()
         x, y = wnd["cx"] + float(request["x"]), wnd["cy"] + float(request["y"])
         if action == "move":
             xdo("mousemove", int(round(x)), int(round(y)))
@@ -188,8 +205,28 @@ def perform(agent: Agent, request: dict, title: str | None) -> dict:
             xdo("key", XKEYS[request["key"]])
     elif action == "sleep":
         time.sleep(float(request.get("seconds", 0.2)))
+    elif action == "input-language":
+        # Switch the target window's input language (e.g. "00000804" = Chinese (PRC), with
+        # Microsoft Pinyin installed for the test user) the way the language bar does.
+        wnd = win()
+        reply["hkl"] = agent(f"import ctypes; u = ctypes.windll.user32; u.LoadKeyboardLayoutW.restype = ctypes.c_void_p;"
+                             f" hkl = u.LoadKeyboardLayoutW({request['layout']!r}, 1);"
+                             f" u.PostMessageW({wnd['hwnd']}, 0x0050, 0, ctypes.c_void_p(hkl)); result = hex(hkl or 0)")
     elif action == "screenshot":
-        reply["skipped"] = "not captured"
+        # Captured inside the interactive session (PIL ImageGrab), cropped to the window
+        # frame, then copied back next to the run's evidence (OUT_DIR).
+        name = Path(request.get("name", "screenshot.png")).name
+        wnd = win()
+        # Move the whole window on screen (SWP_NOSIZE|SWP_NOZORDER), focus it, re-read its frame.
+        agent(f"import ctypes; u = ctypes.windll.user32; u.SetWindowPos({wnd['hwnd']}, 0, 0, 0, 0, 0, 0x0001 | 0x0004);"
+              f" u.SetForegroundWindow({wnd['hwnd']}); result = None")
+        time.sleep(0.8)
+        wnd = win()
+        data = agent(f"import base64\npath = w.screenshot({name!r}, bbox={list(wnd['frame'])!r})\n"
+                     "result = base64.b64encode(Path(path).read_bytes()).decode()")
+        target = OUT_DIR / name
+        target.write_bytes(base64.b64decode(data))
+        reply["path"] = str(target)
     else:
         raise ValueError(f"unknown action {action}")
     time.sleep(float(request.get("settle", 0.15)))
@@ -203,6 +240,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=300)
     ap.add_argument("--setup-python", type=Path, help="wheel to install into the session venv first")
     ap.add_argument("--stage-module", action="store_true", help="stage powershell/Ui4me for PSModulePath")
+    ap.add_argument("--stage-examples", action="store_true", help="stage examples/ under {STAGE}\\examples")
     ap.add_argument("--stage-module-zip", type=Path, help="stage the built UI4ME-X.zip artifact instead")
     ap.add_argument("--env", action="append", default=[], help="NAME=VALUE for the app")
     ap.add_argument("command", nargs=argparse.REMAINDER)
@@ -210,6 +248,8 @@ def main() -> int:
     argv = a.command[1:] if a.command[:1] == ["--"] else a.command
     out: Path = a.out
     out.mkdir(parents=True, exist_ok=True)
+    global OUT_DIR
+    OUT_DIR = out
     agent = Agent()
     run_dir = ROOT + r"\run" + "\\" + a.name
     harness: dict = {"name": a.name, "argv": argv, "observations": [], "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
@@ -219,6 +259,8 @@ def main() -> int:
         harness["machine"] = agent("import platform, getpass; result = {'node': platform.node(), 'user': getpass.getuser(),"
                                    " 'win': platform.version(), 'session': w.session_id()}")
         harness["staged_tests"] = stage_tree(agent, REPO / "tests" / "native", ROOT + r"\stage\tests\native")
+        if a.stage_examples:
+            harness["staged_examples"] = stage_tree(agent, REPO / "examples", ROOT + r"\stage\examples")
         if a.stage_module:
             harness["staged_module"] = stage_tree(agent, REPO / "powershell" / "Ui4me", ROOT + r"\stage\psmodules\Ui4me")
         if a.stage_module_zip:

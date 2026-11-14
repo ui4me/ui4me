@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui4me"
-version = "2.0.1"
+version = "2.1.0"
 description = "Batteries-included native desktop UI components for Python, on UI4ME Core"
-readme = "README.md"
+readme = "docs/publish/pypi.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "UI4ME Contributors"}]
-dependencies = ["ui4me-core>=1.0.0,<2.0.0"]
+dependencies = ["ui4me-core>=1.0.1,<2.0.0"]
 keywords = ["desktop", "UI", "components", "CSS", "reactive", "Wayland", "Windows"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -31,6 +31,8 @@ Core = "https://github.com/ui4me/ui4me-core"
 
 [project.scripts]
 ui4me-run = "ui4me.launcher:main"
+ui4me-ui-new = "ui4me.scaffold:main"
+ui4me-ui-skill = "ui4me.skills:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -42,7 +44,11 @@ include = ["ui4me*"]
 
 [tool.setuptools.package-data]
 "ui4me._ui" = ["assets/*.css", "py.typed"]
+"ui4me" = ["_skills/ui4me-ui-python/SKILL.md", "_skills/ui4me-ui-python/references/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/bridge", "tests/host"]
 pythonpath = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=8", "build>=1.2", "twine>=6"]
