@@ -574,6 +574,94 @@
    }
   },
   {
+   "id": "registry-linux-ps_v21",
+   "platform": "linux",
+   "runtime": "pwsh-7",
+   "command": [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-File",
+    "/home/toor/projects/ui4me/tests/native/apps/ps_v21.ps1"
+   ],
+   "checks": 13,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 11.63,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "registry-linux-py_v21",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "/tmp/claude-1000/-home-toor-projects-ui4me/68a214a4-6d53-46ea-989e-4eb8f6ecff88/scratchpad/reg/bin/python",
+    "/home/toor/projects/ui4me/tests/native/apps/py_v21.py"
+   ],
+   "checks": 18,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": 25.83,
+   "environment": {
+    "kwin": "kwin 6.3.6",
+    "kernel": "6.12.117+deb13-amd64",
+    "supervision": "unsupervised (UI4ME_ALLOW_UNSUPERVISED=1)"
+   }
+  },
+  {
+   "id": "registry-win-ps51-ps_v21",
+   "platform": "linux",
+   "runtime": "powershell-5.1",
+   "command": [
+    "powershell.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    "{STAGE}\\tests\\native\\apps\\ps_v21.ps1"
+   ],
+   "checks": 13,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "kwin": null,
+    "kernel": null,
+    "supervision": null
+   }
+  },
+  {
+   "id": "registry-win-py_v21",
+   "platform": "linux",
+   "runtime": "python",
+   "command": [
+    "{VENV}\\Scripts\\python.exe",
+    "{STAGE}\\tests\\native\\apps\\py_v21.py"
+   ],
+   "checks": 18,
+   "failed": [],
+   "app_exit": 0,
+   "leftover_processes": 0,
+   "result": "PASS",
+   "seconds": null,
+   "environment": {
+    "kwin": null,
+    "kernel": null,
+    "supervision": null
+   }
+  },
+  {
    "id": "win-ps51-ps_basic",
    "platform": "windows",
    "runtime": "powershell-5.1",
@@ -866,5 +954,33 @@
   "PowerShell IME and Ctrl+C (same Core mechanisms as Python, not separately exercised)",
   "macOS, X11, ARM",
   "a person at a physical monitor"
- ]
+ ],
+ "published": {
+  "commit": "36450e0b14d99fd26b4c23f045196b15abc0a924",
+  "ci_run": "https://github.com/ui4me/ui4me/actions/runs/43574203730",
+  "publish_run": "https://github.com/ui4me/ui4me/actions/runs/43574291898",
+  "artifacts": {
+   "ui4me-2.1.0-py3-none-any.whl": {
+    "registry": "https://pypi.org/project/ui4me/2.1.0/",
+    "sha256": "77b422f00cf019f330e9525ce6223998d052ed0db4a95b28f9555a4eb917ab51",
+    "identity": "49/49 files byte-identical to the qualified wheel"
+   },
+   "ui4me-2.1.0.tar.gz": {
+    "registry": "https://pypi.org/project/ui4me/2.1.0/",
+    "sha256": "053a034a2bb2b6c321da5ae38d05951a92f5b16d2c08799e687cc2d92b8b6172"
+   },
+   "UI4ME-2.1.0.zip": {
+    "registry": "https://www.powershellgallery.com/packages/Ui4me/2.1.0",
+    "sha256": "fec313f7101fc2670f3a9d042cb2572e59252e813ed8df7f3fc12abc6ab3fc48",
+    "identity": "identical SHA-256 to the qualified ZIP; Gallery package files 22/22 identical"
+   }
+  },
+  "post_publish_checks": [
+   "registry-linux-py_v21 PASS (pip install ui4me==2.1.0)",
+   "registry-linux-ps_v21 PASS (Save-Module UI4ME, pwsh 7.7)",
+   "registry-win-py_v21 PASS (pip install ui4me==2.1.0 on Windows)",
+   "registry-win-ps51-ps_v21 PASS (Save-Module UI4ME, Windows PowerShell 5.1)"
+  ],
+  "workflow_verify_job": "FAILED: Save-Module -Path pointed at a folder that did not exist (workflow bug, not a package defect); fixed in publish.yml after the release; fixed step passed locally against the published module"
+ }
 }

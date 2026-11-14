@@ -113,9 +113,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path ([IO.Path]::GetTempPath()) 'from-gallery'
-          for ($i = 0; $i -lt 20; $i++) {
+          # Save-Module needs an existing -Path; new versions can take several minutes to be indexed.
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          for ($i = 0; $i -lt 40; $i++) {
             try { Save-Module -Name UI4ME -RequiredVersion $env:VERSION -Repository PSGallery -Path $root -ErrorAction Stop; break }
-            catch { Start-Sleep -Seconds 30 }
+            catch { Write-Host "Attempt $($i + 1): $_"; Start-Sleep -Seconds 30 }
           }
           $env:PSModulePath = $root
           Import-Module UI4ME -ErrorAction Stop

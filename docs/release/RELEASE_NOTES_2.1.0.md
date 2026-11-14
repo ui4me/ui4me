@@ -43,6 +43,27 @@ with no leftover process. Real **pinyin IME** composition (`nihao` → `你好`)
 on KDE and Microsoft Pinyin on Windows. Every example app in both languages was run unmodified and
 screenshotted.
 
+## Published artifacts
+
+Built by the [publish workflow](https://github.com/ui4me/ui4me/actions/runs/43574291898) from commit
+`36450e0` after a [green CI run](https://github.com/ui4me/ui4me/actions/runs/43574203730) of the same SHA.
+
+| Artifact | Registry | SHA-256 |
+| --- | --- | --- |
+| `ui4me-2.1.0-py3-none-any.whl` | [PyPI](https://pypi.org/project/ui4me/2.1.0/) | `77b422f00cf019f330e9525ce6223998d052ed0db4a95b28f9555a4eb917ab51` |
+| `ui4me-2.1.0.tar.gz` | [PyPI](https://pypi.org/project/ui4me/2.1.0/) | `053a034a2bb2b6c321da5ae38d05951a92f5b16d2c08799e687cc2d92b8b6172` |
+| `UI4ME-2.1.0.zip` (module `Ui4me` 2.1.0) | [PowerShell Gallery](https://www.powershellgallery.com/packages/Ui4me/2.1.0) | `fec313f7101fc2670f3a9d042cb2572e59252e813ed8df7f3fc12abc6ab3fc48` |
+
+Identity with the qualified build: the module ZIP has exactly the qualified SHA-256; the Gallery
+package's 22 files and the PyPI wheel's 49 files are byte-identical to the qualified ones (the wheel
+archive differs only in ZIP metadata). After publication, fresh registry installs (`pip install ui4me==2.1.0`,
+`Save-Module UI4ME`) passed the native `py_v21` / `ps_v21` journeys on KDE Wayland (Python, pwsh 7)
+and Windows (Python, Windows PowerShell 5.1).
+
+The workflow's post-publish Gallery check itself failed because `Save-Module` was given a folder that
+did not exist; publication was not affected. The step is fixed for the next release and its fixed form
+passed when run against the published module.
+
 ## Known limitations
 
 - **Core 1.0.1 forwards every DOM event to the application** and disconnects an application that
